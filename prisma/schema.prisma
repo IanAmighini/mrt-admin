@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CARGA_DIARIA
+  SOLO_LECTURA
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum EntityType {
+  CLIENTE
+  PROVEEDOR
+  AMBOS
+}
+
+model Entity {
+  id                 String     @id @default(cuid())
+  name               String
+  type               EntityType
+  taxId              String?
+  contact            String?
+  isWithholdingAgent Boolean    @default(false)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  accounts           Account[]
+}
+
+enum Circuit {
+  BLANCO
+  NEGRO
+}
+
+model Account {
+  id        String   @id @default(cuid())
+  entityId  String
+  entity    Entity   @relation(fields: [entityId], references: [id])
+  circuit   Circuit
+  createdAt DateTime @default(now())
+
+  @@unique([entityId, circuit])
+}

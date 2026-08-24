@@ -1,0 +1,26 @@
+import type { UserRole } from "@prisma/client";
+
+export type NavItem = {
+  href: string;
+  label: string;
+  roles: UserRole[];
+};
+
+const ALL_ROLES: UserRole[] = ["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"];
+
+export const NAV_ITEMS: NavItem[] = [
+  { href: "/", label: "Inicio", roles: ALL_ROLES },
+  { href: "/entidades", label: "Clientes y proveedores", roles: ALL_ROLES },
+  { href: "/cuentas-corrientes", label: "Cuentas corrientes", roles: ALL_ROLES },
+  { href: "/stock", label: "Stock de insumos", roles: ALL_ROLES },
+  { href: "/produccion", label: "Producción", roles: ALL_ROLES },
+  { href: "/pallets", label: "Pallets", roles: ALL_ROLES },
+  { href: "/dashboards", label: "Dashboards", roles: ALL_ROLES },
+  { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
+];
+
+export const ROLE_LABELS: Record<UserRole, string> = {
+  ADMIN: "Admin",
+  CARGA_DIARIA: "Carga diaria",
+  SOLO_LECTURA: "Solo lectura",
+};
