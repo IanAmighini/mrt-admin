@@ -1,0 +1,417 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { Account, Entity } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
+import { requireUser } from "@/lib/auth-helpers";
+import {
+  getAccountBalance,
+  getAccountDocuments,
+  getDocumentPending,
+  getUnlinkedRemitos,
+} from "@/lib/ledger";
+import { DEFAULT_IVA_RATE, formatMoney } from "@/lib/money";
+import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { createDocument, createFactura, createPayment, moveRemitoToBlanco } from "./actions";
+
+export default async function EntityLedgerPage({
+  params,
+}: {
+  params: Promise<{ entityId: string }>;
+}) {
+  const { entityId } = await params;
+  const user = await requireUser();
+  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
+
+  const entity = await prisma.entity.findUnique({
+    where: { id: entityId },
+    include: { accounts: true },
+  });
+  if (!entity) notFound();
+
+  const blancoAccount = entity.accounts.find((a) => a.circuit === "BLANCO");
+  const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
+  if (!blancoAccount || !negroAccount) notFound();
+
+  return (
+    <div className="space-y-10">
+      <div>
+        <Link href="/cuentas-corrientes" className="text-sm underline underline-offset-2">
+          ← Cuentas corrientes
+        </Link>
+        <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
+      </div>
+
+      <CircuitPanel entity={entity} account={blancoAccount} canEdit={canEdit} />
+      <CircuitPanel entity={entity} account={negroAccount} canEdit={canEdit} />
+    </div>
+  );
+}
+
+async function CircuitPanel({
+  entity,
+  account,
+  canEdit,
+}: {
+  entity: Entity;
+  account: Account;
+  canEdit: boolean;
+}) {
+  const [balance, documents, payments, unlinkedRemitos] = await Promise.all([
+    getAccountBalance(account.id),
+    getAccountDocuments(account.id),
+    prisma.payment.findMany({
+      where: { accountId: account.id },
+      include: { allocations: { include: { document: true } } },
+      orderBy: { date: "desc" },
+    }),
+    account.circuit === "BLANCO" ? getUnlinkedRemitos(account.id) : Promise.resolve([]),
+  ]);
+
+  const today = new Date();
+  const documentsDesc = documents.slice().reverse();
+
+  return (
+    <section className="space-y-6 rounded-lg border border-black/10 p-5">
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold">Circuito {CIRCUIT_LABELS[account.circuit]}</h2>
+        <p className="text-lg font-semibold">{formatMoney(balance)}</p>
+      </div>
+
+      {canEdit && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <NewDocumentForm accountId={account.id} />
+          {account.circuit === "BLANCO" && (
+            <NewFacturaForm
+              accountId={account.id}
+              entity={entity}
+              unlinkedRemitos={unlinkedRemitos}
+            />
+          )}
+          <NewPaymentForm accountId={account.id} pendingDocuments={documents} />
+        </div>
+      )}
+
+      <div>
+        <h3 className="text-sm font-semibold mb-2">Comprobantes</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-black/10 text-left text-black/60">
+                <th className="py-2 pr-4">Tipo</th>
+                <th className="py-2 pr-4">Número</th>
+                <th className="py-2 pr-4">Fecha</th>
+                <th className="py-2 pr-4">Vencimiento</th>
+                <th className="py-2 pr-4">Total</th>
+                <th className="py-2 pr-4">Pendiente</th>
+                <th className="py-2 pr-4">Estado</th>
+                {canEdit && account.circuit === "NEGRO" && <th className="py-2 pr-4"></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {documentsDesc.map((doc) => {
+                const pending = getDocumentPending(doc);
+                const vencido = doc.dueDate && doc.dueDate < today && pending.greaterThan(0);
+                const facturado = doc.type === "REMITO" && doc.remitoLinks.length > 0;
+                const status = facturado
+                  ? "Facturado"
+                  : pending.lessThanOrEqualTo(0)
+                    ? "Saldado"
+                    : vencido
+                      ? "Vencido"
+                      : "Pendiente";
+
+                return (
+                  <tr key={doc.id} className="border-b border-black/5">
+                    <td className="py-2 pr-4">{DOCUMENT_TYPE_LABELS[doc.type]}</td>
+                    <td className="py-2 pr-4">{doc.number}</td>
+                    <td className="py-2 pr-4">{doc.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4">{doc.dueDate?.toLocaleDateString("es-AR") ?? "—"}</td>
+                    <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
+                    <td className="py-2 pr-4">{formatMoney(pending, doc.currency)}</td>
+                    <td className="py-2 pr-4">
+                      <span className={vencido ? "text-red-600 font-medium" : "text-black/60"}>
+                        {status}
+                      </span>
+                    </td>
+                    {canEdit && account.circuit === "NEGRO" && (
+                      <td className="py-2 pr-4">
+                        {doc.type === "REMITO" && doc.remitoLinks.length === 0 && (
+                          <form action={moveRemitoToBlanco}>
+                            <input type="hidden" name="documentId" value={doc.id} />
+                            <button type="submit" className="text-xs underline underline-offset-2">
+                              Mover a Blanco
+                            </button>
+                          </form>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              {documentsDesc.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-4 text-center text-black/40">
+                    Sin comprobantes todavía.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="text-sm font-semibold mb-2">Pagos</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-black/10 text-left text-black/60">
+                <th className="py-2 pr-4">Fecha</th>
+                <th className="py-2 pr-4">Monto</th>
+                <th className="py-2 pr-4">Medio</th>
+                <th className="py-2 pr-4">Referencia</th>
+                <th className="py-2 pr-4">Imputado a</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payments.map((payment) => (
+                <tr key={payment.id} className="border-b border-black/5">
+                  <td className="py-2 pr-4">{payment.date.toLocaleDateString("es-AR")}</td>
+                  <td className="py-2 pr-4">{formatMoney(payment.amount, payment.currency)}</td>
+                  <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[payment.method]}</td>
+                  <td className="py-2 pr-4">{payment.reference ?? "—"}</td>
+                  <td className="py-2 pr-4">
+                    {payment.allocations.length === 0
+                      ? "Sin imputar"
+                      : payment.allocations
+                          .map((a) => `${DOCUMENT_TYPE_LABELS[a.document.type]} #${a.document.number}`)
+                          .join(", ")}
+                  </td>
+                </tr>
+              ))}
+              {payments.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-black/40">
+                    Sin pagos todavía.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function NewDocumentForm({ accountId }: { accountId: string }) {
+  return (
+    <form action={createDocument} className="space-y-3 rounded-lg border border-black/10 p-4">
+      <h3 className="text-sm font-semibold">Nuevo remito / nota / ajuste</h3>
+      <input type="hidden" name="accountId" value={accountId} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Tipo">
+          <select name="type" required defaultValue="REMITO" className={selectClass}>
+            <option value="REMITO">Remito</option>
+            <option value="NOTA_CREDITO">Nota de crédito</option>
+            <option value="NOTA_DEBITO">Nota de débito</option>
+            <option value="AJUSTE">Ajuste manual</option>
+          </select>
+        </Field>
+        <Field label="Número">
+          <input name="number" required className={inputClass} />
+        </Field>
+        <Field label="Fecha">
+          <input type="date" name="date" required className={inputClass} />
+        </Field>
+        <Field label="Vencimiento (opcional)">
+          <input type="date" name="dueDate" className={inputClass} />
+        </Field>
+        <Field label="Moneda">
+          <select name="currency" defaultValue="ARS" className={selectClass}>
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </Field>
+        <Field label="Cotización (si es USD)">
+          <input name="exchangeRate" className={inputClass} />
+        </Field>
+        <Field label="Monto">
+          <input name="amount" required inputMode="decimal" className={inputClass} />
+        </Field>
+        <Field label="Efecto (solo Ajuste)">
+          <select name="ajusteEffect" defaultValue="SUMA" className={selectClass}>
+            <option value="SUMA">Suma al saldo</option>
+            <option value="RESTA">Resta al saldo</option>
+          </select>
+        </Field>
+      </div>
+      <Field label="Motivo (obligatorio para Ajuste)">
+        <input name="reason" className={inputClass} />
+      </Field>
+      <button type="submit" className={submitClass}>
+        Crear
+      </button>
+    </form>
+  );
+}
+
+function NewFacturaForm({
+  accountId,
+  entity,
+  unlinkedRemitos,
+}: {
+  accountId: string;
+  entity: Entity;
+  unlinkedRemitos: Awaited<ReturnType<typeof getUnlinkedRemitos>>;
+}) {
+  return (
+    <form action={createFactura} className="space-y-3 rounded-lg border border-black/10 p-4">
+      <h3 className="text-sm font-semibold">Nueva factura</h3>
+      <input type="hidden" name="accountId" value={accountId} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Número">
+          <input name="number" required className={inputClass} />
+        </Field>
+        <Field label="Fecha">
+          <input type="date" name="date" required className={inputClass} />
+        </Field>
+        <Field label="Vencimiento (opcional)">
+          <input type="date" name="dueDate" className={inputClass} />
+        </Field>
+        <Field label="Moneda">
+          <select name="currency" defaultValue="ARS" className={selectClass}>
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </Field>
+        <Field label="Cotización (si es USD)">
+          <input name="exchangeRate" className={inputClass} />
+        </Field>
+        <Field label="Neto">
+          <input name="netAmount" required inputMode="decimal" className={inputClass} />
+        </Field>
+        <Field label="Alícuota IVA %">
+          <input name="ivaRate" defaultValue={DEFAULT_IVA_RATE} className={inputClass} />
+        </Field>
+        {entity.isWithholdingAgent && (
+          <>
+            <Field label="Retención">
+              <input name="retentionAmount" className={inputClass} />
+            </Field>
+            <Field label="Percepción">
+              <input name="perceptionAmount" className={inputClass} />
+            </Field>
+          </>
+        )}
+      </div>
+      {unlinkedRemitos.length > 0 && (
+        <div>
+          <p className="mb-1 text-sm">Remitos a incluir (opcional)</p>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {unlinkedRemitos.map((remito) => (
+              <label key={remito.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="remitoIds" value={remito.id} />
+                Remito #{remito.number} — {formatMoney(remito.netAmount, remito.currency)}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+      <button type="submit" className={submitClass}>
+        Crear factura
+      </button>
+    </form>
+  );
+}
+
+function NewPaymentForm({
+  accountId,
+  pendingDocuments,
+}: {
+  accountId: string;
+  pendingDocuments: Awaited<ReturnType<typeof getAccountDocuments>>;
+}) {
+  const pending = pendingDocuments
+    .map((doc) => ({ doc, amount: getDocumentPending(doc) }))
+    .filter((d) => d.amount.greaterThan(0));
+
+  return (
+    <form action={createPayment} className="space-y-3 rounded-lg border border-black/10 p-4">
+      <h3 className="text-sm font-semibold">Nuevo pago / cobro</h3>
+      <input type="hidden" name="accountId" value={accountId} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Fecha">
+          <input type="date" name="date" required className={inputClass} />
+        </Field>
+        <Field label="Monto">
+          <input name="amount" required inputMode="decimal" className={inputClass} />
+        </Field>
+        <Field label="Moneda">
+          <select name="currency" defaultValue="ARS" className={selectClass}>
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </Field>
+        <Field label="Forma de pago">
+          <select name="method" defaultValue="EFECTIVO" className={selectClass}>
+            <option value="EFECTIVO">Efectivo</option>
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="CHEQUE">Cheque</option>
+            <option value="OTRO">Otro</option>
+          </select>
+        </Field>
+      </div>
+      <Field label="N° de cheque / comprobante (si aplica)">
+        <input name="reference" className={inputClass} />
+      </Field>
+      <fieldset className="space-y-1">
+        <legend className="text-sm mb-1">Imputación</legend>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" name="allocationMode" value="fifo" defaultChecked />
+          Automática (FIFO — al comprobante pendiente más antiguo)
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" name="allocationMode" value="manual" />
+          Manual — elegir comprobante(s) y monto
+        </label>
+      </fieldset>
+      {pending.length > 0 && (
+        <div className="space-y-1 max-h-40 overflow-y-auto">
+          {pending.map(({ doc, amount }) => (
+            <div key={doc.id} className="flex items-center gap-2 text-sm">
+              <input type="hidden" name="manualDocumentId" value={doc.id} />
+              <span className="flex-1">
+                {DOCUMENT_TYPE_LABELS[doc.type]} #{doc.number} — pendiente{" "}
+                {formatMoney(amount, doc.currency)}
+              </span>
+              <input
+                name="manualAmount"
+                placeholder="0.00"
+                inputMode="decimal"
+                className="w-24 rounded border border-black/20 px-2 py-1 text-xs"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      <button type="submit" className={submitClass}>
+        Registrar pago
+      </button>
+    </form>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-sm">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const selectClass = inputClass;
+const submitClass =
+  "w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80";
