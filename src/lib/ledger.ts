@@ -1,7 +1,19 @@
 import "server-only";
-import { Prisma, type Currency, type DocumentType } from "@prisma/client";
+import { Prisma, type Circuit, type Currency, type DocumentType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
+
+const DUE_DATE_DAYS: Record<Circuit, number> = {
+  NEGRO: 7,
+  BLANCO: 15,
+};
+
+/** Vencimiento por defecto cuando no se carga uno manual: 7 días en Negro, 15 en Blanco. */
+export function defaultDueDate(date: Date, circuit: Circuit): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + DUE_DATE_DAYS[circuit]);
+  return result;
+}
 
 type DocumentWithRelations = Prisma.DocumentGetPayload<{
   include: { remitoLinks: true; allocations: true };
@@ -14,8 +26,9 @@ const DOCUMENT_QUERY_INCLUDE = {
 
 /**
  * Monto con signo que aporta un documento al saldo de la cuenta.
- * `remitoLinks` son los `DocumentLink` donde ESTE documento es el remito — si tiene alguno,
- * ya fue absorbido por una Factura y no debe sumar saldo por su cuenta (evita duplicarlo).
+ * `remitoLinks` son los `DocumentLink` donde ESTE documento es el remito, cada uno con el monto
+ * que absorbió una Factura puntual — se resta del total (facturación parcial: lo no facturado
+ * sigue pendiente; si se facturó todo, el resultado es cero) para no duplicar saldo.
  */
 export function getDocumentEffect(document: DocumentWithRelations): Prisma.Decimal {
   const total = toDecimal(document.totalAmount);
@@ -28,8 +41,10 @@ export function getDocumentEffect(document: DocumentWithRelations): Prisma.Decim
     case "FACTURA":
     case "NOTA_DEBITO":
       return total;
-    case "REMITO":
-      return document.remitoLinks.length > 0 ? ZERO : total;
+    case "REMITO": {
+      const invoiced = sumDecimals(document.remitoLinks.map((l) => l.amount));
+      return total.minus(invoiced);
+    }
     default:
       return ZERO;
   }
@@ -110,12 +125,16 @@ export async function getVencimientos() {
     .filter((doc) => doc.pending.greaterThan(0));
 }
 
-/** Remitos de una cuenta que todavía no fueron absorbidos por ninguna Factura. */
-export async function getUnlinkedRemitos(accountId: string) {
+export type InvoiceableRemito = DocumentWithRelations & { pending: Prisma.Decimal };
+
+/** Remitos de una cuenta con saldo pendiente de facturar (total o parcial). */
+export async function getInvoiceableRemitos(accountId: string): Promise<InvoiceableRemito[]> {
   const documents = await prisma.document.findMany({
     where: { accountId, type: "REMITO" },
     include: DOCUMENT_QUERY_INCLUDE,
     orderBy: { date: "asc" },
   });
-  return documents.filter((doc) => doc.remitoLinks.length === 0);
+  return documents
+    .map((doc) => ({ ...doc, pending: getDocumentEffect(doc) }))
+    .filter((doc) => doc.pending.greaterThan(0));
 }

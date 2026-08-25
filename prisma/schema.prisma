@@ -118,6 +118,7 @@ model DocumentLink {
   remito    Document @relation("RemitoLinks", fields: [remitoId], references: [id])
   facturaId String
   factura   Document @relation("FacturaLinks", fields: [facturaId], references: [id])
+  amount    Decimal  @db.Decimal(14, 2)
 
   @@unique([remitoId, facturaId])
 }

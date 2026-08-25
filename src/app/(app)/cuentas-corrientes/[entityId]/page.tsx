@@ -6,10 +6,11 @@ import { requireUser } from "@/lib/auth-helpers";
 import {
   getAccountBalance,
   getAccountDocuments,
+  getDocumentEffect,
   getDocumentPending,
-  getUnlinkedRemitos,
+  getInvoiceableRemitos,
 } from "@/lib/ledger";
-import { DEFAULT_IVA_RATE, formatMoney } from "@/lib/money";
+import { DEFAULT_IVA_RATE, formatMoney, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { createDocument, createFactura, createPayment, moveRemitoToBlanco } from "./actions";
 
@@ -56,7 +57,7 @@ async function CircuitPanel({
   account: Account;
   canEdit: boolean;
 }) {
-  const [balance, documents, payments, unlinkedRemitos] = await Promise.all([
+  const [balance, documents, payments, invoiceableRemitos] = await Promise.all([
     getAccountBalance(account.id),
     getAccountDocuments(account.id),
     prisma.payment.findMany({
@@ -64,7 +65,7 @@ async function CircuitPanel({
       include: { allocations: { include: { document: true } } },
       orderBy: { date: "desc" },
     }),
-    account.circuit === "BLANCO" ? getUnlinkedRemitos(account.id) : Promise.resolve([]),
+    account.circuit === "BLANCO" ? getInvoiceableRemitos(account.id) : Promise.resolve([]),
   ]);
 
   const today = new Date();
@@ -84,7 +85,7 @@ async function CircuitPanel({
             <NewFacturaForm
               accountId={account.id}
               entity={entity}
-              unlinkedRemitos={unlinkedRemitos}
+              invoiceableRemitos={invoiceableRemitos}
             />
           )}
           <NewPaymentForm accountId={account.id} pendingDocuments={documents} />
@@ -111,14 +112,21 @@ async function CircuitPanel({
               {documentsDesc.map((doc) => {
                 const pending = getDocumentPending(doc);
                 const vencido = doc.dueDate && doc.dueDate < today && pending.greaterThan(0);
-                const facturado = doc.type === "REMITO" && doc.remitoLinks.length > 0;
-                const status = facturado
+                const invoicedAmount =
+                  doc.type === "REMITO" ? sumDecimals(doc.remitoLinks.map((l) => l.amount)) : ZERO;
+                const isPartiallyInvoiced =
+                  doc.type === "REMITO" && invoicedAmount.greaterThan(0) && getDocumentEffect(doc).greaterThan(0);
+                const isFullyInvoiced =
+                  doc.type === "REMITO" && invoicedAmount.greaterThan(0) && getDocumentEffect(doc).lessThanOrEqualTo(0);
+                const status = isFullyInvoiced
                   ? "Facturado"
-                  : pending.lessThanOrEqualTo(0)
-                    ? "Saldado"
-                    : vencido
-                      ? "Vencido"
-                      : "Pendiente";
+                  : isPartiallyInvoiced
+                    ? "Parcialmente facturado"
+                    : pending.lessThanOrEqualTo(0)
+                      ? "Saldado"
+                      : vencido
+                        ? "Vencido"
+                        : "Pendiente";
 
                 return (
                   <tr key={doc.id} className="border-b border-black/5">
@@ -259,11 +267,11 @@ function NewDocumentForm({ accountId }: { accountId: string }) {
 function NewFacturaForm({
   accountId,
   entity,
-  unlinkedRemitos,
+  invoiceableRemitos,
 }: {
   accountId: string;
   entity: Entity;
-  unlinkedRemitos: Awaited<ReturnType<typeof getUnlinkedRemitos>>;
+  invoiceableRemitos: Awaited<ReturnType<typeof getInvoiceableRemitos>>;
 }) {
   return (
     <form action={createFactura} className="space-y-3 rounded-lg border border-black/10 p-4">
@@ -305,15 +313,27 @@ function NewFacturaForm({
           </>
         )}
       </div>
-      {unlinkedRemitos.length > 0 && (
+      {invoiceableRemitos.length > 0 && (
         <div>
-          <p className="mb-1 text-sm">Remitos a incluir (opcional)</p>
+          <p className="mb-1 text-sm">
+            Remitos a incluir (opcional) — precargado con el pendiente, se puede bajar para
+            facturar solo una parte
+          </p>
           <div className="space-y-1 max-h-32 overflow-y-auto">
-            {unlinkedRemitos.map((remito) => (
-              <label key={remito.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="remitoIds" value={remito.id} />
-                Remito #{remito.number} — {formatMoney(remito.netAmount, remito.currency)}
-              </label>
+            {invoiceableRemitos.map((remito) => (
+              <div key={remito.id} className="flex items-center gap-2 text-sm">
+                <input type="hidden" name="remitoId" value={remito.id} />
+                <span className="flex-1">
+                  Remito #{remito.number} — pendiente {formatMoney(remito.pending, remito.currency)}
+                </span>
+                <input
+                  name="remitoAmount"
+                  placeholder="0.00"
+                  inputMode="decimal"
+                  defaultValue={remito.pending.toFixed(2)}
+                  className="w-24 rounded border border-black/20 px-2 py-1 text-xs"
+                />
+              </div>
             ))}
           </div>
         </div>

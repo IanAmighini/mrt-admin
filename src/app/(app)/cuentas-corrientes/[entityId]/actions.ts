@@ -6,7 +6,7 @@ import { Prisma, type Currency, type DocumentType, type PaymentMethod } from "@p
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, toDecimal } from "@/lib/money";
-import { allocateFifo } from "@/lib/ledger";
+import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["REMITO", "NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
 
@@ -51,7 +51,9 @@ export async function createDocument(formData: FormData) {
   if (!number) throw new Error("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
-  const dueDate = parseOptionalFormDate(formData.get("dueDate"));
+  const dueDate =
+    parseOptionalFormDate(formData.get("dueDate")) ??
+    (type === "REMITO" ? defaultDueDate(date, account.circuit) : null);
   const currency = String(formData.get("currency") || "ARS") as Currency;
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
@@ -99,7 +101,7 @@ export async function createFactura(formData: FormData) {
   if (!number) throw new Error("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
-  const dueDate = parseOptionalFormDate(formData.get("dueDate"));
+  const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, "BLANCO");
   const currency = String(formData.get("currency") || "ARS") as Currency;
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
@@ -112,7 +114,11 @@ export async function createFactura(formData: FormData) {
   const ivaAmount = netAmount.times(ivaRate).dividedBy(100);
   const totalAmount = netAmount.plus(ivaAmount).plus(perceptionAmount).minus(retentionAmount);
 
-  const remitoIds = formData.getAll("remitoIds").map(String).filter(Boolean);
+  const remitoIds = formData.getAll("remitoId").map(String);
+  const remitoAmounts = formData.getAll("remitoAmount").map(String);
+  const remitoSelections = remitoIds
+    .map((id, i) => ({ id, amount: toDecimal(remitoAmounts[i]) }))
+    .filter((r) => r.id && r.amount.greaterThan(0));
 
   await prisma.$transaction(async (tx) => {
     const factura = await tx.document.create({
@@ -134,16 +140,31 @@ export async function createFactura(formData: FormData) {
       },
     });
 
-    if (remitoIds.length > 0) {
+    if (remitoSelections.length > 0) {
       const remitos = await tx.document.findMany({
-        where: { id: { in: remitoIds }, accountId: account.id, type: "REMITO" },
+        where: {
+          id: { in: remitoSelections.map((r) => r.id) },
+          accountId: account.id,
+          type: "REMITO",
+        },
+        include: { remitoLinks: true, allocations: true },
       });
-      if (remitos.length !== remitoIds.length) {
+      if (remitos.length !== remitoSelections.length) {
         throw new Error("Alguno de los remitos seleccionados ya no está disponible.");
       }
-      await tx.documentLink.createMany({
-        data: remitos.map((remito) => ({ remitoId: remito.id, facturaId: factura.id })),
+
+      const linkData = remitoSelections.map((selection) => {
+        const remito = remitos.find((r) => r.id === selection.id)!;
+        const pending = getDocumentEffect(remito);
+        if (selection.amount.greaterThan(pending)) {
+          throw new Error(
+            `El monto a facturar del remito #${remito.number} supera su saldo pendiente.`
+          );
+        }
+        return { remitoId: remito.id, facturaId: factura.id, amount: selection.amount };
       });
+
+      await tx.documentLink.createMany({ data: linkData });
     }
   });
 
