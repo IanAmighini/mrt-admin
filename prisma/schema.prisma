@@ -32,6 +32,7 @@ model User {
   productionRuns   ProductionRun[]
   boxMovements     BoxMovement[]
   pallets          Pallet[]
+  prices           Price[]
 }
 
 enum EntityType {
@@ -50,6 +51,7 @@ model Entity {
   createdAt          DateTime   @default(now())
   updatedAt          DateTime   @updatedAt
   accounts           Account[]
+  prices             Price[]
 }
 
 enum Circuit {
@@ -107,6 +109,9 @@ model Document {
   perceptionAmount Decimal?     @db.Decimal(14, 2)
   totalAmount      Decimal      @db.Decimal(14, 2)
   reason           String?
+  productId        String?
+  product          Product?     @relation(fields: [productId], references: [id])
+  quantity         Decimal?     @db.Decimal(14, 3)
   createdById      String
   createdBy        User         @relation(fields: [createdById], references: [id])
   createdAt        DateTime     @default(now())
@@ -213,6 +218,8 @@ model Product {
   movements       ProductMovement[]
   productionLines ProductionLine[]
   boxTypes        BoxType[]
+  documents       Document[]
+  prices          Price[]
 }
 
 model RecipeItem {
@@ -332,4 +339,22 @@ model PalletBox {
   boxTypeId String
   boxType   BoxType @relation(fields: [boxTypeId], references: [id])
   quantity  Decimal @db.Decimal(14, 3)
+}
+
+model Price {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  entityId    String
+  entity      Entity   @relation(fields: [entityId], references: [id])
+  circuit     Circuit
+  amount      Decimal  @db.Decimal(14, 2)
+  currency    Currency @default(ARS)
+  validFrom   DateTime
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([productId, entityId, circuit, validFrom])
+  @@index([productId, entityId, circuit])
 }

@@ -68,6 +68,9 @@ export async function createDocument(formData: FormData) {
   const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
   const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
 
+  const productId = type === "REMITO" ? String(formData.get("productId") || "").trim() : "";
+  const quantityRaw = type === "REMITO" ? String(formData.get("quantity") || "").trim() : "";
+
   await prisma.document.create({
     data: {
       accountId: account.id,
@@ -80,6 +83,8 @@ export async function createDocument(formData: FormData) {
       netAmount: amount,
       totalAmount,
       reason,
+      productId: productId || null,
+      quantity: quantityRaw ? toDecimal(quantityRaw) : null,
       createdById: user.id,
     },
   });
@@ -259,4 +264,25 @@ export async function moveRemitoToBlanco(formData: FormData) {
 
   revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
   revalidatePath("/cuentas-corrientes");
+}
+
+export async function createPrice(formData: FormData) {
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  const circuit = String(formData.get("circuit") || "") as "BLANCO" | "NEGRO";
+  const productId = String(formData.get("productId") || "");
+  const currency = String(formData.get("currency") || "ARS") as Currency;
+  const validFrom = parseFormDate(formData.get("validFrom"));
+  const amount = parseAmount(formData.get("amount"), "precio");
+
+  if (!entityId) throw new Error("Falta la entidad.");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Circuito inválido.");
+  if (!productId) throw new Error("Falta el producto.");
+
+  await prisma.price.create({
+    data: { entityId, circuit, productId, currency, validFrom, amount, createdById: user.id },
+  });
+
+  revalidatePath(`/cuentas-corrientes/${entityId}`);
 }

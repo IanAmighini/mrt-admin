@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { Account, Entity } from "@prisma/client";
+import type { Account, Entity, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import {
@@ -10,9 +10,17 @@ import {
   getDocumentPending,
   getInvoiceableRemitos,
 } from "@/lib/ledger";
+import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { DEFAULT_IVA_RATE, formatMoney, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
-import { createDocument, createFactura, createPayment, moveRemitoToBlanco } from "./actions";
+import {
+  createDocument,
+  createFactura,
+  createPayment,
+  createPrice,
+  moveRemitoToBlanco,
+} from "./actions";
+import { RemitoAmountFields } from "./RemitoAmountFields";
 
 export default async function EntityLedgerPage({
   params,
@@ -33,6 +41,8 @@ export default async function EntityLedgerPage({
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
   if (!blancoAccount || !negroAccount) notFound();
 
+  const products = await prisma.product.findMany({ orderBy: { name: "asc" } });
+
   return (
     <div className="space-y-10">
       <div>
@@ -42,8 +52,8 @@ export default async function EntityLedgerPage({
         <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
       </div>
 
-      <CircuitPanel entity={entity} account={blancoAccount} canEdit={canEdit} />
-      <CircuitPanel entity={entity} account={negroAccount} canEdit={canEdit} />
+      <CircuitPanel entity={entity} account={blancoAccount} products={products} canEdit={canEdit} />
+      <CircuitPanel entity={entity} account={negroAccount} products={products} canEdit={canEdit} />
     </div>
   );
 }
@@ -51,25 +61,34 @@ export default async function EntityLedgerPage({
 async function CircuitPanel({
   entity,
   account,
+  products,
   canEdit,
 }: {
   entity: Entity;
   account: Account;
+  products: Product[];
   canEdit: boolean;
 }) {
-  const [balance, documents, payments, invoiceableRemitos] = await Promise.all([
-    getAccountBalance(account.id),
-    getAccountDocuments(account.id),
-    prisma.payment.findMany({
-      where: { accountId: account.id },
-      include: { allocations: { include: { document: true } } },
-      orderBy: { date: "desc" },
-    }),
-    account.circuit === "BLANCO" ? getInvoiceableRemitos(account.id) : Promise.resolve([]),
-  ]);
+  const [balance, documents, payments, invoiceableRemitos, currentPrices, priceHistory] =
+    await Promise.all([
+      getAccountBalance(account.id),
+      getAccountDocuments(account.id),
+      prisma.payment.findMany({
+        where: { accountId: account.id },
+        include: { allocations: { include: { document: true } } },
+        orderBy: { date: "desc" },
+      }),
+      account.circuit === "BLANCO" ? getInvoiceableRemitos(account.id) : Promise.resolve([]),
+      getCurrentPricesForAccount(entity.id, account.circuit),
+      getPriceHistory(entity.id, account.circuit),
+    ]);
 
   const today = new Date();
   const documentsDesc = documents.slice().reverse();
+  const priceMap: Record<string, { amount: number; currency: string }> = {};
+  for (const [productId, price] of currentPrices) {
+    priceMap[productId] = { amount: price.amount.toNumber(), currency: price.currency };
+  }
 
   return (
     <section className="space-y-6 rounded-lg border border-black/10 p-5">
@@ -80,7 +99,7 @@ async function CircuitPanel({
 
       {canEdit && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <NewDocumentForm accountId={account.id} />
+          <NewDocumentForm accountId={account.id} products={products} priceMap={priceMap} />
           {account.circuit === "BLANCO" && (
             <NewFacturaForm
               accountId={account.id}
@@ -91,6 +110,15 @@ async function CircuitPanel({
           <NewPaymentForm accountId={account.id} pendingDocuments={documents} />
         </div>
       )}
+
+      <PricesSection
+        entityId={entity.id}
+        circuit={account.circuit}
+        products={products}
+        currentPrices={currentPrices}
+        priceHistory={priceHistory}
+        canEdit={canEdit}
+      />
 
       <div>
         <h3 className="text-sm font-semibold mb-2">Comprobantes</h3>
@@ -212,7 +240,15 @@ async function CircuitPanel({
   );
 }
 
-function NewDocumentForm({ accountId }: { accountId: string }) {
+function NewDocumentForm({
+  accountId,
+  products,
+  priceMap,
+}: {
+  accountId: string;
+  products: Product[];
+  priceMap: Record<string, { amount: number; currency: string }>;
+}) {
   return (
     <form action={createDocument} className="space-y-3 rounded-lg border border-black/10 p-4">
       <h3 className="text-sm font-semibold">Nuevo remito / nota / ajuste</h3>
@@ -244,9 +280,10 @@ function NewDocumentForm({ accountId }: { accountId: string }) {
         <Field label="Cotización (si es USD)">
           <input name="exchangeRate" className={inputClass} />
         </Field>
-        <Field label="Monto">
-          <input name="amount" required inputMode="decimal" className={inputClass} />
-        </Field>
+        <RemitoAmountFields
+          products={products.map((p) => ({ id: p.id, name: p.name }))}
+          priceMap={priceMap}
+        />
         <Field label="Efecto (solo Ajuste)">
           <select name="ajusteEffect" defaultValue="SUMA" className={selectClass}>
             <option value="SUMA">Suma al saldo</option>
@@ -419,6 +456,131 @@ function NewPaymentForm({
         Registrar pago
       </button>
     </form>
+  );
+}
+
+function PricesSection({
+  entityId,
+  circuit,
+  products,
+  currentPrices,
+  priceHistory,
+  canEdit,
+}: {
+  entityId: string;
+  circuit: Account["circuit"];
+  products: Product[];
+  currentPrices: Awaited<ReturnType<typeof getCurrentPricesForAccount>>;
+  priceHistory: Awaited<ReturnType<typeof getPriceHistory>>;
+  canEdit: boolean;
+}) {
+  return (
+    <div className="space-y-4">
+      <h3 className="text-sm font-semibold">Precios</h3>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-black/10 text-left text-black/60">
+              <th className="py-2 pr-4">Producto</th>
+              <th className="py-2 pr-4">Precio vigente</th>
+              <th className="py-2 pr-4">Vigente desde</th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((product) => {
+              const price = currentPrices.get(product.id);
+              return (
+                <tr key={product.id} className="border-b border-black/5">
+                  <td className="py-2 pr-4">{product.name}</td>
+                  <td className="py-2 pr-4">
+                    {price ? formatMoney(price.amount, price.currency) : "—"}
+                  </td>
+                  <td className="py-2 pr-4">
+                    {price ? price.validFrom.toLocaleDateString("es-AR") : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+            {products.length === 0 && (
+              <tr>
+                <td colSpan={3} className="py-4 text-center text-black/40">
+                  No hay productos cargados.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {canEdit && (
+        <form action={createPrice} className="space-y-3 rounded-lg border border-black/10 p-4">
+          <h4 className="text-sm font-semibold">Cargar precio</h4>
+          <input type="hidden" name="entityId" value={entityId} />
+          <input type="hidden" name="circuit" value={circuit} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Producto">
+              <select name="productId" required className={selectClass}>
+                <option value="">Elegir…</option>
+                {products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Precio">
+              <input name="amount" required inputMode="decimal" className={inputClass} />
+            </Field>
+            <Field label="Moneda">
+              <select name="currency" defaultValue="ARS" className={selectClass}>
+                <option value="ARS">ARS</option>
+                <option value="USD">USD</option>
+              </select>
+            </Field>
+            <Field label="Vigente desde">
+              <input type="date" name="validFrom" required className={inputClass} />
+            </Field>
+          </div>
+          <button type="submit" className={submitClass}>
+            Guardar precio
+          </button>
+        </form>
+      )}
+
+      <details>
+        <summary className="cursor-pointer text-sm font-medium">Historial de precios</summary>
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-black/10 text-left text-black/60">
+                <th className="py-2 pr-4">Producto</th>
+                <th className="py-2 pr-4">Precio</th>
+                <th className="py-2 pr-4">Vigente desde</th>
+                <th className="py-2 pr-4">Cargado por</th>
+              </tr>
+            </thead>
+            <tbody>
+              {priceHistory.map((price) => (
+                <tr key={price.id} className="border-b border-black/5">
+                  <td className="py-2 pr-4">{price.product.name}</td>
+                  <td className="py-2 pr-4">{formatMoney(price.amount, price.currency)}</td>
+                  <td className="py-2 pr-4">{price.validFrom.toLocaleDateString("es-AR")}</td>
+                  <td className="py-2 pr-4">{price.createdBy.name}</td>
+                </tr>
+              ))}
+              {priceHistory.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-4 text-center text-black/40">
+                    Sin precios cargados todavía.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
   );
 }
 
