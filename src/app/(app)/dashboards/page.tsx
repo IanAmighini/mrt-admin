@@ -3,7 +3,13 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAccountBalance, getVencimientos } from "@/lib/ledger";
 import { getAllItemStocks, getAllProductStockLevels } from "@/lib/stock";
-import { getIngresosDelMes, getLitrosEnvasados } from "@/lib/reports";
+import {
+  getIngresosDelMes,
+  getLitrosEnvasados,
+  getProductoEntregadoValorizado,
+  getRentabilidadDelMes,
+  getValuacionInsumos,
+} from "@/lib/reports";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/labels";
 import type { EntityType } from "@prisma/client";
@@ -262,7 +268,13 @@ export default async function DashboardsPage() {
 }
 
 async function ReportesGerenciales() {
-  const [litros, ingresos] = await Promise.all([getLitrosEnvasados(), getIngresosDelMes()]);
+  const [litros, ingresos, rentabilidad, valuacion, entregado] = await Promise.all([
+    getLitrosEnvasados(),
+    getIngresosDelMes(),
+    getRentabilidadDelMes(),
+    getValuacionInsumos(),
+    getProductoEntregadoValorizado(),
+  ]);
 
   return (
     <section className="space-y-6">
@@ -288,21 +300,74 @@ async function ReportesGerenciales() {
             ))
           )}
           <p className="text-xs text-black/50 mt-1">
-            suma de comprobantes del mes (remitos, facturas, notas y ajustes) — no es
-            rentabilidad, todavía no se cargan costos unitarios de insumos.
+            suma de comprobantes del mes (remitos, facturas, notas y ajustes), cifra bruta.
+          </p>
+        </div>
+        <div className="rounded-lg border border-black/10 p-4">
+          <p className="text-sm font-semibold mb-1">Rentabilidad del mes</p>
+          <p className="text-2xl font-semibold">{formatMoney(rentabilidad.rentabilidad)}</p>
+          <p className="text-xs text-black/50 mt-1">
+            ingresos (ARS) menos costo de insumos consumidos en producción. No incluye otros
+            costos fijos (mano de obra, alquiler, etc.)
+            {rentabilidad.itemsSinCosto > 0 &&
+              ` — ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) sin costo unitario cargado, no se descontaron.`}
           </p>
         </div>
         <div className="rounded-lg border border-black/10 p-4">
           <p className="text-sm font-semibold mb-1">Valuación de insumos en stock</p>
-          <p className="text-sm text-black/40">
-            No disponible — falta cargar el costo unitario de cada insumo.
-          </p>
+          <p className="text-2xl font-semibold">{formatMoney(valuacion.total)}</p>
+          <div className="mt-2 max-h-40 overflow-y-auto">
+            <table className="w-full text-xs">
+              <tbody>
+                {valuacion.rows.map(({ item, stock, valuacion: v }) => (
+                  <tr key={item.id} className="border-b border-black/5">
+                    <td className="py-1 pr-2">{item.name}</td>
+                    <td className="py-1 pr-2">{formatQuantity(stock, item.unit)}</td>
+                    <td className="py-1 pr-2">{v ? formatMoney(v) : "sin costo"}</td>
+                  </tr>
+                ))}
+                {valuacion.rows.length === 0 && (
+                  <tr>
+                    <td className="py-2 text-black/40">Todavía no hay insumos cargados.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div className="rounded-lg border border-black/10 p-4">
-          <p className="text-sm font-semibold mb-1">Producto entregado valorizado</p>
-          <p className="text-sm text-black/40">
-            No disponible — falta cargar el precio de venta por unidad.
-          </p>
+        <div className="rounded-lg border border-black/10 p-4 sm:col-span-2">
+          <p className="text-sm font-semibold mb-1">Producto entregado valorizado (este mes)</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-black/10 text-left text-black/60">
+                  <th className="py-2 pr-4">Producto</th>
+                  <th className="py-2 pr-4">Cantidad</th>
+                  <th className="py-2 pr-4">Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entregado.map(({ product, quantity, byCurrency }) => (
+                  <tr key={product.id} className="border-b border-black/5">
+                    <td className="py-2 pr-4">{product.name}</td>
+                    <td className="py-2 pr-4">{formatQuantity(quantity)}</td>
+                    <td className="py-2 pr-4">
+                      {Array.from(byCurrency.entries())
+                        .map(([currency, amount]) => formatMoney(amount, currency))
+                        .join(" + ")}
+                    </td>
+                  </tr>
+                ))}
+                {entregado.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="py-4 text-center text-black/40">
+                      Sin remitos con producto y cantidad cargados este mes.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>

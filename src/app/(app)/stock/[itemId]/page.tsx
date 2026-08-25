@@ -3,9 +3,10 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getItemMovements, getItemStock } from "@/lib/stock";
-import { formatQuantity } from "@/lib/money";
+import { formatMoney, formatQuantity } from "@/lib/money";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { createItemMovement } from "./actions";
+import { updateItemCost } from "../actions";
 
 export default async function ItemDetailPage({
   params,
@@ -32,7 +33,38 @@ export default async function ItemDetailPage({
           <h1 className="text-xl font-semibold">{item.name}</h1>
           <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
         </div>
+        <p className="mt-1 text-sm text-black/60">
+          Costo unitario: {item.unitCost ? formatMoney(item.unitCost) : "sin cargar"}
+        </p>
       </div>
+
+      {canEdit && (
+        <form
+          action={updateItemCost}
+          className="flex flex-wrap items-end gap-3 rounded-lg border border-black/10 p-4"
+        >
+          <input type="hidden" name="itemId" value={item.id} />
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="unitCost">
+              Actualizar costo unitario
+            </label>
+            <input
+              id="unitCost"
+              name="unitCost"
+              required
+              inputMode="decimal"
+              defaultValue={item.unitCost?.toString() ?? ""}
+              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+            />
+          </div>
+          <button
+            type="submit"
+            className="rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+          >
+            Guardar costo
+          </button>
+        </form>
+      )}
 
       {canEdit && (
         <form

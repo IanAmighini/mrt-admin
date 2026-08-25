@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks } from "@/lib/stock";
-import { formatQuantity } from "@/lib/money";
+import { formatMoney, formatQuantity } from "@/lib/money";
 import { createItem } from "./actions";
 
 export default async function StockPage() {
@@ -61,6 +61,17 @@ export default async function StockPage() {
                 className="w-full rounded border border-black/20 px-3 py-2 text-sm"
               />
             </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="unitCost">
+                Costo unitario (opcional)
+              </label>
+              <input
+                id="unitCost"
+                name="unitCost"
+                inputMode="decimal"
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="isResellable" />
@@ -82,6 +93,7 @@ export default async function StockPage() {
               <th className="py-2 pr-4">Insumo</th>
               <th className="py-2 pr-4">Unidad</th>
               <th className="py-2 pr-4">Stock actual</th>
+              <th className="py-2 pr-4">Costo unitario</th>
               <th className="py-2 pr-4">Revendible</th>
             </tr>
           </thead>
@@ -97,12 +109,13 @@ export default async function StockPage() {
                 <td className="py-2 pr-4">
                   {formatQuantity(stocks.get(item.id) ?? 0, item.unit)}
                 </td>
+                <td className="py-2 pr-4">{item.unitCost ? formatMoney(item.unitCost) : "—"}</td>
                 <td className="py-2 pr-4">{item.isResellable ? "Sí" : "No"}</td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-6 text-center text-black/40">
+                <td colSpan={5} className="py-6 text-center text-black/40">
                   Todavía no hay insumos cargados.
                 </td>
               </tr>
