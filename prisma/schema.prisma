@@ -26,6 +26,10 @@ model User {
 
   documents Document[]
   payments  Payment[]
+
+  itemMovements    ItemMovement[]
+  productMovements ProductMovement[]
+  productionRuns   ProductionRun[]
 }
 
 enum EntityType {
@@ -151,4 +155,105 @@ model PaymentAllocation {
   createdAt  DateTime @default(now())
 
   @@unique([paymentId, documentId])
+}
+
+model Item {
+  id           String   @id @default(cuid())
+  name         String
+  unit         String
+  isResellable Boolean  @default(false)
+  minStock     Decimal? @db.Decimal(14, 3)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  movements   ItemMovement[]
+  recipeLines RecipeItem[]
+}
+
+enum ItemMovementType {
+  INGRESO
+  CONSUMO_PRODUCCION
+  AJUSTE
+  MERMA
+}
+
+model ItemMovement {
+  id               String            @id @default(cuid())
+  itemId           String
+  item             Item              @relation(fields: [itemId], references: [id])
+  date             DateTime
+  quantity         Decimal           @db.Decimal(14, 3)
+  type             ItemMovementType
+  reason           String
+  sourceKg         Decimal?          @db.Decimal(14, 3)
+  conversionFactor Decimal?          @db.Decimal(10, 4)
+  createdById      String
+  createdBy        User              @relation(fields: [createdById], references: [id])
+  createdAt        DateTime          @default(now())
+
+  @@index([itemId])
+}
+
+model Product {
+  id           String   @id @default(cuid())
+  name         String
+  oilType      String
+  presentation String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  recipe          RecipeItem[]
+  movements       ProductMovement[]
+  productionLines ProductionLine[]
+}
+
+model RecipeItem {
+  id              String  @id @default(cuid())
+  productId       String
+  product         Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  itemId          String
+  item            Item    @relation(fields: [itemId], references: [id])
+  quantityPerUnit Decimal @db.Decimal(14, 4)
+
+  @@unique([productId, itemId])
+}
+
+enum ProductMovementType {
+  PRODUCCION
+  AJUSTE
+  MERMA
+}
+
+model ProductMovement {
+  id          String              @id @default(cuid())
+  productId   String
+  product     Product             @relation(fields: [productId], references: [id])
+  date        DateTime
+  quantity    Decimal             @db.Decimal(14, 3)
+  type        ProductMovementType
+  reason      String
+  createdById String
+  createdBy   User                @relation(fields: [createdById], references: [id])
+  createdAt   DateTime            @default(now())
+
+  @@index([productId])
+}
+
+model ProductionRun {
+  id          String   @id @default(cuid())
+  date        DateTime
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  lines ProductionLine[]
+}
+
+model ProductionLine {
+  id              String        @id @default(cuid())
+  productionRunId String
+  productionRun   ProductionRun @relation(fields: [productionRunId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product       @relation(fields: [productId], references: [id])
+  quantity        Decimal       @db.Decimal(14, 3)
 }

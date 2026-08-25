@@ -23,3 +23,11 @@ export function formatMoney(value: Prisma.Decimal | number | string, currency: C
   const num = value instanceof Prisma.Decimal ? value.toNumber() : Number(value);
   return CURRENCY_FORMATTERS[currency].format(num);
 }
+
+const QUANTITY_FORMATTER = new Intl.NumberFormat("es-AR", { maximumFractionDigits: 3 });
+
+export function formatQuantity(value: Prisma.Decimal | number | string, unit?: string) {
+  const num = value instanceof Prisma.Decimal ? value.toNumber() : Number(value);
+  const formatted = QUANTITY_FORMATTER.format(num);
+  return unit ? `${formatted} ${unit}` : formatted;
+}
