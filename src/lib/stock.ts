@@ -48,3 +48,26 @@ export async function getAllProductStocks(): Promise<Map<string, Prisma.Decimal>
   }
   return stocks;
 }
+
+export async function getBoxMovements(boxTypeId: string) {
+  return prisma.boxMovement.findMany({
+    where: { boxTypeId },
+    include: { createdBy: true },
+    orderBy: { date: "asc" },
+  });
+}
+
+export async function getBoxStock(boxTypeId: string): Promise<Prisma.Decimal> {
+  const movements = await prisma.boxMovement.findMany({ where: { boxTypeId } });
+  return sumDecimals(movements.map((m) => m.quantity));
+}
+
+export async function getAllBoxStocks(): Promise<Map<string, Prisma.Decimal>> {
+  const movements = await prisma.boxMovement.findMany();
+  const stocks = new Map<string, Prisma.Decimal>();
+  for (const movement of movements) {
+    const current = stocks.get(movement.boxTypeId) ?? sumDecimals([]);
+    stocks.set(movement.boxTypeId, current.plus(movement.quantity));
+  }
+  return stocks;
+}

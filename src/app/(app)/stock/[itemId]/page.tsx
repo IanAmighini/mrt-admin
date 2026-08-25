@@ -56,6 +56,7 @@ export default async function ItemDetailPage({
                 <option value="INGRESO">Ingreso</option>
                 <option value="AJUSTE">Ajuste</option>
                 <option value="MERMA">Merma</option>
+                <option value="VENTA">Venta</option>
               </select>
             </div>
             <div className="space-y-1">

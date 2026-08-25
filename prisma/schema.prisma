@@ -30,6 +30,8 @@ model User {
   itemMovements    ItemMovement[]
   productMovements ProductMovement[]
   productionRuns   ProductionRun[]
+  boxMovements     BoxMovement[]
+  pallets          Pallet[]
 }
 
 enum EntityType {
@@ -168,13 +170,18 @@ model Item {
 
   movements   ItemMovement[]
   recipeLines RecipeItem[]
+
+  palletsAsWood Pallet[] @relation("PalletWood")
+  palletsAsFilm Pallet[] @relation("PalletFilm")
 }
 
 enum ItemMovementType {
   INGRESO
   CONSUMO_PRODUCCION
+  CONSUMO_PALLET
   AJUSTE
   MERMA
+  VENTA
 }
 
 model ItemMovement {
@@ -205,6 +212,7 @@ model Product {
   recipe          RecipeItem[]
   movements       ProductMovement[]
   productionLines ProductionLine[]
+  boxTypes        BoxType[]
 }
 
 model RecipeItem {
@@ -220,6 +228,7 @@ model RecipeItem {
 
 enum ProductMovementType {
   PRODUCCION
+  CONSUMO_ARMADO_CAJA
   AJUSTE
   MERMA
 }
@@ -256,4 +265,71 @@ model ProductionLine {
   productId       String
   product         Product       @relation(fields: [productId], references: [id])
   quantity        Decimal       @db.Decimal(14, 3)
+}
+
+model BoxType {
+  id          String   @id @default(cuid())
+  productId   String
+  product     Product  @relation(fields: [productId], references: [id])
+  unitsPerBox Decimal  @db.Decimal(14, 3)
+  label       String
+  createdAt   DateTime @default(now())
+
+  movements   BoxMovement[]
+  palletBoxes PalletBox[]
+}
+
+enum BoxMovementType {
+  ARMADO
+  CONSUMO_PALLET
+  DEVUELTO_PALLET
+  AJUSTE
+  MERMA
+}
+
+model BoxMovement {
+  id          String          @id @default(cuid())
+  boxTypeId   String
+  boxType     BoxType         @relation(fields: [boxTypeId], references: [id])
+  date        DateTime
+  quantity    Decimal         @db.Decimal(14, 3)
+  type        BoxMovementType
+  reason      String
+  createdById String
+  createdBy   User            @relation(fields: [createdById], references: [id])
+  createdAt   DateTime        @default(now())
+
+  @@index([boxTypeId])
+}
+
+enum PalletStatus {
+  ARMADO
+  DESARMADO
+}
+
+model Pallet {
+  id           String       @id @default(cuid())
+  label        String?
+  date         DateTime
+  woodItemId   String
+  woodItem     Item         @relation("PalletWood", fields: [woodItemId], references: [id])
+  filmItemId   String
+  filmItem     Item         @relation("PalletFilm", fields: [filmItemId], references: [id])
+  filmQuantity Decimal      @db.Decimal(14, 3)
+  status       PalletStatus @default(ARMADO)
+  createdById  String
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  createdAt    DateTime     @default(now())
+  dismantledAt DateTime?
+
+  boxes PalletBox[]
+}
+
+model PalletBox {
+  id        String  @id @default(cuid())
+  palletId  String
+  pallet    Pallet  @relation(fields: [palletId], references: [id], onDelete: Cascade)
+  boxTypeId String
+  boxType   BoxType @relation(fields: [boxTypeId], references: [id])
+  quantity  Decimal @db.Decimal(14, 3)
 }
