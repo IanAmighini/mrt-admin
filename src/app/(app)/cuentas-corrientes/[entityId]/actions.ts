@@ -413,6 +413,10 @@ export async function createPayment(formData: FormData) {
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
   revalidatePath("/cuentas-corrientes");
+  revalidatePath("/pagos-clientes");
+  revalidatePath("/pagos-proveedores");
+  revalidatePath("/dashboard-clientes");
+  revalidatePath("/dashboard-proveedores");
 }
 
 export async function moveRemitoToBlanco(formData: FormData) {
