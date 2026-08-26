@@ -116,7 +116,7 @@ export default async function ProduccionPage() {
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Crear
           </button>
@@ -140,7 +140,7 @@ export default async function ProduccionPage() {
             <span className="text-sm">%</span>
             <button
               type="submit"
-              className="rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+              className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
             >
               Guardar
             </button>
@@ -229,7 +229,7 @@ export default async function ProduccionPage() {
           <ProductionLinesFields products={products.map((p) => ({ id: p.id, name: p.name }))} />
           <button
             type="submit"
-            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Registrar parte
           </button>

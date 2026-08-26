@@ -37,7 +37,9 @@ export default async function LoginPage({
         action={login}
         className="w-full max-w-sm space-y-4 rounded-lg border border-black/10 p-6"
       >
-        <div>
+        <div className="flex flex-col items-center gap-2 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" width={56} height={56} />
           <h1 className="text-lg font-semibold">Envasadora</h1>
           <p className="text-sm text-black/60">Iniciá sesión para continuar</p>
         </div>
@@ -74,7 +76,7 @@ export default async function LoginPage({
         </div>
         <button
           type="submit"
-          className="w-full rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+          className="w-full rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
         >
           Entrar
         </button>

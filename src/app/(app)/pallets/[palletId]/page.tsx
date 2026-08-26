@@ -48,7 +48,7 @@ export default async function PalletDetailPage({
           <input type="hidden" name="palletId" value={pallet.id} />
           <button
             type="submit"
-            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Desarmar pallet
           </button>

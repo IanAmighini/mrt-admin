@@ -59,7 +59,7 @@ export default async function ItemDetailPage({
           </div>
           <button
             type="submit"
-            className="rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Guardar costo
           </button>
@@ -171,7 +171,7 @@ export default async function ItemDetailPage({
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Registrar movimiento
           </button>

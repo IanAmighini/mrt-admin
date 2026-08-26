@@ -138,7 +138,7 @@ export default async function ProductDetailPage({
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Guardar cambios
           </button>
@@ -211,7 +211,7 @@ export default async function ProductDetailPage({
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Generar receta
           </button>
@@ -262,7 +262,7 @@ export default async function ProductDetailPage({
           </p>
           <button
             type="submit"
-            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
           >
             Guardar
           </button>

@@ -13,12 +13,17 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <div className="h-1 bg-primary" />
       <header className="flex items-center justify-between border-b border-black/10 px-6 py-4">
-        <div>
-          <p className="font-semibold">Envasadora</p>
-          <p className="text-sm text-black/60">
-            {user.name} · {ROLE_LABELS[user.role]}
-          </p>
+        <div className="flex items-center gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" width={32} height={32} className="shrink-0" />
+          <div>
+            <p className="font-semibold">Envasadora</p>
+            <p className="text-sm text-black/60">
+              {user.name} · {ROLE_LABELS[user.role]}
+            </p>
+          </div>
         </div>
         <form
           action={async () => {
@@ -37,7 +42,7 @@ export default async function AppLayout({
             <Link
               key={item.href}
               href={item.href}
-              className="rounded px-3 py-2 text-sm hover:bg-black/5"
+              className="rounded px-3 py-2 text-sm hover:bg-primary/15"
             >
               {item.label}
             </Link>
