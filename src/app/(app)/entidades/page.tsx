@@ -81,6 +81,28 @@ export default async function EntidadesPage() {
                 className="w-full rounded border border-black/20 px-3 py-2 text-sm"
               />
             </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="saldoInicialBlanco">
+                Saldo inicial Blanco (opcional)
+              </label>
+              <input
+                id="saldoInicialBlanco"
+                name="saldoInicialBlanco"
+                inputMode="decimal"
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="saldoInicialNegro">
+                Saldo inicial Negro (opcional)
+              </label>
+              <input
+                id="saldoInicialNegro"
+                name="saldoInicialNegro"
+                inputMode="decimal"
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" name="isWithholdingAgent" />

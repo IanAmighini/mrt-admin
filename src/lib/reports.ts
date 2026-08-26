@@ -50,7 +50,7 @@ export async function getIngresosDelMes(referenceDate: Date = new Date()) {
       date: { gte: monthStart, lt: monthEnd },
       account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
     },
-    include: { remitoLinks: true, allocations: true },
+    include: { remitoLinks: true, allocations: true, lines: { include: { product: true } } },
   });
 
   const byCurrency = new Map<Currency, Prisma.Decimal>();
@@ -144,11 +144,10 @@ export async function getProductoEntregadoValorizado(referenceDate: Date = new D
   const documents = await prisma.document.findMany({
     where: {
       type: "REMITO",
-      productId: { not: null },
       date: { gte: monthStart, lt: monthEnd },
       account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
     },
-    include: { product: true },
+    include: { product: true, lines: { include: { product: true } } },
   });
 
   const byProduct = new Map<
@@ -156,17 +155,26 @@ export async function getProductoEntregadoValorizado(referenceDate: Date = new D
     { product: Prisma.ProductGetPayload<object>; quantity: Prisma.Decimal; byCurrency: Map<Currency, Prisma.Decimal> }
   >();
 
-  for (const doc of documents) {
-    if (!doc.product || !doc.quantity) continue;
-    const current = byProduct.get(doc.productId!) ?? {
-      product: doc.product,
+  function addLine(productId: string, product: Prisma.ProductGetPayload<object>, quantity: Prisma.Decimal, currency: Currency, amount: Prisma.Decimal) {
+    const current = byProduct.get(productId) ?? {
+      product,
       quantity: ZERO,
       byCurrency: new Map<Currency, Prisma.Decimal>(),
     };
-    current.quantity = current.quantity.plus(doc.quantity);
-    const currentAmount = current.byCurrency.get(doc.currency) ?? ZERO;
-    current.byCurrency.set(doc.currency, currentAmount.plus(doc.totalAmount));
-    byProduct.set(doc.productId!, current);
+    current.quantity = current.quantity.plus(quantity);
+    const currentAmount = current.byCurrency.get(currency) ?? ZERO;
+    current.byCurrency.set(currency, currentAmount.plus(amount));
+    byProduct.set(productId, current);
+  }
+
+  for (const doc of documents) {
+    if (doc.lines.length > 0) {
+      for (const line of doc.lines) {
+        addLine(line.productId, line.product, line.quantity, doc.currency, line.subtotal);
+      }
+    } else if (doc.product && doc.quantity) {
+      addLine(doc.productId!, doc.product, doc.quantity, doc.currency, doc.totalAmount);
+    }
   }
 
   return Array.from(byProduct.values());

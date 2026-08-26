@@ -8,7 +8,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, toDecimal } from "@/lib/money";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 
-const NON_FACTURA_TYPES: DocumentType[] = ["REMITO", "NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
+const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -51,9 +51,7 @@ export async function createDocument(formData: FormData) {
   if (!number) throw new Error("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
-  const dueDate =
-    parseOptionalFormDate(formData.get("dueDate")) ??
-    (type === "REMITO" ? defaultDueDate(date, account.circuit) : null);
+  const dueDate = parseOptionalFormDate(formData.get("dueDate"));
   const currency = String(formData.get("currency") || "ARS") as Currency;
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
@@ -68,9 +66,6 @@ export async function createDocument(formData: FormData) {
   const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
   const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
 
-  const productId = type === "REMITO" ? String(formData.get("productId") || "").trim() : "";
-  const quantityRaw = type === "REMITO" ? String(formData.get("quantity") || "").trim() : "";
-
   await prisma.document.create({
     data: {
       accountId: account.id,
@@ -83,13 +78,95 @@ export async function createDocument(formData: FormData) {
       netAmount: amount,
       totalAmount,
       reason,
-      productId: productId || null,
-      quantity: quantityRaw ? toDecimal(quantityRaw) : null,
       createdById: user.id,
     },
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
+  revalidatePath("/cuentas-corrientes");
+}
+
+export async function createRemito(formData: FormData) {
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new Error("Falta la entidad.");
+
+  const number = String(formData.get("number") || "").trim();
+  if (!number) throw new Error("El número es obligatorio.");
+
+  const date = parseFormDate(formData.get("date"));
+  const dueDateOverride = parseOptionalFormDate(formData.get("dueDate"));
+  const currency = String(formData.get("currency") || "ARS") as Currency;
+  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
+  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+
+  const productIds = formData.getAll("lineProductId").map(String);
+  const quantities = formData.getAll("lineQuantity").map(String);
+  const unitPrices = formData.getAll("lineUnitPrice").map(String);
+  const circuits = formData.getAll("lineCircuit").map(String);
+
+  const lines = productIds
+    .map((productId, i) => ({
+      productId,
+      quantity: toDecimal(quantities[i]),
+      unitPrice: toDecimal(unitPrices[i]),
+      circuit: circuits[i] as "BLANCO" | "NEGRO",
+    }))
+    .filter((l) => l.productId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
+
+  if (lines.length === 0) {
+    throw new Error("Cargá al menos una línea con producto, cantidad y precio.");
+  }
+  if (lines.some((l) => l.circuit !== "BLANCO" && l.circuit !== "NEGRO")) {
+    throw new Error("Circuito inválido en alguna línea.");
+  }
+
+  const accounts = await prisma.account.findMany({ where: { entityId } });
+  const accountByCircuit = new Map(accounts.map((a) => [a.circuit, a]));
+
+  const linesByCircuit = new Map<"BLANCO" | "NEGRO", typeof lines>();
+  for (const line of lines) {
+    const group = linesByCircuit.get(line.circuit) ?? [];
+    group.push(line);
+    linesByCircuit.set(line.circuit, group);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const [circuit, circuitLines] of linesByCircuit) {
+      const account = accountByCircuit.get(circuit);
+      if (!account) throw new Error(`No se encontró la cuenta ${circuit} de esta entidad.`);
+
+      const lineData = circuitLines.map((l) => ({
+        productId: l.productId,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        subtotal: l.quantity.times(l.unitPrice),
+      }));
+      const totalAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
+
+      const document = await tx.document.create({
+        data: {
+          accountId: account.id,
+          type: "REMITO",
+          number,
+          date,
+          dueDate: dueDateOverride ?? defaultDueDate(date, circuit),
+          currency,
+          exchangeRate,
+          netAmount: totalAmount,
+          totalAmount,
+          createdById: user.id,
+        },
+      });
+
+      await tx.documentLine.createMany({
+        data: lineData.map((l) => ({ ...l, documentId: document.id })),
+      });
+    }
+  });
+
+  revalidatePath(`/cuentas-corrientes/${entityId}`);
   revalidatePath("/cuentas-corrientes");
 }
 
@@ -152,7 +229,7 @@ export async function createFactura(formData: FormData) {
           accountId: account.id,
           type: "REMITO",
         },
-        include: { remitoLinks: true, allocations: true },
+        include: { remitoLinks: true, allocations: true, lines: { include: { product: true } } },
       });
       if (remitos.length !== remitoSelections.length) {
         throw new Error("Alguno de los remitos seleccionados ya no está disponible.");

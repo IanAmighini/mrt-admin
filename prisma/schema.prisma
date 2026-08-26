@@ -119,8 +119,22 @@ model Document {
   remitoLinks  DocumentLink[] @relation("RemitoLinks")
   facturaLinks DocumentLink[] @relation("FacturaLinks")
   allocations  PaymentAllocation[]
+  lines        DocumentLine[]
 
   @@index([accountId])
+}
+
+model DocumentLine {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Decimal  @db.Decimal(14, 3)
+  unitPrice  Decimal  @db.Decimal(14, 2)
+  subtotal   Decimal  @db.Decimal(14, 2)
+
+  @@index([documentId])
 }
 
 model DocumentLink {
@@ -223,6 +237,7 @@ model Product {
   productionLines ProductionLine[]
   boxTypes        BoxType[]
   documents       Document[]
+  documentLines   DocumentLine[]
   prices          Price[]
 }
 

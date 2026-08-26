@@ -11,16 +11,17 @@ import {
   getInvoiceableRemitos,
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
-import { DEFAULT_IVA_RATE, formatMoney, sumDecimals, ZERO } from "@/lib/money";
+import { DEFAULT_IVA_RATE, formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import {
   createDocument,
   createFactura,
   createPayment,
   createPrice,
+  createRemito,
   moveRemitoToBlanco,
 } from "./actions";
-import { RemitoAmountFields } from "./RemitoAmountFields";
+import { RemitoLinesFields } from "./RemitoLinesFields";
 
 export default async function EntityLedgerPage({
   params,
@@ -41,7 +42,22 @@ export default async function EntityLedgerPage({
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
   if (!blancoAccount || !negroAccount) notFound();
 
-  const products = await prisma.product.findMany({ orderBy: { name: "asc" } });
+  const [products, blancoPrices, negroPrices] = await Promise.all([
+    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    getCurrentPricesForAccount(entity.id, "BLANCO"),
+    getCurrentPricesForAccount(entity.id, "NEGRO"),
+  ]);
+
+  const priceMapByCircuit: Record<
+    "BLANCO" | "NEGRO",
+    Record<string, { amount: number; currency: string }>
+  > = { BLANCO: {}, NEGRO: {} };
+  for (const [productId, price] of blancoPrices) {
+    priceMapByCircuit.BLANCO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
+  }
+  for (const [productId, price] of negroPrices) {
+    priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
+  }
 
   return (
     <div className="space-y-10">
@@ -52,9 +68,66 @@ export default async function EntityLedgerPage({
         <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
       </div>
 
+      {canEdit && (
+        <NewRemitoForm entityId={entity.id} products={products} priceMapByCircuit={priceMapByCircuit} />
+      )}
+
       <CircuitPanel entity={entity} account={blancoAccount} products={products} canEdit={canEdit} />
       <CircuitPanel entity={entity} account={negroAccount} products={products} canEdit={canEdit} />
     </div>
+  );
+}
+
+function NewRemitoForm({
+  entityId,
+  products,
+  priceMapByCircuit,
+}: {
+  entityId: string;
+  products: Product[];
+  priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
+}) {
+  return (
+    <form action={createRemito} className="space-y-4 rounded-lg border border-black/10 p-4">
+      <h2 className="text-sm font-semibold">Nuevo remito</h2>
+      <p className="text-xs text-black/50">
+        Un mismo remito puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)
+        — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea.
+      </p>
+      <input type="hidden" name="entityId" value={entityId} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Número">
+          <input name="number" required className={inputClass} />
+        </Field>
+        <Field label="Fecha">
+          <input type="date" name="date" required className={inputClass} />
+        </Field>
+        <Field label="Vencimiento (opcional)">
+          <input type="date" name="dueDate" className={inputClass} />
+        </Field>
+        <Field label="Moneda">
+          <select name="currency" defaultValue="ARS" className={selectClass}>
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </Field>
+        <Field label="Cotización (si es USD)">
+          <input name="exchangeRate" className={inputClass} />
+        </Field>
+      </div>
+      <RemitoLinesFields
+        products={products.map((p) => ({
+          id: p.id,
+          name: p.name,
+          boxesPerPallet: p.boxesPerPallet,
+          unitsPerBox: p.unitsPerBox,
+        }))}
+        priceMapByCircuit={priceMapByCircuit}
+      />
+      <button type="submit" className={submitClass}>
+        Crear remito
+      </button>
+    </form>
   );
 }
 
@@ -85,10 +158,6 @@ async function CircuitPanel({
 
   const today = new Date();
   const documentsDesc = documents.slice().reverse();
-  const priceMap: Record<string, { amount: number; currency: string }> = {};
-  for (const [productId, price] of currentPrices) {
-    priceMap[productId] = { amount: price.amount.toNumber(), currency: price.currency };
-  }
 
   return (
     <section className="space-y-6 rounded-lg border border-black/10 p-5">
@@ -99,7 +168,7 @@ async function CircuitPanel({
 
       {canEdit && (
         <div className="grid gap-6 lg:grid-cols-2">
-          <NewDocumentForm accountId={account.id} products={products} priceMap={priceMap} />
+          <NewDocumentForm accountId={account.id} />
           {account.circuit === "BLANCO" && (
             <NewFacturaForm
               accountId={account.id}
@@ -159,7 +228,16 @@ async function CircuitPanel({
                 return (
                   <tr key={doc.id} className="border-b border-black/5">
                     <td className="py-2 pr-4">{DOCUMENT_TYPE_LABELS[doc.type]}</td>
-                    <td className="py-2 pr-4">{doc.number}</td>
+                    <td className="py-2 pr-4">
+                      {doc.number}
+                      {doc.lines.length > 0 && (
+                        <p className="text-xs font-normal text-black/50">
+                          {doc.lines
+                            .map((l) => `${l.product.name} × ${formatQuantity(l.quantity)}`)
+                            .join(" · ")}
+                        </p>
+                      )}
+                    </td>
                     <td className="py-2 pr-4">{doc.date.toLocaleDateString("es-AR")}</td>
                     <td className="py-2 pr-4">{doc.dueDate?.toLocaleDateString("es-AR") ?? "—"}</td>
                     <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
@@ -240,23 +318,14 @@ async function CircuitPanel({
   );
 }
 
-function NewDocumentForm({
-  accountId,
-  products,
-  priceMap,
-}: {
-  accountId: string;
-  products: Product[];
-  priceMap: Record<string, { amount: number; currency: string }>;
-}) {
+function NewDocumentForm({ accountId }: { accountId: string }) {
   return (
     <form action={createDocument} className="space-y-3 rounded-lg border border-black/10 p-4">
-      <h3 className="text-sm font-semibold">Nuevo remito / nota / ajuste</h3>
+      <h3 className="text-sm font-semibold">Nota / ajuste</h3>
       <input type="hidden" name="accountId" value={accountId} />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Tipo">
-          <select name="type" required defaultValue="REMITO" className={selectClass}>
-            <option value="REMITO">Remito</option>
+          <select name="type" required defaultValue="NOTA_CREDITO" className={selectClass}>
             <option value="NOTA_CREDITO">Nota de crédito</option>
             <option value="NOTA_DEBITO">Nota de débito</option>
             <option value="AJUSTE">Ajuste manual</option>
@@ -280,10 +349,9 @@ function NewDocumentForm({
         <Field label="Cotización (si es USD)">
           <input name="exchangeRate" className={inputClass} />
         </Field>
-        <RemitoAmountFields
-          products={products.map((p) => ({ id: p.id, name: p.name }))}
-          priceMap={priceMap}
-        />
+        <Field label="Monto">
+          <input name="amount" required inputMode="decimal" className={inputClass} />
+        </Field>
         <Field label="Efecto (solo Ajuste)">
           <select name="ajusteEffect" defaultValue="SUMA" className={selectClass}>
             <option value="SUMA">Suma al saldo</option>
