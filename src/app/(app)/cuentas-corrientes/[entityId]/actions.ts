@@ -269,6 +269,8 @@ export async function createCompra(formData: FormData) {
   revalidatePath(`/cuentas-corrientes/${entityId}`);
   revalidatePath("/cuentas-corrientes");
   revalidatePath("/stock");
+  revalidatePath("/compras");
+  revalidatePath("/dashboard-proveedores");
 }
 
 export async function createFactura(formData: FormData) {
