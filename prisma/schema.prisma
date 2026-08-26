@@ -131,10 +131,11 @@ model Document {
   createdBy        User         @relation(fields: [createdById], references: [id])
   createdAt        DateTime     @default(now())
 
-  remitoLinks  DocumentLink[] @relation("RemitoLinks")
-  facturaLinks DocumentLink[] @relation("FacturaLinks")
-  allocations  PaymentAllocation[]
-  lines        DocumentLine[]
+  remitoLinks   DocumentLink[] @relation("RemitoLinks")
+  facturaLinks  DocumentLink[] @relation("FacturaLinks")
+  allocations   PaymentAllocation[]
+  lines         DocumentLine[]
+  purchaseLines PurchaseLine[]
 
   @@index([accountId])
 }
@@ -145,6 +146,19 @@ model DocumentLine {
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   productId  String
   product    Product  @relation(fields: [productId], references: [id])
+  quantity   Decimal  @db.Decimal(14, 3)
+  unitPrice  Decimal  @db.Decimal(14, 2)
+  subtotal   Decimal  @db.Decimal(14, 2)
+
+  @@index([documentId])
+}
+
+model PurchaseLine {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
   quantity   Decimal  @db.Decimal(14, 3)
   unitPrice  Decimal  @db.Decimal(14, 2)
   subtotal   Decimal  @db.Decimal(14, 2)
@@ -203,8 +217,9 @@ model Item {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  movements   ItemMovement[]
-  recipeLines RecipeItem[]
+  movements     ItemMovement[]
+  recipeLines   RecipeItem[]
+  purchaseLines PurchaseLine[]
 
   palletsAsWood Pallet[] @relation("PalletWood")
   palletsAsFilm Pallet[] @relation("PalletFilm")

@@ -50,7 +50,7 @@ export async function getIngresosDelMes(referenceDate: Date = new Date()) {
       date: { gte: monthStart, lt: monthEnd },
       account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
     },
-    include: { remitoLinks: true, allocations: true, lines: { include: { product: true } } },
+    include: { remitoLinks: true, allocations: true, lines: { include: { product: true } }, purchaseLines: { include: { item: true } } },
   });
 
   const byCurrency = new Map<Currency, Prisma.Decimal>();

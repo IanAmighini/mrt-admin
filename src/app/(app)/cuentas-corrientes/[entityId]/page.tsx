@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { Account, Entity, Product } from "@prisma/client";
+import type { Account, Entity, Item, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import {
@@ -14,6 +14,7 @@ import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { DEFAULT_IVA_RATE, formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import {
+  createCompra,
   createDocument,
   createFactura,
   createPayment,
@@ -22,6 +23,7 @@ import {
   moveRemitoToBlanco,
 } from "./actions";
 import { RemitoLinesFields } from "./RemitoLinesFields";
+import { CompraLinesFields } from "./CompraLinesFields";
 
 export default async function EntityLedgerPage({
   params,
@@ -42,8 +44,9 @@ export default async function EntityLedgerPage({
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
   if (!blancoAccount || !negroAccount) notFound();
 
-  const [products, blancoPrices, negroPrices] = await Promise.all([
+  const [products, items, blancoPrices, negroPrices] = await Promise.all([
     prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.item.findMany({ orderBy: { name: "asc" } }),
     getCurrentPricesForAccount(entity.id, "BLANCO"),
     getCurrentPricesForAccount(entity.id, "NEGRO"),
   ]);
@@ -68,8 +71,11 @@ export default async function EntityLedgerPage({
         <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
       </div>
 
-      {canEdit && (
+      {canEdit && entity.type !== "PROVEEDOR" && (
         <NewRemitoForm entityId={entity.id} products={products} priceMapByCircuit={priceMapByCircuit} />
+      )}
+      {canEdit && entity.type !== "CLIENTE" && (
+        <NewCompraForm entityId={entity.id} items={items} />
       )}
 
       <CircuitPanel entity={entity} account={blancoAccount} products={products} canEdit={canEdit} />
@@ -126,6 +132,46 @@ function NewRemitoForm({
       />
       <button type="submit" className={submitClass}>
         Crear remito
+      </button>
+    </form>
+  );
+}
+
+function NewCompraForm({ entityId, items }: { entityId: string; items: Item[] }) {
+  return (
+    <form action={createCompra} className="space-y-4 rounded-lg border border-black/10 p-4">
+      <h2 className="text-sm font-semibold">Nueva compra de insumos</h2>
+      <p className="text-xs text-black/50">
+        Al cargar la compra se suma el stock de cada insumo automáticamente y se imputa a la
+        cuenta corriente del proveedor — una misma compra puede tener líneas facturadas (van a
+        Blanco) y sin facturar (van a Negro).
+      </p>
+      <input type="hidden" name="entityId" value={entityId} />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Número">
+          <input name="number" required className={inputClass} />
+        </Field>
+        <Field label="Fecha">
+          <input type="date" name="date" required className={inputClass} />
+        </Field>
+        <Field label="Vencimiento (opcional)">
+          <input type="date" name="dueDate" className={inputClass} />
+        </Field>
+        <Field label="Moneda">
+          <select name="currency" defaultValue="ARS" className={selectClass}>
+            <option value="ARS">ARS</option>
+            <option value="USD">USD</option>
+          </select>
+        </Field>
+        <Field label="Cotización (si es USD)">
+          <input name="exchangeRate" className={inputClass} />
+        </Field>
+      </div>
+      <CompraLinesFields
+        items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+      />
+      <button type="submit" className={submitClass}>
+        Crear compra
       </button>
     </form>
   );
@@ -234,6 +280,13 @@ async function CircuitPanel({
                         <p className="text-xs font-normal text-black/50">
                           {doc.lines
                             .map((l) => `${l.product.name} × ${formatQuantity(l.quantity)}`)
+                            .join(" · ")}
+                        </p>
+                      )}
+                      {doc.purchaseLines.length > 0 && (
+                        <p className="text-xs font-normal text-black/50">
+                          {doc.purchaseLines
+                            .map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`)
                             .join(" · ")}
                         </p>
                       )}

@@ -16,13 +16,19 @@ export function defaultDueDate(date: Date, circuit: Circuit): Date {
 }
 
 type DocumentWithRelations = Prisma.DocumentGetPayload<{
-  include: { remitoLinks: true; allocations: true; lines: { include: { product: true } } };
+  include: {
+    remitoLinks: true;
+    allocations: true;
+    lines: { include: { product: true } };
+    purchaseLines: { include: { item: true } };
+  };
 }>;
 
 const DOCUMENT_QUERY_INCLUDE = {
   remitoLinks: true,
   allocations: true,
   lines: { include: { product: true } },
+  purchaseLines: { include: { item: true } },
 } satisfies Prisma.DocumentInclude;
 
 /**

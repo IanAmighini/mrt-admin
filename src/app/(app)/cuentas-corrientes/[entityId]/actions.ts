@@ -170,6 +170,105 @@ export async function createRemito(formData: FormData) {
   revalidatePath("/cuentas-corrientes");
 }
 
+export async function createCompra(formData: FormData) {
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new Error("Falta la entidad.");
+
+  const number = String(formData.get("number") || "").trim();
+  if (!number) throw new Error("El número es obligatorio.");
+
+  const date = parseFormDate(formData.get("date"));
+  const dueDate = parseOptionalFormDate(formData.get("dueDate"));
+  const currency = String(formData.get("currency") || "ARS") as Currency;
+  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
+  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+
+  const itemIds = formData.getAll("lineItemId").map(String);
+  const quantities = formData.getAll("lineQuantity").map(String);
+  const unitPrices = formData.getAll("lineUnitPrice").map(String);
+  const circuits = formData.getAll("lineCircuit").map(String);
+
+  const lines = itemIds
+    .map((itemId, i) => ({
+      itemId,
+      quantity: toDecimal(quantities[i]),
+      unitPrice: toDecimal(unitPrices[i]),
+      circuit: circuits[i] as "BLANCO" | "NEGRO",
+    }))
+    .filter((l) => l.itemId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
+
+  if (lines.length === 0) {
+    throw new Error("Cargá al menos una línea con insumo, cantidad y precio.");
+  }
+  if (lines.some((l) => l.circuit !== "BLANCO" && l.circuit !== "NEGRO")) {
+    throw new Error("Circuito inválido en alguna línea.");
+  }
+
+  const accounts = await prisma.account.findMany({ where: { entityId } });
+  const accountByCircuit = new Map(accounts.map((a) => [a.circuit, a]));
+
+  const linesByCircuit = new Map<"BLANCO" | "NEGRO", typeof lines>();
+  for (const line of lines) {
+    const group = linesByCircuit.get(line.circuit) ?? [];
+    group.push(line);
+    linesByCircuit.set(line.circuit, group);
+  }
+
+  const entity = await prisma.entity.findUnique({ where: { id: entityId } });
+  if (!entity) throw new Error("Entidad inexistente.");
+
+  await prisma.$transaction(async (tx) => {
+    for (const [circuit, circuitLines] of linesByCircuit) {
+      const account = accountByCircuit.get(circuit);
+      if (!account) throw new Error(`No se encontró la cuenta ${circuit} de esta entidad.`);
+
+      const lineData = circuitLines.map((l) => ({
+        itemId: l.itemId,
+        quantity: l.quantity,
+        unitPrice: l.unitPrice,
+        subtotal: l.quantity.times(l.unitPrice),
+      }));
+      const totalAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
+
+      const document = await tx.document.create({
+        data: {
+          accountId: account.id,
+          type: "REMITO",
+          number,
+          date,
+          dueDate,
+          currency,
+          exchangeRate,
+          netAmount: totalAmount,
+          totalAmount,
+          createdById: user.id,
+        },
+      });
+
+      await tx.purchaseLine.createMany({
+        data: lineData.map((l) => ({ ...l, documentId: document.id })),
+      });
+
+      await tx.itemMovement.createMany({
+        data: lineData.map((l) => ({
+          itemId: l.itemId,
+          date,
+          quantity: l.quantity,
+          type: "INGRESO" as const,
+          reason: `Compra a ${entity.name} — remito ${number}`,
+          createdById: user.id,
+        })),
+      });
+    }
+  });
+
+  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath("/cuentas-corrientes");
+  revalidatePath("/stock");
+}
+
 export async function createFactura(formData: FormData) {
   const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
 
@@ -229,7 +328,7 @@ export async function createFactura(formData: FormData) {
           accountId: account.id,
           type: "REMITO",
         },
-        include: { remitoLinks: true, allocations: true, lines: { include: { product: true } } },
+        include: { remitoLinks: true, allocations: true, lines: { include: { product: true } }, purchaseLines: { include: { item: true } } },
       });
       if (remitos.length !== remitoSelections.length) {
         throw new Error("Alguno de los remitos seleccionados ya no está disponible.");
