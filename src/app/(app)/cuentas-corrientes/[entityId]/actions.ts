@@ -168,6 +168,8 @@ export async function createRemito(formData: FormData) {
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
   revalidatePath("/cuentas-corrientes");
+  revalidatePath("/entregas");
+  revalidatePath("/dashboard-clientes");
 }
 
 export async function createCompra(formData: FormData) {
