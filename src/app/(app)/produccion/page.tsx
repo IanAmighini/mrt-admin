@@ -4,8 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { getAllProductStocks } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
 import { createProduct, createProductionRun } from "./actions";
-
-const PRODUCTION_ROWS = 6;
+import { ProductionLinesFields } from "./ProductionLinesFields";
 
 export default async function ProduccionPage() {
   const user = await requireUser();
@@ -97,25 +96,30 @@ export default async function ProduccionPage() {
             </tr>
           </thead>
           <tbody>
-            {products.map((product) => (
-              <tr key={product.id} className="border-b border-black/5">
-                <td className="py-2 pr-4">
-                  <Link href={`/produccion/${product.id}`} className="underline underline-offset-2">
-                    {product.name}
-                  </Link>
-                </td>
-                <td className="py-2 pr-4">{product.oilType}</td>
-                <td className="py-2 pr-4">{product.presentation}</td>
-                <td className="py-2 pr-4">
-                  {product.recipe.length === 0 ? (
-                    <span className="text-black/40">Sin receta</span>
-                  ) : (
-                    product.recipe.length
-                  )}
-                </td>
-                <td className="py-2 pr-4">{formatQuantity(stocks.get(product.id) ?? 0)}</td>
-              </tr>
-            ))}
+            {products
+              .filter((product) => {
+                const stock = stocks.get(product.id);
+                return stock !== undefined && !stock.isZero();
+              })
+              .map((product) => (
+                <tr key={product.id} className="border-b border-black/5">
+                  <td className="py-2 pr-4">
+                    <Link href={`/produccion/${product.id}`} className="underline underline-offset-2">
+                      {product.name}
+                    </Link>
+                  </td>
+                  <td className="py-2 pr-4">{product.oilType}</td>
+                  <td className="py-2 pr-4">{product.presentation}</td>
+                  <td className="py-2 pr-4">
+                    {product.recipe.length === 0 ? (
+                      <span className="text-black/40">Sin receta</span>
+                    ) : (
+                      product.recipe.length
+                    )}
+                  </td>
+                  <td className="py-2 pr-4">{formatQuantity(stocks.get(product.id) ?? 0)}</td>
+                </tr>
+              ))}
             {products.length === 0 && (
               <tr>
                 <td colSpan={5} className="py-6 text-center text-black/40">
@@ -123,6 +127,17 @@ export default async function ProduccionPage() {
                 </td>
               </tr>
             )}
+            {products.length > 0 &&
+              products.every((product) => {
+                const stock = stocks.get(product.id);
+                return stock === undefined || stock.isZero();
+              }) && (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-black/40">
+                    No hay stock cargado — todos los productos están en 0.
+                  </td>
+                </tr>
+              )}
           </tbody>
         </table>
       </div>
@@ -145,30 +160,7 @@ export default async function ProduccionPage() {
               className="w-full rounded border border-black/20 px-3 py-2 text-sm"
             />
           </div>
-          <div className="space-y-2">
-            {Array.from({ length: PRODUCTION_ROWS }).map((_, i) => (
-              <div key={i} className="flex gap-2">
-                <select
-                  name="productId"
-                  defaultValue=""
-                  className="flex-1 rounded border border-black/20 px-3 py-2 text-sm"
-                >
-                  <option value="">— Producto —</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  name="quantity"
-                  placeholder="Cantidad"
-                  inputMode="decimal"
-                  className="w-32 rounded border border-black/20 px-3 py-2 text-sm"
-                />
-              </div>
-            ))}
-          </div>
+          <ProductionLinesFields products={products.map((p) => ({ id: p.id, name: p.name }))} />
           <button
             type="submit"
             className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
