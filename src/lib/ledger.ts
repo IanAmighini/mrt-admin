@@ -1,5 +1,5 @@
 import "server-only";
-import { Prisma, type Circuit, type Currency, type DocumentType } from "@prisma/client";
+import { Prisma, type Circuit, type Currency, type DocumentType, type EntityType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 
@@ -138,4 +138,28 @@ export async function getInvoiceableRemitos(accountId: string): Promise<Invoicea
   return documents
     .map((doc) => ({ ...doc, pending: getDocumentEffect(doc) }))
     .filter((doc) => doc.pending.greaterThan(0));
+}
+
+/** Saldo Blanco/Negro/Total por entidad, ordenado por mayor deuda. */
+export async function getEntitySaldos(typeFilter?: EntityType[]) {
+  const entities = await prisma.entity.findMany({
+    where: typeFilter ? { type: { in: typeFilter } } : undefined,
+    orderBy: { name: "asc" },
+    include: { accounts: true },
+  });
+
+  const rows = await Promise.all(
+    entities.map(async (entity) => {
+      const blanco = entity.accounts.find((a) => a.circuit === "BLANCO");
+      const negro = entity.accounts.find((a) => a.circuit === "NEGRO");
+      const [blancoSaldo, negroSaldo] = await Promise.all([
+        blanco ? getAccountBalance(blanco.id) : null,
+        negro ? getAccountBalance(negro.id) : null,
+      ]);
+      const total = (blancoSaldo?.toNumber() ?? 0) + (negroSaldo?.toNumber() ?? 0);
+      return { entity, blancoSaldo, negroSaldo, total };
+    })
+  );
+
+  return rows.sort((a, b) => b.total - a.total);
 }

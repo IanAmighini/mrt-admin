@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getAccountBalance, getVencimientos } from "@/lib/ledger";
+import { getEntitySaldos, getVencimientos } from "@/lib/ledger";
 import { getAllItemStocks, getAllProductStockLevels } from "@/lib/stock";
 import {
   getIngresosDelMes,
@@ -12,30 +12,6 @@ import {
 } from "@/lib/reports";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/labels";
-import type { EntityType } from "@prisma/client";
-
-async function getEntitySaldos(typeFilter: EntityType[]) {
-  const entities = await prisma.entity.findMany({
-    where: { type: { in: typeFilter } },
-    orderBy: { name: "asc" },
-    include: { accounts: true },
-  });
-
-  const rows = await Promise.all(
-    entities.map(async (entity) => {
-      const blanco = entity.accounts.find((a) => a.circuit === "BLANCO");
-      const negro = entity.accounts.find((a) => a.circuit === "NEGRO");
-      const [blancoSaldo, negroSaldo] = await Promise.all([
-        blanco ? getAccountBalance(blanco.id) : null,
-        negro ? getAccountBalance(negro.id) : null,
-      ]);
-      const total = (blancoSaldo?.toNumber() ?? 0) + (negroSaldo?.toNumber() ?? 0);
-      return { entity, blancoSaldo, negroSaldo, total };
-    })
-  );
-
-  return rows.sort((a, b) => b.total - a.total);
-}
 
 export default async function DashboardsPage() {
   const user = await requireUser();

@@ -1,30 +1,7 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
-import { getAccountBalance, getVencimientos } from "@/lib/ledger";
+import { getEntitySaldos, getVencimientos } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/labels";
-
-async function getEntitySaldos() {
-  const entities = await prisma.entity.findMany({
-    orderBy: { name: "asc" },
-    include: { accounts: true },
-  });
-
-  const rows = await Promise.all(
-    entities.map(async (entity) => {
-      const blanco = entity.accounts.find((a) => a.circuit === "BLANCO");
-      const negro = entity.accounts.find((a) => a.circuit === "NEGRO");
-      const [blancoSaldo, negroSaldo] = await Promise.all([
-        blanco ? getAccountBalance(blanco.id) : null,
-        negro ? getAccountBalance(negro.id) : null,
-      ]);
-      const total = (blancoSaldo?.toNumber() ?? 0) + (negroSaldo?.toNumber() ?? 0);
-      return { entity, blancoSaldo, negroSaldo, total };
-    })
-  );
-
-  return rows.sort((a, b) => b.total - a.total);
-}
 
 export default async function CuentasCorrientesPage() {
   const [rows, vencimientos] = await Promise.all([getEntitySaldos(), getVencimientos()]);

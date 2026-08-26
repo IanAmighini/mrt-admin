@@ -59,5 +59,7 @@ export async function createEntity(formData: FormData) {
     }
   });
 
-  revalidatePath("/entidades");
+  revalidatePath("/clientes");
+  revalidatePath("/proveedores");
+  revalidatePath("/cuentas-corrientes");
 }
