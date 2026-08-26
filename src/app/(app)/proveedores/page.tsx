@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { getEntitySaldos } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { FormModal } from "@/components/Modal";
 import { EntityFormFields } from "@/components/EntityFormFields";
 import { createEntity } from "../clientes/actions";
@@ -30,7 +31,7 @@ export default async function ProveedoresPage() {
         </div>
         {canEdit && (
           <FormModal triggerLabel="Nuevo proveedor" title="Nuevo proveedor" action={createEntity}>
-            <EntityFormFields defaultType="PROVEEDOR" />
+            <EntityFormFields defaultType="PROVEEDOR" showSupplierCategory />
           </FormModal>
         )}
       </div>
@@ -41,6 +42,7 @@ export default async function ProveedoresPage() {
             <tr className="border-b border-black/10 text-left text-black/60">
               <th className="py-2 pr-4">Nombre</th>
               <th className="py-2 pr-4">Tipo</th>
+              <th className="py-2 pr-4">Tipo de insumo</th>
               <th className="py-2 pr-4">CUIT</th>
               <th className="py-2 pr-4">Saldo Blanco</th>
               <th className="py-2 pr-4">Saldo Negro</th>
@@ -59,6 +61,9 @@ export default async function ProveedoresPage() {
                   </Link>
                 </td>
                 <td className="py-2 pr-4">{TYPE_LABELS[entity.type]}</td>
+                <td className="py-2 pr-4">
+                  {entity.supplierCategory ? SUPPLIER_CATEGORY_LABELS[entity.supplierCategory] : "—"}
+                </td>
                 <td className="py-2 pr-4">{entity.taxId || "—"}</td>
                 <td className="py-2 pr-4">{blancoSaldo ? formatMoney(blancoSaldo) : "—"}</td>
                 <td className="py-2 pr-4">{negroSaldo ? formatMoney(negroSaldo) : "—"}</td>
@@ -67,7 +72,7 @@ export default async function ProveedoresPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-black/40">
+                <td colSpan={7} className="py-6 text-center text-black/40">
                   Todavía no hay proveedores cargados.
                 </td>
               </tr>

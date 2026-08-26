@@ -41,8 +41,19 @@ enum EntityType {
   AMBOS
 }
 
+enum SupplierCategory {
+  ACEITE
+  ENVASES
+  CAJAS
+  TAPAS
+  CINTA
+  ETIQUETAS
+  PALLET_NORMALIZADO
+  OTRO
+}
+
 model Entity {
-  id                 String     @id @default(cuid())
+  id                 String            @id @default(cuid())
   name               String
   type               EntityType
   taxId              String?
@@ -50,9 +61,10 @@ model Entity {
   phone              String?
   address            String?
   notes              String?
-  isWithholdingAgent Boolean    @default(false)
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
+  supplierCategory   SupplierCategory?
+  isWithholdingAgent Boolean           @default(false)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
   accounts           Account[]
   prices             Price[]
 }

@@ -4,9 +4,19 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
-import type { EntityType } from "@prisma/client";
+import type { EntityType, SupplierCategory } from "@prisma/client";
 
 const ENTITY_TYPES: EntityType[] = ["CLIENTE", "PROVEEDOR", "AMBOS"];
+const SUPPLIER_CATEGORIES: SupplierCategory[] = [
+  "ACEITE",
+  "ENVASES",
+  "CAJAS",
+  "TAPAS",
+  "CINTA",
+  "ETIQUETAS",
+  "PALLET_NORMALIZADO",
+  "OTRO",
+];
 
 export async function createEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
@@ -21,6 +31,10 @@ export async function createEntity(formData: FormData) {
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
+  const supplierCategoryRaw = String(formData.get("supplierCategory") || "").trim();
+  const supplierCategory = SUPPLIER_CATEGORIES.includes(supplierCategoryRaw as SupplierCategory)
+    ? (supplierCategoryRaw as SupplierCategory)
+    : null;
 
   if (!name) {
     throw new Error("El nombre es obligatorio.");
@@ -31,7 +45,7 @@ export async function createEntity(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     const entity = await tx.entity.create({
-      data: { name, type, taxId, email, phone, address, notes, isWithholdingAgent },
+      data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
     });
     const [blanco, negro] = await Promise.all([
       tx.account.create({ data: { entityId: entity.id, circuit: "BLANCO" } }),

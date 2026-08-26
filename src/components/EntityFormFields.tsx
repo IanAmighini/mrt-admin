@@ -1,8 +1,17 @@
+import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
+
 const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const selectClass = inputClass;
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";
 
-export function EntityFormFields({ defaultType }: { defaultType: "CLIENTE" | "PROVEEDOR" }) {
+export function EntityFormFields({
+  defaultType,
+  showSupplierCategory,
+}: {
+  defaultType: "CLIENTE" | "PROVEEDOR";
+  showSupplierCategory?: boolean;
+}) {
   return (
     <>
       <input type="hidden" name="type" value={defaultType} />
@@ -37,6 +46,21 @@ export function EntityFormFields({ defaultType }: { defaultType: "CLIENTE" | "PR
           </label>
           <input id="taxId" name="taxId" placeholder="20-12345678-9" className={inputClass} />
         </div>
+        {showSupplierCategory && (
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="supplierCategory">
+              Tipo de insumo
+            </label>
+            <select id="supplierCategory" name="supplierCategory" defaultValue="" className={selectClass}>
+              <option value="">— Elegir —</option>
+              {Object.entries(SUPPLIER_CATEGORY_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="space-y-1">
           <label className="text-sm" htmlFor="saldoInicialBlanco">
             Saldo inicial Blanco (opcional)

@@ -7,6 +7,7 @@ import type {
   PalletStatus,
   PaymentMethod,
   ProductMovementType,
+  SupplierCategory,
 } from "@prisma/client";
 
 export const CIRCUIT_LABELS: Record<Circuit, string> = {
@@ -61,4 +62,15 @@ export const BOX_MOVEMENT_TYPE_LABELS: Record<BoxMovementType, string> = {
 export const PALLET_STATUS_LABELS: Record<PalletStatus, string> = {
   ARMADO: "Armado",
   DESARMADO: "Desarmado",
+};
+
+export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
+  ACEITE: "Aceite",
+  ENVASES: "Envases",
+  CAJAS: "Cajas",
+  TAPAS: "Tapas",
+  CINTA: "Cinta",
+  ETIQUETAS: "Etiquetas",
+  PALLET_NORMALIZADO: "Pallet normalizado",
+  OTRO: "Otro",
 };
