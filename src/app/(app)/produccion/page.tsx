@@ -3,14 +3,15 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllProductStocks } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
-import { createProduct, createProductionRun } from "./actions";
+import { createProduct, createProductionRun, updateOilEfficiency } from "./actions";
 import { ProductionLinesFields } from "./ProductionLinesFields";
+import { getSetting } from "@/lib/settings";
 
 export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
-  const [products, stocks, runs] = await Promise.all([
+  const [products, stocks, runs, oilFillEfficiencyPercent] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
       include: { recipe: true },
@@ -21,6 +22,7 @@ export default async function ProduccionPage() {
       include: { lines: { include: { product: true } }, createdBy: true },
       take: 30,
     }),
+    getSetting("oilFillEfficiencyPercent", "100"),
   ]);
 
   return (
@@ -41,13 +43,13 @@ export default async function ProduccionPage() {
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1 col-span-2">
               <label className="text-sm" htmlFor="name">
-                Nombre
+                Marca
               </label>
               <input
                 id="name"
                 name="name"
                 required
-                placeholder="Aceite Tipo A — Botella 1L"
+                placeholder="Bonanza"
                 className="w-full rounded border border-black/20 px-3 py-2 text-sm"
               />
             </div>
@@ -59,6 +61,7 @@ export default async function ProduccionPage() {
                 id="oilType"
                 name="oilType"
                 required
+                placeholder="Girasol"
                 className="w-full rounded border border-black/20 px-3 py-2 text-sm"
               />
             </div>
@@ -70,7 +73,43 @@ export default async function ProduccionPage() {
                 id="presentation"
                 name="presentation"
                 required
-                placeholder="Botella 1L"
+                placeholder="105x12x850"
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="boxesPerPallet">
+                Cajas por pallet
+              </label>
+              <input
+                id="boxesPerPallet"
+                name="boxesPerPallet"
+                inputMode="numeric"
+                placeholder="105"
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="unitsPerBox">
+                Botellas por caja
+              </label>
+              <input
+                id="unitsPerBox"
+                name="unitsPerBox"
+                inputMode="numeric"
+                placeholder="12"
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="bottleCapacityMl">
+                Capacidad de botella (ml)
+              </label>
+              <input
+                id="bottleCapacityMl"
+                name="bottleCapacityMl"
+                inputMode="decimal"
+                placeholder="850"
                 className="w-full rounded border border-black/20 px-3 py-2 text-sm"
               />
             </div>
@@ -83,6 +122,33 @@ export default async function ProduccionPage() {
           </button>
         </form>
       )}
+
+      <div className="max-w-xs rounded-lg border border-black/10 p-4">
+        <h2 className="text-sm font-semibold mb-2">Eficiencia de llenado de aceite</h2>
+        <p className="text-xs text-black/50 mb-3">
+          Porcentaje del volumen nominal de la botella que realmente se consume en aceite, usado
+          al generar la receta de un producto.
+        </p>
+        {canEdit ? (
+          <form action={updateOilEfficiency} className="flex items-center gap-2">
+            <input
+              name="oilFillEfficiencyPercent"
+              defaultValue={oilFillEfficiencyPercent}
+              inputMode="decimal"
+              className="w-24 rounded border border-black/20 px-3 py-2 text-sm"
+            />
+            <span className="text-sm">%</span>
+            <button
+              type="submit"
+              className="rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+            >
+              Guardar
+            </button>
+          </form>
+        ) : (
+          <p className="text-lg font-semibold">{oilFillEfficiencyPercent}%</p>
+        )}
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

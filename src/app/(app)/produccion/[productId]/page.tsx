@@ -4,7 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getProductStock } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
-import { deleteRecipeLine, upsertRecipeLine } from "./actions";
+import {
+  deleteRecipeLine,
+  generateRecipeFromPresentation,
+  updateProduct,
+  upsertRecipeLine,
+} from "./actions";
 
 export default async function ProductDetailPage({
   params,
@@ -37,11 +42,181 @@ export default async function ProductDetailPage({
             <h1 className="text-xl font-semibold">{product.name}</h1>
             <p className="text-sm text-black/60">
               {product.oilType} — {product.presentation}
+              {product.boxesPerPallet && product.unitsPerBox && (
+                <>
+                  {" "}
+                  ({product.boxesPerPallet} cajas × {product.unitsPerBox} unidades ={" "}
+                  {product.boxesPerPallet * product.unitsPerBox} unidades por pallet)
+                </>
+              )}
             </p>
           </div>
           <p className="text-lg font-semibold">{formatQuantity(stock)}</p>
         </div>
       </div>
+
+      {canEdit && (
+        <form
+          action={updateProduct}
+          className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+        >
+          <h2 className="text-sm font-semibold">Editar producto</h2>
+          <input type="hidden" name="productId" value={product.id} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1 col-span-2">
+              <label className="text-sm" htmlFor="edit-name">
+                Marca
+              </label>
+              <input
+                id="edit-name"
+                name="name"
+                required
+                defaultValue={product.name}
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="edit-oilType">
+                Tipo de aceite
+              </label>
+              <input
+                id="edit-oilType"
+                name="oilType"
+                required
+                defaultValue={product.oilType}
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="edit-presentation">
+                Presentación
+              </label>
+              <input
+                id="edit-presentation"
+                name="presentation"
+                required
+                defaultValue={product.presentation}
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="edit-boxesPerPallet">
+                Cajas por pallet
+              </label>
+              <input
+                id="edit-boxesPerPallet"
+                name="boxesPerPallet"
+                inputMode="numeric"
+                defaultValue={product.boxesPerPallet ?? ""}
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="edit-unitsPerBox">
+                Botellas por caja
+              </label>
+              <input
+                id="edit-unitsPerBox"
+                name="unitsPerBox"
+                inputMode="numeric"
+                defaultValue={product.unitsPerBox ?? ""}
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="edit-bottleCapacityMl">
+                Capacidad de botella (ml)
+              </label>
+              <input
+                id="edit-bottleCapacityMl"
+                name="bottleCapacityMl"
+                inputMode="decimal"
+                defaultValue={product.bottleCapacityMl?.toString() ?? ""}
+                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              />
+            </div>
+          </div>
+          <button
+            type="submit"
+            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+          >
+            Guardar cambios
+          </button>
+        </form>
+      )}
+
+      {canEdit && product.boxesPerPallet && product.unitsPerBox && (
+        <form
+          action={generateRecipeFromPresentation}
+          className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+        >
+          <h2 className="text-sm font-semibold">Generar receta desde presentación</h2>
+          <p className="text-xs text-black/50">
+            Calcula automáticamente la cantidad de cada insumo por pallet armado a partir de
+            cajas/botellas/capacidad y la eficiencia de llenado. Dejá en blanco los insumos que
+            no apliquen.
+          </p>
+          <input type="hidden" name="productId" value={product.id} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Pallet de madera">
+              <select name="woodPalletItemId" defaultValue="" className={selectClass}>
+                <option value="">— No aplica —</option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Botella / bidón">
+              <select name="bottleItemId" defaultValue="" className={selectClass}>
+                <option value="">— No aplica —</option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Tapa">
+              <select name="capItemId" defaultValue="" className={selectClass}>
+                <option value="">— No aplica —</option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Etiqueta">
+              <select name="labelItemId" defaultValue="" className={selectClass}>
+                <option value="">— No aplica —</option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Aceite">
+              <select name="oilItemId" defaultValue="" className={selectClass}>
+                <option value="">— No aplica —</option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          <button
+            type="submit"
+            className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
+          >
+            Generar receta
+          </button>
+        </form>
+      )}
 
       {canEdit && (
         <form
@@ -81,6 +256,10 @@ export default async function ProductDetailPage({
               />
             </div>
           </div>
+          <p className="text-xs text-black/50">
+            &quot;Unidad de producto&quot; acá es 1 pallet armado (así se carga la producción
+            diaria de este producto).
+          </p>
           <button
             type="submit"
             className="w-fit rounded bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/80"
@@ -135,3 +314,14 @@ export default async function ProductDetailPage({
     </div>
   );
 }
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-sm">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+const selectClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";

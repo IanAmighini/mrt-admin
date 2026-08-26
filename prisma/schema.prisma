@@ -208,12 +208,15 @@ model ItemMovement {
 }
 
 model Product {
-  id           String   @id @default(cuid())
-  name         String
-  oilType      String
-  presentation String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String   @id @default(cuid())
+  name             String
+  oilType          String
+  presentation     String
+  boxesPerPallet   Int?
+  unitsPerBox      Int?
+  bottleCapacityMl Decimal? @db.Decimal(10, 2)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   recipe          RecipeItem[]
   movements       ProductMovement[]
@@ -221,6 +224,11 @@ model Product {
   boxTypes        BoxType[]
   documents       Document[]
   prices          Price[]
+}
+
+model Setting {
+  key   String @id
+  value String
 }
 
 model RecipeItem {

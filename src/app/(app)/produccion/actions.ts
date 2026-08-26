@@ -5,11 +5,19 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
+import { setSetting } from "@/lib/settings";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new Error("Falta la fecha.");
   return new Date(`${str}T00:00:00`);
+}
+
+function parseOptionalInt(value: FormDataEntryValue | null): number | null {
+  const str = String(value || "").trim();
+  if (!str) return null;
+  const n = parseInt(str, 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 export async function createProduct(formData: FormData) {
@@ -18,12 +26,38 @@ export async function createProduct(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const oilType = String(formData.get("oilType") || "").trim();
   const presentation = String(formData.get("presentation") || "").trim();
+  const boxesPerPallet = parseOptionalInt(formData.get("boxesPerPallet"));
+  const unitsPerBox = parseOptionalInt(formData.get("unitsPerBox"));
+  const bottleCapacityMlRaw = String(formData.get("bottleCapacityMl") || "").trim();
 
   if (!name) throw new Error("El nombre es obligatorio.");
   if (!oilType) throw new Error("El tipo de aceite es obligatorio.");
   if (!presentation) throw new Error("La presentación es obligatoria.");
 
-  await prisma.product.create({ data: { name, oilType, presentation } });
+  await prisma.product.create({
+    data: {
+      name,
+      oilType,
+      presentation,
+      boxesPerPallet,
+      unitsPerBox,
+      bottleCapacityMl: bottleCapacityMlRaw || null,
+    },
+  });
+
+  revalidatePath("/produccion");
+}
+
+export async function updateOilEfficiency(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const value = String(formData.get("oilFillEfficiencyPercent") || "").trim();
+  const num = toDecimal(value);
+  if (!num.greaterThan(0) || num.greaterThan(100)) {
+    throw new Error("La eficiencia debe ser un porcentaje entre 0 y 100.");
+  }
+
+  await setSetting("oilFillEfficiencyPercent", value);
 
   revalidatePath("/produccion");
 }

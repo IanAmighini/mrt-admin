@@ -4,6 +4,111 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
+import { getSetting } from "@/lib/settings";
+
+function parseOptionalInt(value: FormDataEntryValue | null): number | null {
+  const str = String(value || "").trim();
+  if (!str) return null;
+  const n = parseInt(str, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+export async function updateProduct(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const productId = String(formData.get("productId") || "");
+  const name = String(formData.get("name") || "").trim();
+  const oilType = String(formData.get("oilType") || "").trim();
+  const presentation = String(formData.get("presentation") || "").trim();
+  const boxesPerPallet = parseOptionalInt(formData.get("boxesPerPallet"));
+  const unitsPerBox = parseOptionalInt(formData.get("unitsPerBox"));
+  const bottleCapacityMlRaw = String(formData.get("bottleCapacityMl") || "").trim();
+
+  if (!productId) throw new Error("Falta el producto.");
+  if (!name) throw new Error("El nombre es obligatorio.");
+  if (!oilType) throw new Error("El tipo de aceite es obligatorio.");
+  if (!presentation) throw new Error("La presentación es obligatoria.");
+
+  await prisma.product.update({
+    where: { id: productId },
+    data: {
+      name,
+      oilType,
+      presentation,
+      boxesPerPallet,
+      unitsPerBox,
+      bottleCapacityMl: bottleCapacityMlRaw || null,
+    },
+  });
+
+  revalidatePath(`/produccion/${productId}`);
+  revalidatePath("/produccion");
+}
+
+export async function generateRecipeFromPresentation(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const productId = String(formData.get("productId") || "");
+  if (!productId) throw new Error("Falta el producto.");
+
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new Error("El producto ya no existe.");
+  if (!product.boxesPerPallet || !product.unitsPerBox) {
+    throw new Error(
+      "Este producto no tiene cargado cajas por pallet / botellas por caja — completalo en 'Editar producto'."
+    );
+  }
+
+  const unitsPerPallet = product.boxesPerPallet * product.unitsPerBox;
+
+  const woodPalletItemId = String(formData.get("woodPalletItemId") || "");
+  const bottleItemId = String(formData.get("bottleItemId") || "");
+  const capItemId = String(formData.get("capItemId") || "");
+  const labelItemId = String(formData.get("labelItemId") || "");
+  const oilItemId = String(formData.get("oilItemId") || "");
+
+  const lines: { itemId: string; quantityPerUnit: ReturnType<typeof toDecimal> }[] = [];
+
+  if (woodPalletItemId) {
+    lines.push({ itemId: woodPalletItemId, quantityPerUnit: toDecimal(1) });
+  }
+  for (const itemId of [bottleItemId, capItemId, labelItemId]) {
+    if (itemId) {
+      lines.push({ itemId, quantityPerUnit: toDecimal(unitsPerPallet) });
+    }
+  }
+  if (oilItemId) {
+    if (!product.bottleCapacityMl) {
+      throw new Error(
+        "Este producto no tiene cargada la capacidad de la botella — completala en 'Editar producto'."
+      );
+    }
+    const efficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
+    const oilLiters = toDecimal(unitsPerPallet)
+      .times(product.bottleCapacityMl)
+      .times(efficiencyPercent)
+      .dividedBy(100)
+      .dividedBy(1000);
+    lines.push({ itemId: oilItemId, quantityPerUnit: oilLiters });
+  }
+
+  if (lines.length === 0) {
+    throw new Error("Elegí al menos un insumo para generar la receta.");
+  }
+
+  await prisma.$transaction(
+    lines.map((line) =>
+      prisma.recipeItem.upsert({
+        where: { productId_itemId: { productId, itemId: line.itemId } },
+        update: { quantityPerUnit: line.quantityPerUnit },
+        create: { productId, itemId: line.itemId, quantityPerUnit: line.quantityPerUnit },
+      })
+    )
+  );
+
+  revalidatePath(`/produccion/${productId}`);
+  revalidatePath("/produccion");
+}
 
 export async function upsertRecipeLine(formData: FormData) {
   await requireRole(["ADMIN", "CARGA_DIARIA"]);
