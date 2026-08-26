@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getAllItemStocks } from "@/lib/stock";
+import { getAllItemStocks, getAllProductStockLevels } from "@/lib/stock";
+import { getLitrosEnvasados } from "@/lib/reports";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { createItem } from "./actions";
 
@@ -9,21 +10,79 @@ export default async function StockPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
-  const [items, stocks] = await Promise.all([
+  const [items, stocks, products, productLevels, litros] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getAllItemStocks(),
+    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    getAllProductStockLevels(),
+    getLitrosEnvasados(),
   ]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
       <div>
-        <h1 className="text-xl font-semibold mb-1">Stock de insumos</h1>
+        <h1 className="text-xl font-semibold mb-1">Stock</h1>
         <p className="text-sm text-black/60">
-          El stock se calcula a partir del historial de movimientos (kardex) de cada insumo.
+          Producto terminado e insumos — el stock se calcula a partir del historial de movimientos
+          (kardex) de cada uno.
         </p>
       </div>
 
-      {canEdit && (
+      <div className="rounded-lg border border-black/10 p-4 max-w-xs">
+        <p className="text-sm font-semibold mb-1">Litros envasados</p>
+        <p className="text-2xl font-semibold">{formatQuantity(litros.esteMes, "L")}</p>
+        <p className="text-xs text-black/50 mt-1">
+          este mes — {formatQuantity(litros.total, "L")} total histórico
+        </p>
+      </div>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Producto terminado</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-black/10 text-left text-black/60">
+                <th className="py-2 pr-4">Producto</th>
+                <th className="py-2 pr-4">Suelto</th>
+                <th className="py-2 pr-4">En cajas</th>
+                <th className="py-2 pr-4">En pallets armados</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((product) => {
+                const levels = productLevels.get(product.id);
+                return (
+                  <tr key={product.id} className="border-b border-black/5">
+                    <td className="py-2 pr-4">
+                      <Link
+                        href={`/produccion/${product.id}`}
+                        className="underline underline-offset-2"
+                      >
+                        {product.name}
+                      </Link>
+                    </td>
+                    <td className="py-2 pr-4">{formatQuantity(levels?.suelto ?? 0)}</td>
+                    <td className="py-2 pr-4">{formatQuantity(levels?.enCajas ?? 0)}</td>
+                    <td className="py-2 pr-4">{formatQuantity(levels?.enPallets ?? 0)}</td>
+                  </tr>
+                );
+              })}
+              {products.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center text-black/40">
+                    Todavía no hay productos cargados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="space-y-6">
+        <h2 className="text-lg font-semibold">Insumos</h2>
+
+        {canEdit && (
         <form action={createItem} className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4">
           <h2 className="text-sm font-semibold">Nuevo insumo</h2>
           <div className="grid grid-cols-2 gap-3">
@@ -134,6 +193,8 @@ export default async function StockPage() {
           </tbody>
         </table>
       </div>
+    </section>
     </div>
   );
 }
+
