@@ -10,18 +10,17 @@ const ALL_ROLES: UserRole[] = ["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"];
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Inicio", roles: ALL_ROLES },
+  { href: "/dashboard-clientes", label: "Dashboard Clientes", roles: ALL_ROLES },
+  { href: "/dashboard-proveedores", label: "Dashboard Proveedores", roles: ALL_ROLES },
+  { href: "/stock", label: "Stock", roles: ALL_ROLES },
   { href: "/clientes", label: "Clientes", roles: ALL_ROLES },
   { href: "/proveedores", label: "Proveedores", roles: ALL_ROLES },
   { href: "/entregas", label: "Entregas", roles: ALL_ROLES },
   { href: "/compras", label: "Compras", roles: ALL_ROLES },
   { href: "/pagos-clientes", label: "Pagos de Clientes", roles: ALL_ROLES },
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ALL_ROLES },
-  { href: "/cuentas-corrientes", label: "Cuentas corrientes", roles: ALL_ROLES },
-  { href: "/stock", label: "Stock", roles: ALL_ROLES },
   { href: "/produccion", label: "Producción", roles: ALL_ROLES },
   { href: "/pallets", label: "Pallets", roles: ALL_ROLES },
-  { href: "/dashboard-clientes", label: "Dashboard Clientes", roles: ALL_ROLES },
-  { href: "/dashboard-proveedores", label: "Dashboard Proveedores", roles: ALL_ROLES },
   { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
 ];
 

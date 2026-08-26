@@ -78,5 +78,4 @@ export async function createEntity(formData: FormData) {
 
   revalidatePath("/clientes");
   revalidatePath("/proveedores");
-  revalidatePath("/cuentas-corrientes");
 }

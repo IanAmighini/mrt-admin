@@ -58,8 +58,11 @@ export default async function EntityLedgerPage({
   return (
     <div className="space-y-10">
       <div>
-        <Link href="/cuentas-corrientes" className="text-sm underline underline-offset-2">
-          ← Cuentas corrientes
+        <Link
+          href={entity.type === "PROVEEDOR" ? "/proveedores" : "/clientes"}
+          className="text-sm underline underline-offset-2"
+        >
+          ← {entity.type === "PROVEEDOR" ? "Proveedores" : "Clientes"}
         </Link>
         <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
       </div>

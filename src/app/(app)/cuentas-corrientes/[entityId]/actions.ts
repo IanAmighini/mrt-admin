@@ -83,7 +83,6 @@ export async function createDocument(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
-  revalidatePath("/cuentas-corrientes");
 }
 
 export async function createRemito(formData: FormData) {
@@ -167,7 +166,6 @@ export async function createRemito(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
-  revalidatePath("/cuentas-corrientes");
   revalidatePath("/entregas");
   revalidatePath("/dashboard-clientes");
 }
@@ -267,7 +265,6 @@ export async function createCompra(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
-  revalidatePath("/cuentas-corrientes");
   revalidatePath("/stock");
   revalidatePath("/compras");
   revalidatePath("/dashboard-proveedores");
@@ -354,7 +351,6 @@ export async function createFactura(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
-  revalidatePath("/cuentas-corrientes");
 }
 
 export async function createPayment(formData: FormData) {
@@ -412,7 +408,6 @@ export async function createPayment(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
-  revalidatePath("/cuentas-corrientes");
   revalidatePath("/pagos-clientes");
   revalidatePath("/pagos-proveedores");
   revalidatePath("/dashboard-clientes");
@@ -447,7 +442,6 @@ export async function moveRemitoToBlanco(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
-  revalidatePath("/cuentas-corrientes");
 }
 
 export async function createPrice(formData: FormData) {
