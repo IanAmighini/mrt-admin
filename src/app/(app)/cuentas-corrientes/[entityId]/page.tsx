@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { Account, Entity, Item, Product } from "@prisma/client";
+import type { Account, Entity, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import {
@@ -13,17 +13,10 @@ import {
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { DEFAULT_IVA_RATE, formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
-import {
-  createCompra,
-  createDocument,
-  createFactura,
-  createPayment,
-  createPrice,
-  createRemito,
-  moveRemitoToBlanco,
-} from "./actions";
-import { RemitoLinesFields } from "./RemitoLinesFields";
-import { CompraLinesFields } from "./CompraLinesFields";
+import { createDocument, createFactura, createPrice, moveRemitoToBlanco } from "./actions";
+import { RemitoForm } from "@/components/RemitoForm";
+import { CompraForm } from "@/components/CompraForm";
+import { PaymentForm } from "@/components/PaymentForm";
 
 export default async function EntityLedgerPage({
   params,
@@ -72,108 +65,15 @@ export default async function EntityLedgerPage({
       </div>
 
       {canEdit && entity.type !== "PROVEEDOR" && (
-        <NewRemitoForm entityId={entity.id} products={products} priceMapByCircuit={priceMapByCircuit} />
+        <RemitoForm entityId={entity.id} products={products} priceMapByCircuit={priceMapByCircuit} />
       )}
       {canEdit && entity.type !== "CLIENTE" && (
-        <NewCompraForm entityId={entity.id} items={items} />
+        <CompraForm entityId={entity.id} items={items} />
       )}
 
       <CircuitPanel entity={entity} account={blancoAccount} products={products} canEdit={canEdit} />
       <CircuitPanel entity={entity} account={negroAccount} products={products} canEdit={canEdit} />
     </div>
-  );
-}
-
-function NewRemitoForm({
-  entityId,
-  products,
-  priceMapByCircuit,
-}: {
-  entityId: string;
-  products: Product[];
-  priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
-}) {
-  return (
-    <form action={createRemito} className="space-y-4 rounded-lg border border-black/10 p-4">
-      <h2 className="text-sm font-semibold">Nuevo remito</h2>
-      <p className="text-xs text-black/50">
-        Un mismo remito puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)
-        — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea.
-      </p>
-      <input type="hidden" name="entityId" value={entityId} />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Número">
-          <input name="number" required className={inputClass} />
-        </Field>
-        <Field label="Fecha">
-          <input type="date" name="date" required className={inputClass} />
-        </Field>
-        <Field label="Vencimiento (opcional)">
-          <input type="date" name="dueDate" className={inputClass} />
-        </Field>
-        <Field label="Moneda">
-          <select name="currency" defaultValue="ARS" className={selectClass}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </Field>
-        <Field label="Cotización (si es USD)">
-          <input name="exchangeRate" className={inputClass} />
-        </Field>
-      </div>
-      <RemitoLinesFields
-        products={products.map((p) => ({
-          id: p.id,
-          name: p.name,
-          boxesPerPallet: p.boxesPerPallet,
-          unitsPerBox: p.unitsPerBox,
-        }))}
-        priceMapByCircuit={priceMapByCircuit}
-      />
-      <button type="submit" className={submitClass}>
-        Crear remito
-      </button>
-    </form>
-  );
-}
-
-function NewCompraForm({ entityId, items }: { entityId: string; items: Item[] }) {
-  return (
-    <form action={createCompra} className="space-y-4 rounded-lg border border-black/10 p-4">
-      <h2 className="text-sm font-semibold">Nueva compra de insumos</h2>
-      <p className="text-xs text-black/50">
-        Al cargar la compra se suma el stock de cada insumo automáticamente y se imputa a la
-        cuenta corriente del proveedor — una misma compra puede tener líneas facturadas (van a
-        Blanco) y sin facturar (van a Negro).
-      </p>
-      <input type="hidden" name="entityId" value={entityId} />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Número">
-          <input name="number" required className={inputClass} />
-        </Field>
-        <Field label="Fecha">
-          <input type="date" name="date" required className={inputClass} />
-        </Field>
-        <Field label="Vencimiento (opcional)">
-          <input type="date" name="dueDate" className={inputClass} />
-        </Field>
-        <Field label="Moneda">
-          <select name="currency" defaultValue="ARS" className={selectClass}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </Field>
-        <Field label="Cotización (si es USD)">
-          <input name="exchangeRate" className={inputClass} />
-        </Field>
-      </div>
-      <CompraLinesFields
-        items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
-      />
-      <button type="submit" className={submitClass}>
-        Crear compra
-      </button>
-    </form>
   );
 }
 
@@ -222,7 +122,7 @@ async function CircuitPanel({
               invoiceableRemitos={invoiceableRemitos}
             />
           )}
-          <NewPaymentForm accountId={account.id} pendingDocuments={documents} />
+          <PaymentForm accountId={account.id} pendingDocuments={documents} />
         </div>
       )}
 
@@ -498,83 +398,6 @@ function NewFacturaForm({
       )}
       <button type="submit" className={submitClass}>
         Crear factura
-      </button>
-    </form>
-  );
-}
-
-function NewPaymentForm({
-  accountId,
-  pendingDocuments,
-}: {
-  accountId: string;
-  pendingDocuments: Awaited<ReturnType<typeof getAccountDocuments>>;
-}) {
-  const pending = pendingDocuments
-    .map((doc) => ({ doc, amount: getDocumentPending(doc) }))
-    .filter((d) => d.amount.greaterThan(0));
-
-  return (
-    <form action={createPayment} className="space-y-3 rounded-lg border border-black/10 p-4">
-      <h3 className="text-sm font-semibold">Nuevo pago / cobro</h3>
-      <input type="hidden" name="accountId" value={accountId} />
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Fecha">
-          <input type="date" name="date" required className={inputClass} />
-        </Field>
-        <Field label="Monto">
-          <input name="amount" required inputMode="decimal" className={inputClass} />
-        </Field>
-        <Field label="Moneda">
-          <select name="currency" defaultValue="ARS" className={selectClass}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </Field>
-        <Field label="Forma de pago">
-          <select name="method" defaultValue="EFECTIVO" className={selectClass}>
-            <option value="EFECTIVO">Efectivo</option>
-            <option value="TRANSFERENCIA">Transferencia</option>
-            <option value="CHEQUE">Cheque</option>
-            <option value="OTRO">Otro</option>
-          </select>
-        </Field>
-      </div>
-      <Field label="N° de cheque / comprobante (si aplica)">
-        <input name="reference" className={inputClass} />
-      </Field>
-      <fieldset className="space-y-1">
-        <legend className="text-sm mb-1">Imputación</legend>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="radio" name="allocationMode" value="fifo" defaultChecked />
-          Automática (FIFO — al comprobante pendiente más antiguo)
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="radio" name="allocationMode" value="manual" />
-          Manual — elegir comprobante(s) y monto
-        </label>
-      </fieldset>
-      {pending.length > 0 && (
-        <div className="space-y-1 max-h-40 overflow-y-auto">
-          {pending.map(({ doc, amount }) => (
-            <div key={doc.id} className="flex items-center gap-2 text-sm">
-              <input type="hidden" name="manualDocumentId" value={doc.id} />
-              <span className="flex-1">
-                {DOCUMENT_TYPE_LABELS[doc.type]} #{doc.number} — pendiente{" "}
-                {formatMoney(amount, doc.currency)}
-              </span>
-              <input
-                name="manualAmount"
-                placeholder="0.00"
-                inputMode="decimal"
-                className="w-24 rounded border border-black/20 px-2 py-1 text-xs"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-      <button type="submit" className={submitClass}>
-        Registrar pago
       </button>
     </form>
   );
