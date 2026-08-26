@@ -14,7 +14,10 @@ export async function createEntity(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const type = String(formData.get("type") || "") as EntityType;
   const taxId = String(formData.get("taxId") || "").trim() || null;
-  const contact = String(formData.get("contact") || "").trim() || null;
+  const email = String(formData.get("email") || "").trim() || null;
+  const phone = String(formData.get("phone") || "").trim() || null;
+  const address = String(formData.get("address") || "").trim() || null;
+  const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
@@ -28,7 +31,7 @@ export async function createEntity(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     const entity = await tx.entity.create({
-      data: { name, type, taxId, contact, isWithholdingAgent },
+      data: { name, type, taxId, email, phone, address, notes, isWithholdingAgent },
     });
     const [blanco, negro] = await Promise.all([
       tx.account.create({ data: { entityId: entity.id, circuit: "BLANCO" } }),
