@@ -146,6 +146,36 @@ export async function getInvoiceableRemitos(accountId: string): Promise<Invoicea
     .filter((doc) => doc.pending.greaterThan(0));
 }
 
+/** Remitos (entregas a clientes) más recientes, entre todas las entidades. */
+export async function getRecentRemitos(limit = 30) {
+  return prisma.document.findMany({
+    where: { type: "REMITO", lines: { some: {} } },
+    include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
+    orderBy: { date: "desc" },
+    take: limit,
+  });
+}
+
+/** Compras de insumos a proveedores más recientes, entre todas las entidades. */
+export async function getRecentCompras(limit = 30) {
+  return prisma.document.findMany({
+    where: { type: "REMITO", purchaseLines: { some: {} } },
+    include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
+    orderBy: { date: "desc" },
+    take: limit,
+  });
+}
+
+/** Pagos más recientes, filtrados por tipo de entidad (clientes o proveedores). */
+export async function getRecentPayments(typeFilter: EntityType[], limit = 30) {
+  return prisma.payment.findMany({
+    where: { account: { entity: { type: { in: typeFilter } } } },
+    include: { account: { include: { entity: true } }, allocations: { include: { document: true } } },
+    orderBy: { date: "desc" },
+    take: limit,
+  });
+}
+
 /** Saldo Blanco/Negro/Total por entidad, ordenado por mayor deuda. */
 export async function getEntitySaldos(typeFilter?: EntityType[]) {
   const entities = await prisma.entity.findMany({
