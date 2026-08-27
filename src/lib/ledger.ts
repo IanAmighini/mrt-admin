@@ -146,24 +146,130 @@ export async function getInvoiceableRemitos(accountId: string): Promise<Invoicea
     .filter((doc) => doc.pending.greaterThan(0));
 }
 
-/** Remitos (entregas a clientes) más recientes, entre todas las entidades. */
-export async function getRecentRemitos(limit = 30) {
+/** Remitos (entregas a clientes) más recientes, entre todas las entidades o de una sola. */
+export async function getRecentRemitos(limit = 30, entityId?: string) {
   return prisma.document.findMany({
-    where: { type: "REMITO", lines: { some: {} } },
+    where: {
+      type: "REMITO",
+      lines: { some: {} },
+      ...(entityId ? { account: { entityId } } : {}),
+    },
     include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
     orderBy: { date: "desc" },
     take: limit,
   });
 }
 
-/** Compras de insumos a proveedores más recientes, entre todas las entidades. */
-export async function getRecentCompras(limit = 30) {
+/** Compras de insumos a proveedores más recientes, entre todas las entidades o de una sola. */
+export async function getRecentCompras(limit = 30, entityId?: string) {
   return prisma.document.findMany({
-    where: { type: "REMITO", purchaseLines: { some: {} } },
+    where: {
+      type: "REMITO",
+      purchaseLines: { some: {} },
+      ...(entityId ? { account: { entityId } } : {}),
+    },
     include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
     orderBy: { date: "desc" },
     take: limit,
   });
+}
+
+/** Litros entregados a un cliente: misma fórmula que se usa para descontar aceite en producción
+ * (cantidad de la línea × cajas/pallet × botellas/caja = unidades, × litros de aceite por unidad
+ * según la receta del producto). Ignora líneas de productos sin receta de aceite o sin
+ * cajas/pallet y botellas/caja cargados. */
+export async function getLitrosEntregados(entityId: string): Promise<Prisma.Decimal> {
+  const documents = await prisma.document.findMany({
+    where: { type: "REMITO", account: { entityId }, lines: { some: {} } },
+    include: {
+      lines: {
+        include: {
+          product: { include: { recipe: { include: { item: true } } } },
+        },
+      },
+    },
+  });
+
+  let litros = ZERO;
+  for (const doc of documents) {
+    for (const line of doc.lines) {
+      const { product } = line;
+      if (!product.boxesPerPallet || !product.unitsPerBox) continue;
+      const oilRecipe = product.recipe.find((r) => r.item.unit === "L");
+      if (!oilRecipe) continue;
+      const unidades = toDecimal(line.quantity)
+        .times(product.boxesPerPallet)
+        .times(product.unitsPerBox);
+      litros = litros.plus(unidades.times(oilRecipe.quantityPerUnit));
+    }
+  }
+  return litros;
+}
+
+/** Cantidad de remitos (entregas) distintos de una entidad — una compra/entrega mixta
+ * Blanco+Negro comparte número entre 2 filas de Document, se cuenta como una sola. */
+export async function getEntregasCount(entityId: string): Promise<number> {
+  const documents = await prisma.document.findMany({
+    where: { type: "REMITO", account: { entityId }, lines: { some: {} } },
+    select: { number: true },
+  });
+  return new Set(documents.map((d) => d.number)).size;
+}
+
+export type ComprasSummary = {
+  count: number;
+  totalByUnit: Map<string, Prisma.Decimal>;
+};
+
+/** Cantidad de compras distintas de un proveedor, y cantidad total entregada agrupada por
+ * unidad de insumo (para mostrar un número único cuando el proveedor siempre trae lo mismo). */
+export async function getComprasSummary(entityId: string): Promise<ComprasSummary> {
+  const documents = await prisma.document.findMany({
+    where: { type: "REMITO", account: { entityId }, purchaseLines: { some: {} } },
+    include: { purchaseLines: { include: { item: true } } },
+  });
+
+  const totalByUnit = new Map<string, Prisma.Decimal>();
+  for (const doc of documents) {
+    for (const line of doc.purchaseLines) {
+      const current = totalByUnit.get(line.item.unit) ?? ZERO;
+      totalByUnit.set(line.item.unit, current.plus(line.quantity));
+    }
+  }
+
+  return { count: new Set(documents.map((d) => d.number)).size, totalByUnit };
+}
+
+export type RecentMovement =
+  | { kind: "document"; date: Date; document: DocumentWithRelations }
+  | { kind: "payment"; date: Date; payment: Prisma.PaymentGetPayload<{ include: { allocations: true } }> };
+
+/** Documentos y pagos mezclados de las dos cuentas de una entidad, para el panel de actividad
+ * reciente de la ficha individual (sin saldo acumulado — eso es de la tabla de movimientos). */
+export async function getRecentMovementsForEntity(
+  entityId: string,
+  limit = 8
+): Promise<RecentMovement[]> {
+  const accounts = await prisma.account.findMany({ where: { entityId } });
+  const accountIds = accounts.map((a) => a.id);
+
+  const [documents, payments] = await Promise.all([
+    prisma.document.findMany({
+      where: { accountId: { in: accountIds } },
+      include: DOCUMENT_QUERY_INCLUDE,
+    }),
+    prisma.payment.findMany({
+      where: { accountId: { in: accountIds } },
+      include: { allocations: true },
+    }),
+  ]);
+
+  const movements: RecentMovement[] = [
+    ...documents.map((document) => ({ kind: "document" as const, date: document.date, document })),
+    ...payments.map((payment) => ({ kind: "payment" as const, date: payment.date, payment })),
+  ];
+
+  return movements.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, limit);
 }
 
 /** Pagos más recientes, filtrados por tipo de entidad (clientes o proveedores). */

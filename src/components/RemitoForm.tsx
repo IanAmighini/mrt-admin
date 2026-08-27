@@ -2,18 +2,19 @@ import type { Product } from "@prisma/client";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { RemitoLinesFields } from "./RemitoLinesFields";
 
-export function RemitoForm({
+type PriceMap = Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
+
+export function RemitoFormFields({
   entityId,
   products,
   priceMapByCircuit,
 }: {
   entityId: string;
   products: Product[];
-  priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
+  priceMapByCircuit: PriceMap;
 }) {
   return (
-    <form action={createRemito} className="space-y-4 rounded-lg border border-black/10 p-4">
-      <h2 className="text-sm font-semibold">Nuevo remito</h2>
+    <>
       <p className="text-xs text-black/50">
         Un mismo remito puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)
         — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea.
@@ -51,6 +52,23 @@ export function RemitoForm({
       <button type="submit" className={submitClass}>
         Crear remito
       </button>
+    </>
+  );
+}
+
+export function RemitoForm({
+  entityId,
+  products,
+  priceMapByCircuit,
+}: {
+  entityId: string;
+  products: Product[];
+  priceMapByCircuit: PriceMap;
+}) {
+  return (
+    <form action={createRemito} className="space-y-4 rounded-lg border border-black/10 p-4">
+      <h2 className="text-sm font-semibold">Nuevo remito</h2>
+      <RemitoFormFields entityId={entityId} products={products} priceMapByCircuit={priceMapByCircuit} />
     </form>
   );
 }

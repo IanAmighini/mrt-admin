@@ -79,3 +79,39 @@ export async function createEntity(formData: FormData) {
   revalidatePath("/clientes");
   revalidatePath("/proveedores");
 }
+
+export async function updateEntity(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new Error("Falta la entidad.");
+
+  const name = String(formData.get("name") || "").trim();
+  const type = String(formData.get("type") || "") as EntityType;
+  const taxId = String(formData.get("taxId") || "").trim() || null;
+  const email = String(formData.get("email") || "").trim() || null;
+  const phone = String(formData.get("phone") || "").trim() || null;
+  const address = String(formData.get("address") || "").trim() || null;
+  const notes = String(formData.get("notes") || "").trim() || null;
+  const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
+  const supplierCategoryRaw = String(formData.get("supplierCategory") || "").trim();
+  const supplierCategory = SUPPLIER_CATEGORIES.includes(supplierCategoryRaw as SupplierCategory)
+    ? (supplierCategoryRaw as SupplierCategory)
+    : null;
+
+  if (!name) {
+    throw new Error("El nombre es obligatorio.");
+  }
+  if (!ENTITY_TYPES.includes(type)) {
+    throw new Error("Tipo inválido.");
+  }
+
+  await prisma.entity.update({
+    where: { id: entityId },
+    data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
+  });
+
+  revalidatePath("/clientes");
+  revalidatePath("/proveedores");
+  revalidatePath(`/cuentas-corrientes/${entityId}`);
+}

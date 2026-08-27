@@ -6,17 +6,28 @@ import { requireUser } from "@/lib/auth-helpers";
 import {
   getAccountBalance,
   getAccountDocuments,
+  getComprasSummary,
   getDocumentEffect,
   getDocumentPending,
+  getEntregasCount,
   getInvoiceableRemitos,
+  getLitrosEntregados,
+  getRecentCompras,
+  getRecentMovementsForEntity,
+  getRecentRemitos,
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { DEFAULT_IVA_RATE, formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { createDocument, createFactura, createPrice, moveRemitoToBlanco } from "./actions";
-import { RemitoForm } from "@/components/RemitoForm";
-import { CompraForm } from "@/components/CompraForm";
+import { updateEntity } from "@/app/(app)/clientes/actions";
 import { PaymentForm } from "@/components/PaymentForm";
+import { FormModal } from "@/components/Modal";
+import { EntityFormFields } from "@/components/EntityFormFields";
+import { EntitySummaryCards } from "@/components/EntitySummaryCards";
+import { EntregasPanel } from "@/components/EntregasPanel";
+import { ComprasPanel } from "@/components/ComprasPanel";
+import { CuentaCorrientePanel } from "@/components/CuentaCorrientePanel";
 
 export default async function EntityLedgerPage({
   params,
@@ -37,12 +48,16 @@ export default async function EntityLedgerPage({
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
   if (!blancoAccount || !negroAccount) notFound();
 
-  const [products, items, blancoPrices, negroPrices] = await Promise.all([
-    prisma.product.findMany({ orderBy: { name: "asc" } }),
-    prisma.item.findMany({ orderBy: { name: "asc" } }),
-    getCurrentPricesForAccount(entity.id, "BLANCO"),
-    getCurrentPricesForAccount(entity.id, "NEGRO"),
-  ]);
+  const [products, items, blancoPrices, negroPrices, blancoSaldo, negroSaldo, recentMovements] =
+    await Promise.all([
+      prisma.product.findMany({ orderBy: { name: "asc" } }),
+      prisma.item.findMany({ orderBy: { name: "asc" } }),
+      getCurrentPricesForAccount(entity.id, "BLANCO"),
+      getCurrentPricesForAccount(entity.id, "NEGRO"),
+      getAccountBalance(blancoAccount.id),
+      getAccountBalance(negroAccount.id),
+      getRecentMovementsForEntity(entity.id, 8),
+    ]);
 
   const priceMapByCircuit: Record<
     "BLANCO" | "NEGRO",
@@ -55,24 +70,99 @@ export default async function EntityLedgerPage({
     priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
   }
 
+  const isCliente = entity.type !== "PROVEEDOR";
+  const isProveedor = entity.type !== "CLIENTE";
+
+  let card3Label = "Entregas";
+  let card3Value = "0";
+  let card4Label = "Litros entregados";
+  let card4Value = "0";
+
+  if (entity.type === "CLIENTE") {
+    const [entregasCount, litros] = await Promise.all([
+      getEntregasCount(entity.id),
+      getLitrosEntregados(entity.id),
+    ]);
+    card3Value = String(entregasCount);
+    card4Value = formatQuantity(litros, "L");
+  } else if (entity.type === "PROVEEDOR") {
+    const compras = await getComprasSummary(entity.id);
+    card3Label = "Compras";
+    card3Value = String(compras.count);
+    card4Label = "Insumo entregado";
+    card4Value =
+      compras.totalByUnit.size === 1
+        ? formatQuantity(
+            Array.from(compras.totalByUnit.values())[0],
+            Array.from(compras.totalByUnit.keys())[0]
+          )
+        : String(compras.count);
+  } else {
+    const [entregasCount, compras] = await Promise.all([
+      getEntregasCount(entity.id),
+      getComprasSummary(entity.id),
+    ]);
+    card3Label = "Entregas";
+    card3Value = String(entregasCount);
+    card4Label = "Compras";
+    card4Value = String(compras.count);
+  }
+
+  const [recentRemitos, recentCompras] = await Promise.all([
+    isCliente ? getRecentRemitos(5, entity.id) : Promise.resolve([]),
+    isProveedor ? getRecentCompras(5, entity.id) : Promise.resolve([]),
+  ]);
+
   return (
     <div className="space-y-10">
-      <div>
-        <Link
-          href={entity.type === "PROVEEDOR" ? "/proveedores" : "/clientes"}
-          className="text-sm underline underline-offset-2"
-        >
-          ← {entity.type === "PROVEEDOR" ? "Proveedores" : "Clientes"}
-        </Link>
-        <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <Link
+            href={entity.type === "PROVEEDOR" ? "/proveedores" : "/clientes"}
+            className="text-sm underline underline-offset-2"
+          >
+            ← {entity.type === "PROVEEDOR" ? "Proveedores" : "Clientes"}
+          </Link>
+          <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
+        </div>
+        {canEdit && (
+          <FormModal triggerLabel="Editar" title="Editar cliente/proveedor" action={updateEntity}>
+            <EntityFormFields
+              defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
+              showSupplierCategory={entity.type !== "CLIENTE"}
+              entity={entity}
+            />
+          </FormModal>
+        )}
       </div>
 
-      {canEdit && entity.type !== "PROVEEDOR" && (
-        <RemitoForm entityId={entity.id} products={products} priceMapByCircuit={priceMapByCircuit} />
-      )}
-      {canEdit && entity.type !== "CLIENTE" && (
-        <CompraForm entityId={entity.id} items={items} />
-      )}
+      <EntitySummaryCards
+        entityId={entity.id}
+        blancoSaldo={blancoSaldo}
+        negroSaldo={negroSaldo}
+        card3Label={card3Label}
+        card3Value={card3Value}
+        card4Label={card4Label}
+        card4Value={card4Value}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          {isCliente && (
+            <EntregasPanel
+              entityId={entity.id}
+              products={products}
+              priceMapByCircuit={priceMapByCircuit}
+              remitos={recentRemitos}
+              canEdit={canEdit}
+            />
+          )}
+          {isProveedor && (
+            <ComprasPanel entityId={entity.id} items={items} compras={recentCompras} canEdit={canEdit} />
+          )}
+        </div>
+        <CuentaCorrientePanel entityId={entity.id} movements={recentMovements} canEdit={canEdit} />
+      </div>
 
       <CircuitPanel entity={entity} account={blancoAccount} products={products} canEdit={canEdit} />
       <CircuitPanel entity={entity} account={negroAccount} products={products} canEdit={canEdit} />

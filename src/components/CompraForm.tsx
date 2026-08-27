@@ -2,10 +2,9 @@ import type { Item } from "@prisma/client";
 import { createCompra } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { CompraLinesFields } from "./CompraLinesFields";
 
-export function CompraForm({ entityId, items }: { entityId: string; items: Item[] }) {
+export function CompraFormFields({ entityId, items }: { entityId: string; items: Item[] }) {
   return (
-    <form action={createCompra} className="space-y-4 rounded-lg border border-black/10 p-4">
-      <h2 className="text-sm font-semibold">Nueva compra de insumos</h2>
+    <>
       <p className="text-xs text-black/50">
         Al cargar la compra se suma el stock de cada insumo automáticamente y se imputa a la
         cuenta corriente del proveedor — una misma compra puede tener líneas facturadas (van a
@@ -36,6 +35,15 @@ export function CompraForm({ entityId, items }: { entityId: string; items: Item[
       <button type="submit" className={submitClass}>
         Crear compra
       </button>
+    </>
+  );
+}
+
+export function CompraForm({ entityId, items }: { entityId: string; items: Item[] }) {
+  return (
+    <form action={createCompra} className="space-y-4 rounded-lg border border-black/10 p-4">
+      <h2 className="text-sm font-semibold">Nueva compra de insumos</h2>
+      <CompraFormFields entityId={entityId} items={items} />
     </form>
   );
 }

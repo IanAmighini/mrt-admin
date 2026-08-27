@@ -85,6 +85,66 @@ export async function createDocument(formData: FormData) {
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
 }
 
+/**
+ * Variante de createDocument para el botón "+ Movimiento" de la ficha individual: ahí no se
+ * conoce el accountId de antemano (se elige la cuenta en el mismo formulario), así que se
+ * resuelve acá — mismo patrón que createPaymentForEntity.
+ */
+export async function createDocumentForEntity(formData: FormData) {
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new Error("Falta el cliente o proveedor.");
+
+  const circuit = String(formData.get("circuit") || "");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Cuenta inválida.");
+
+  const account = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId, circuit } },
+  });
+  if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
+
+  const type = String(formData.get("type") || "") as DocumentType;
+  if (!NON_FACTURA_TYPES.includes(type)) throw new Error("Tipo de comprobante inválido.");
+
+  const number = String(formData.get("number") || "").trim();
+  if (!number) throw new Error("El número es obligatorio.");
+
+  const date = parseFormDate(formData.get("date"));
+  const dueDate = parseOptionalFormDate(formData.get("dueDate"));
+  const currency = String(formData.get("currency") || "ARS") as Currency;
+  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
+  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+
+  const amount = parseAmount(formData.get("amount"), "monto");
+  const reason = String(formData.get("reason") || "").trim() || null;
+
+  if (type === "AJUSTE" && !reason) {
+    throw new Error("El ajuste manual requiere un motivo.");
+  }
+
+  const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
+  const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
+
+  await prisma.document.create({
+    data: {
+      accountId: account.id,
+      type,
+      number,
+      date,
+      dueDate,
+      currency,
+      exchangeRate,
+      netAmount: amount,
+      totalAmount,
+      reason,
+      createdById: user.id,
+    },
+  });
+
+  revalidatePath(`/cuentas-corrientes/${entityId}`);
+}
+
 export async function createRemito(formData: FormData) {
   const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
 

@@ -12,27 +12,33 @@ const PAYMENT_METHODS: PaymentMethod[] = ["EFECTIVO", "TRANSFERENCIA", "CHEQUE",
 export function PaymentFormFields({
   entities,
   entityNoun,
+  fixedEntityId,
 }: {
-  entities: Entity[];
-  entityNoun: string;
+  entities?: Entity[];
+  entityNoun?: string;
+  fixedEntityId?: string;
 }) {
   return (
     <>
-      <div className="space-y-1">
-        <label className="text-sm" htmlFor="entityId">
-          {entityNoun} *
-        </label>
-        <select id="entityId" name="entityId" required defaultValue="" className={inputClass}>
-          <option value="" disabled>
-            Seleccionar {entityNoun.toLowerCase()}...
-          </option>
-          {entities.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name}
+      {fixedEntityId ? (
+        <input type="hidden" name="entityId" value={fixedEntityId} />
+      ) : (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="entityId">
+            {entityNoun} *
+          </label>
+          <select id="entityId" name="entityId" required defaultValue="" className={inputClass}>
+            <option value="" disabled>
+              Seleccionar {entityNoun?.toLowerCase()}...
             </option>
-          ))}
-        </select>
-      </div>
+            {entities?.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>
