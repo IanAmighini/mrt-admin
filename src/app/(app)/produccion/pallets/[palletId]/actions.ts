@@ -40,6 +40,6 @@ export async function dismantlePallet(formData: FormData) {
     }
   });
 
-  revalidatePath(`/pallets/${pallet.id}`);
-  revalidatePath("/pallets");
+  revalidatePath(`/produccion/pallets/${pallet.id}`);
+  revalidatePath("/produccion");
 }

@@ -30,7 +30,7 @@ export async function createBoxType(formData: FormData) {
 
   await prisma.boxType.create({ data: { productId, label, unitsPerBox } });
 
-  revalidatePath("/pallets");
+  revalidatePath("/produccion");
 }
 
 export async function createBoxMovement(formData: FormData) {
@@ -76,7 +76,6 @@ export async function createBoxMovement(formData: FormData) {
     });
   });
 
-  revalidatePath("/pallets");
   revalidatePath("/produccion");
 }
 
@@ -167,6 +166,6 @@ export async function createPallet(formData: FormData) {
     }
   });
 
-  revalidatePath("/pallets");
+  revalidatePath("/produccion");
   revalidatePath("/stock");
 }

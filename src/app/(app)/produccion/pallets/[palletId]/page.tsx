@@ -29,8 +29,8 @@ export default async function PalletDetailPage({
   return (
     <div className="space-y-8">
       <div>
-        <Link href="/pallets" className="text-sm underline underline-offset-2">
-          ← Pallets
+        <Link href="/produccion" className="text-sm underline underline-offset-2">
+          ← Producción
         </Link>
         <div className="mt-2 flex items-baseline justify-between">
           <div>
