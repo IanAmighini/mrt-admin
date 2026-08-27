@@ -8,6 +8,7 @@ import { PALLET_STATUS_LABELS } from "@/lib/labels";
 import { createProduct, createProductionRun, updateOilEfficiency } from "./actions";
 import { createBoxType, createBoxMovement, createPallet } from "./pallet-actions";
 import { ProductionLinesFields } from "./ProductionLinesFields";
+import { NewProductFields } from "@/components/NewProductFields";
 import { getSetting } from "@/lib/settings";
 
 const PALLET_BOX_ROWS = 4;
@@ -59,78 +60,7 @@ export default async function ProduccionPage() {
         >
           <h2 className="text-sm font-semibold">Nuevo producto</h2>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1 col-span-2">
-              <label className="text-sm" htmlFor="name">
-                Marca
-              </label>
-              <input
-                id="name"
-                name="name"
-                required
-                placeholder="Bonanza"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="oilType">
-                Tipo de aceite
-              </label>
-              <input
-                id="oilType"
-                name="oilType"
-                required
-                placeholder="Girasol"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="presentation">
-                Presentación
-              </label>
-              <input
-                id="presentation"
-                name="presentation"
-                required
-                placeholder="105x12x850"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="boxesPerPallet">
-                Cajas por pallet
-              </label>
-              <input
-                id="boxesPerPallet"
-                name="boxesPerPallet"
-                inputMode="numeric"
-                placeholder="105"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="unitsPerBox">
-                Botellas por caja
-              </label>
-              <input
-                id="unitsPerBox"
-                name="unitsPerBox"
-                inputMode="numeric"
-                placeholder="12"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="bottleCapacityMl">
-                Capacidad de botella (ml)
-              </label>
-              <input
-                id="bottleCapacityMl"
-                name="bottleCapacityMl"
-                inputMode="decimal"
-                placeholder="850"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
-              />
-            </div>
+            <NewProductFields />
           </div>
           <button
             type="submit"
