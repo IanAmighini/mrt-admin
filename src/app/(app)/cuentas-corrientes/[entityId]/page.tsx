@@ -15,7 +15,7 @@ import {
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { getPedidosPendientesByEntity } from "@/lib/pedidos";
-import { formatMoney, formatQuantity } from "@/lib/money";
+import { formatMoney, formatQuantity, toDecimal } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
 import { createPrice } from "./actions";
@@ -46,18 +46,47 @@ export default async function EntityLedgerPage({
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
   if (!blancoAccount || !negroAccount) notFound();
 
-  const [products, items, blancoSaldo, negroSaldo, recentMovements, invoiceableRemitos] =
-    await Promise.all([
-      prisma.product.findMany({ orderBy: { name: "asc" } }),
-      prisma.item.findMany({ orderBy: { name: "asc" } }),
-      getAccountBalance(blancoAccount.id),
-      getAccountBalance(negroAccount.id),
-      getRecentMovementsForEntity(entity.id, 8),
-      getInvoiceableRemitos(blancoAccount.id),
-    ]);
+  const isCliente = entity.type !== "PROVEEDOR";
+  const isProveedor = entity.type !== "CLIENTE";
+  const isSoloCliente = entity.type === "CLIENTE";
 
-  const blancoPrices = await getCurrentPricesForAccount(entity.id, "BLANCO");
-  const negroPrices = await getCurrentPricesForAccount(entity.id, "NEGRO");
+  // Todas las consultas son independientes entre sí — se disparan juntas para no encadenar
+  // varias tandas de ida y vuelta a la base (cada tanda suma latencia de red completa).
+  const [
+    products,
+    items,
+    blancoSaldo,
+    negroSaldo,
+    recentMovements,
+    invoiceableRemitos,
+    blancoPrices,
+    negroPrices,
+    blancoPriceHistory,
+    negroPriceHistory,
+    entregasCount,
+    litros,
+    compras,
+    recentRemitos,
+    recentCompras,
+    pedidosPendientes,
+  ] = await Promise.all([
+    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.item.findMany({ orderBy: { name: "asc" } }),
+    getAccountBalance(blancoAccount.id),
+    getAccountBalance(negroAccount.id),
+    getRecentMovementsForEntity(entity.id, 8),
+    getInvoiceableRemitos(blancoAccount.id),
+    getCurrentPricesForAccount(entity.id, "BLANCO"),
+    getCurrentPricesForAccount(entity.id, "NEGRO"),
+    getPriceHistory(entity.id, "BLANCO"),
+    getPriceHistory(entity.id, "NEGRO"),
+    isCliente ? getEntregasCount(entity.id) : Promise.resolve(0),
+    isSoloCliente ? getLitrosEntregados(entity.id) : Promise.resolve(toDecimal(0)),
+    isProveedor ? getComprasSummary(entity.id) : Promise.resolve({ count: 0, totalByUnit: new Map() }),
+    isCliente ? getRecentRemitos(5, entity.id) : Promise.resolve([]),
+    isProveedor ? getRecentCompras(5, entity.id) : Promise.resolve([]),
+    isCliente ? getPedidosPendientesByEntity(entity.id) : Promise.resolve([]),
+  ]);
 
   const priceMapByCircuit: Record<
     "BLANCO" | "NEGRO",
@@ -70,23 +99,15 @@ export default async function EntityLedgerPage({
     priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
   }
 
-  const isCliente = entity.type !== "PROVEEDOR";
-  const isProveedor = entity.type !== "CLIENTE";
-
   let card3Label = "Entregas";
   let card3Value = "0";
   let card4Label = "Litros entregados";
   let card4Value = "0";
 
   if (entity.type === "CLIENTE") {
-    const [entregasCount, litros] = await Promise.all([
-      getEntregasCount(entity.id),
-      getLitrosEntregados(entity.id),
-    ]);
     card3Value = String(entregasCount);
     card4Value = formatQuantity(litros, "L");
   } else if (entity.type === "PROVEEDOR") {
-    const compras = await getComprasSummary(entity.id);
     card3Label = "Compras";
     card3Value = String(compras.count);
     card4Label = "Insumo entregado";
@@ -98,21 +119,11 @@ export default async function EntityLedgerPage({
           )
         : String(compras.count);
   } else {
-    const [entregasCount, compras] = await Promise.all([
-      getEntregasCount(entity.id),
-      getComprasSummary(entity.id),
-    ]);
     card3Label = "Entregas";
     card3Value = String(entregasCount);
     card4Label = "Compras";
     card4Value = String(compras.count);
   }
-
-  const [recentRemitos, recentCompras, pedidosPendientes] = await Promise.all([
-    isCliente ? getRecentRemitos(5, entity.id) : Promise.resolve([]),
-    isProveedor ? getRecentCompras(5, entity.id) : Promise.resolve([]),
-    isCliente ? getPedidosPendientesByEntity(entity.id) : Promise.resolve([]),
-  ]);
 
   return (
     <div className="space-y-10">
@@ -184,33 +195,36 @@ export default async function EntityLedgerPage({
         circuit="BLANCO"
         products={products}
         canEdit={canEdit}
+        currentPrices={blancoPrices}
+        priceHistory={blancoPriceHistory}
       />
       <PricesSection
         entityId={entity.id}
         circuit="NEGRO"
         products={products}
         canEdit={canEdit}
+        currentPrices={negroPrices}
+        priceHistory={negroPriceHistory}
       />
     </div>
   );
 }
 
-async function PricesSection({
+function PricesSection({
   entityId,
   circuit,
   products,
   canEdit,
+  currentPrices,
+  priceHistory,
 }: {
   entityId: string;
   circuit: Account["circuit"];
   products: Product[];
   canEdit: boolean;
+  currentPrices: Awaited<ReturnType<typeof getCurrentPricesForAccount>>;
+  priceHistory: Awaited<ReturnType<typeof getPriceHistory>>;
 }) {
-  const [currentPrices, priceHistory] = await Promise.all([
-    getCurrentPricesForAccount(entityId, circuit),
-    getPriceHistory(entityId, circuit),
-  ]);
-
   const pricedProducts = products.filter((p) => currentPrices.has(p.id));
 
   return (
