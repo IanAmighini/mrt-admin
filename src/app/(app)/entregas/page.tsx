@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { getRecentRemitos } from "@/lib/ledger";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney, formatQuantity } from "@/lib/money";
+import { formatProductLabel } from "@/lib/product-label";
 import { RemitoForm } from "@/components/RemitoForm";
 
 export default async function EntregasPage({
@@ -120,7 +121,7 @@ export default async function EntregasPage({
                     #{doc.number}
                     <p className="text-xs font-normal text-black/50">
                       {doc.lines
-                        .map((l) => `${l.product.name} × ${formatQuantity(l.quantity)}`)
+                        .map((l) => `${formatProductLabel(l.product)} × ${formatQuantity(l.quantity)}`)
                         .join(" · ")}
                     </p>
                   </td>

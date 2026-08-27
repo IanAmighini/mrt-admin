@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllBoxStocks, getAllProductStocks } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
+import { formatProductLabel } from "@/lib/product-label";
 import { PALLET_STATUS_LABELS } from "@/lib/labels";
 import { createProduct, createProductionRun, updateOilEfficiency } from "./actions";
 import { createBoxType, createBoxMovement, createPallet } from "./pallet-actions";
@@ -243,7 +244,14 @@ export default async function ProduccionPage() {
               className="w-full rounded border border-black/20 px-3 py-2 text-sm"
             />
           </div>
-          <ProductionLinesFields products={products.map((p) => ({ id: p.id, name: p.name }))} />
+          <ProductionLinesFields
+            products={products.map((p) => ({
+              id: p.id,
+              name: p.name,
+              oilType: p.oilType,
+              bottleCapacityMl: p.bottleCapacityMl ? p.bottleCapacityMl.toNumber() : null,
+            }))}
+          />
           <button
             type="submit"
             className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
@@ -270,7 +278,7 @@ export default async function ProduccionPage() {
                   <td className="py-2 pr-4">{run.date.toLocaleDateString("es-AR")}</td>
                   <td className="py-2 pr-4">
                     {run.lines
-                      .map((line) => `${line.product.name}: ${formatQuantity(line.quantity)}`)
+                      .map((line) => `${formatProductLabel(line.product)}: ${formatQuantity(line.quantity)}`)
                       .join(" · ")}
                   </td>
                   <td className="py-2 pr-4">{run.createdBy.name}</td>
@@ -315,7 +323,7 @@ export default async function ProduccionPage() {
                 >
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
-                      {product.name}
+                      {formatProductLabel(product)}
                     </option>
                   ))}
                 </select>
@@ -373,7 +381,7 @@ export default async function ProduccionPage() {
                 >
                   {boxTypes.map((boxType) => (
                     <option key={boxType.id} value={boxType.id}>
-                      {boxType.label} — {boxType.product.name}
+                      {boxType.label} — {formatProductLabel(boxType.product)}
                     </option>
                   ))}
                 </select>
@@ -440,7 +448,7 @@ export default async function ProduccionPage() {
                 {boxTypes.map((boxType) => (
                   <tr key={boxType.id} className="border-b border-black/5">
                     <td className="py-2 pr-4">{boxType.label}</td>
-                    <td className="py-2 pr-4">{boxType.product.name}</td>
+                    <td className="py-2 pr-4">{formatProductLabel(boxType.product)}</td>
                     <td className="py-2 pr-4">{formatQuantity(boxType.unitsPerBox)}</td>
                     <td className="py-2 pr-4">
                       {formatQuantity(boxStocks.get(boxType.id) ?? 0, "cajas")}
@@ -558,7 +566,7 @@ export default async function ProduccionPage() {
                     <option value="">— Tipo de caja —</option>
                     {boxTypes.map((boxType) => (
                       <option key={boxType.id} value={boxType.id}>
-                        {boxType.label} — {boxType.product.name}
+                        {boxType.label} — {formatProductLabel(boxType.product)}
                       </option>
                     ))}
                   </select>

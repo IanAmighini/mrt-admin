@@ -7,6 +7,7 @@ import { getAccountDocuments, getDocumentEffect } from "@/lib/ledger";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { formatProductLabel } from "@/lib/product-label";
 import {
   deleteCompra,
   deleteDocument,
@@ -94,7 +95,7 @@ export default async function AccountLedgerPage({
     const effect = getDocumentEffect(doc);
     const lineSummary =
       doc.lines.length > 0
-        ? doc.lines.map((l) => `${l.product.name} × ${formatQuantity(l.quantity)}`).join(" · ")
+        ? doc.lines.map((l) => `${formatProductLabel(l.product)} × ${formatQuantity(l.quantity)}`).join(" · ")
         : doc.purchaseLines.length > 0
           ? doc.purchaseLines.map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`).join(" · ")
           : doc.reason;

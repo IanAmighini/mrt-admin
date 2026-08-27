@@ -8,6 +8,7 @@ import {
 } from "@/lib/ledger";
 import { getIngresosDelMes, getProductoEntregadoValorizado, getRentabilidadDelMes } from "@/lib/reports";
 import { formatMoney, formatQuantity } from "@/lib/money";
+import { formatProductLabel } from "@/lib/product-label";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 
 export default async function DashboardClientesPage() {
@@ -258,7 +259,7 @@ async function ReportesGerenciales() {
               <tbody>
                 {entregado.map(({ product, quantity, byCurrency }) => (
                   <tr key={product.id} className="border-b border-black/5">
-                    <td className="py-2 pr-4">{product.name}</td>
+                    <td className="py-2 pr-4">{formatProductLabel(product)}</td>
                     <td className="py-2 pr-4">{formatQuantity(quantity)}</td>
                     <td className="py-2 pr-4">
                       {Array.from(byCurrency.entries())

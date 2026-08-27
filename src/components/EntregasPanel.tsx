@@ -1,6 +1,7 @@
 import type { Product } from "@prisma/client";
 import type { getRecentRemitos } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { formatProductLabel } from "@/lib/product-label";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { FormModal } from "./Modal";
 import { RemitoFormFields } from "./RemitoForm";
@@ -41,7 +42,7 @@ export function EntregasPanel({
               <p className="text-sm font-medium">Remito #{doc.number}</p>
               <p className="text-xs text-black/50">
                 {doc.date.toLocaleDateString("es-AR")} ·{" "}
-                {doc.lines.map((l) => l.product.name).join(", ") || "—"}
+                {doc.lines.map((l) => formatProductLabel(l.product)).join(", ") || "—"}
               </p>
             </div>
             <p className="text-sm font-semibold">{formatMoney(doc.totalAmount, doc.currency)}</p>

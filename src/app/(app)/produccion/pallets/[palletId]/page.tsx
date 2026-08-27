@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { formatQuantity } from "@/lib/money";
+import { formatProductLabel } from "@/lib/product-label";
 import { PALLET_STATUS_LABELS } from "@/lib/labels";
 import { dismantlePallet } from "./actions";
 
@@ -90,7 +91,7 @@ export default async function PalletDetailPage({
               {pallet.boxes.map((box) => (
                 <tr key={box.id} className="border-b border-black/5">
                   <td className="py-2 pr-4">{box.boxType.label}</td>
-                  <td className="py-2 pr-4">{box.boxType.product.name}</td>
+                  <td className="py-2 pr-4">{formatProductLabel(box.boxType.product)}</td>
                   <td className="py-2 pr-4">{formatQuantity(box.quantity)}</td>
                 </tr>
               ))}

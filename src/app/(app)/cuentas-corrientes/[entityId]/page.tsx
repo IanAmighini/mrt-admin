@@ -16,6 +16,7 @@ import {
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
+import { formatProductLabel as productLabel } from "@/lib/product-label";
 import { createPrice } from "./actions";
 import { updateEntity } from "@/app/(app)/clientes/actions";
 import { FormModal } from "@/components/Modal";
@@ -24,12 +25,6 @@ import { EntitySummaryCards } from "@/components/EntitySummaryCards";
 import { EntregasPanel } from "@/components/EntregasPanel";
 import { ComprasPanel } from "@/components/ComprasPanel";
 import { CuentaCorrientePanel } from "@/components/CuentaCorrientePanel";
-
-function productLabel(product: Product): string {
-  return product.bottleCapacityMl
-    ? `${product.name} — ${formatQuantity(product.bottleCapacityMl)}ml`
-    : product.name;
-}
 
 export default async function EntityLedgerPage({
   params,

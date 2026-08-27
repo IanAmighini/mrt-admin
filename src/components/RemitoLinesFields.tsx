@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { formatProductLabel } from "@/lib/product-label";
 
 type Circuit = "BLANCO" | "NEGRO";
 
 type ProductInfo = {
   id: string;
   name: string;
+  oilType: string;
+  bottleCapacityMl: number | null;
   boxesPerPallet: number | null;
   unitsPerBox: number | null;
 };
@@ -99,7 +102,7 @@ export function RemitoLinesFields({
                 <option value="">— Producto —</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name}
+                    {formatProductLabel(p)}
                   </option>
                 ))}
               </select>

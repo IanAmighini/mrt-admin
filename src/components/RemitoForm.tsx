@@ -52,6 +52,8 @@ export function RemitoFormFields({
         products={products.map((p) => ({
           id: p.id,
           name: p.name,
+          oilType: p.oilType,
+          bottleCapacityMl: p.bottleCapacityMl ? p.bottleCapacityMl.toNumber() : null,
           boxesPerPallet: p.boxesPerPallet,
           unitsPerBox: p.unitsPerBox,
         }))}

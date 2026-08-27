@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatProductLabel } from "@/lib/product-label";
 
 const selectClass = "flex-1 rounded border border-black/20 px-3 py-2 text-sm";
 const quantityClass = "w-32 rounded border border-black/20 px-3 py-2 text-sm";
@@ -8,7 +9,7 @@ const quantityClass = "w-32 rounded border border-black/20 px-3 py-2 text-sm";
 export function ProductionLinesFields({
   products,
 }: {
-  products: { id: string; name: string }[];
+  products: { id: string; name: string; oilType: string; bottleCapacityMl: number | null }[];
 }) {
   const [rowKeys, setRowKeys] = useState([0]);
   const [nextKey, setNextKey] = useState(1);
@@ -21,7 +22,7 @@ export function ProductionLinesFields({
             <option value="">— Producto —</option>
             {products.map((product) => (
               <option key={product.id} value={product.id}>
-                {product.name}
+                {formatProductLabel(product)}
               </option>
             ))}
           </select>

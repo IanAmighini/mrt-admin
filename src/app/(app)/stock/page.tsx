@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStockLevels } from "@/lib/stock";
 import { getLitrosEnvasados } from "@/lib/reports";
 import { formatMoney, formatQuantity } from "@/lib/money";
+import { formatProductLabel } from "@/lib/product-label";
 import { createItem } from "./actions";
 
 export default async function StockPage() {
@@ -58,7 +59,7 @@ export default async function StockPage() {
                         href={`/produccion/${product.id}`}
                         className="underline underline-offset-2"
                       >
-                        {product.name}
+                        {formatProductLabel(product)}
                       </Link>
                     </td>
                     <td className="py-2 pr-4">{formatQuantity(levels?.suelto ?? 0)}</td>
