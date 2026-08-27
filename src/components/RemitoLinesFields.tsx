@@ -20,7 +20,7 @@ type Row = {
   key: number;
   productId: string;
   quantity: string;
-  unitPrice: string;
+  pricePerBottle: string;
   circuit: Circuit;
 };
 
@@ -35,7 +35,7 @@ export function RemitoLinesFields({
   priceMapByCircuit: Record<Circuit, Record<string, PriceInfo>>;
 }) {
   const [rows, setRows] = useState<Row[]>([
-    { key: 0, productId: "", quantity: "", unitPrice: "", circuit: "BLANCO" },
+    { key: 0, productId: "", quantity: "", pricePerBottle: "", circuit: "BLANCO" },
   ]);
   const [nextKey, setNextKey] = useState(1);
 
@@ -46,7 +46,7 @@ export function RemitoLinesFields({
         const updated = { ...r, ...patch };
         if (patch.productId !== undefined || patch.circuit !== undefined) {
           const price = priceMapByCircuit[updated.circuit]?.[updated.productId];
-          if (price) updated.unitPrice = String(price.amount);
+          if (price) updated.pricePerBottle = String(price.amount);
         }
         return updated;
       })
@@ -56,7 +56,7 @@ export function RemitoLinesFields({
   function addRow() {
     setRows((prev) => [
       ...prev,
-      { key: nextKey, productId: "", quantity: "", unitPrice: "", circuit: "BLANCO" },
+      { key: nextKey, productId: "", quantity: "", pricePerBottle: "", circuit: "BLANCO" },
     ]);
     setNextKey((k) => k + 1);
   }
@@ -65,9 +65,15 @@ export function RemitoLinesFields({
     setRows((prev) => prev.filter((r) => r.key !== key));
   }
 
+  function botellasOf(row: Row): number {
+    const product = products.find((p) => p.id === row.productId);
+    const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
+    return (Number(row.quantity) || 0) * perPallet;
+  }
+
   const totals = rows.reduce(
     (acc, r) => {
-      const subtotal = (Number(r.quantity) || 0) * (Number(r.unitPrice) || 0);
+      const subtotal = botellasOf(r) * (Number(r.pricePerBottle) || 0);
       acc[r.circuit] += subtotal;
       acc.total += subtotal;
       return acc;
@@ -80,11 +86,10 @@ export function RemitoLinesFields({
       <p className="text-sm font-medium">Líneas del remito</p>
       {rows.map((row) => {
         const product = products.find((p) => p.id === row.productId);
-        const subtotal = (Number(row.quantity) || 0) * (Number(row.unitPrice) || 0);
-        const equivUnits =
-          product?.boxesPerPallet && product?.unitsPerBox && row.quantity
-            ? Number(row.quantity) * product.boxesPerPallet * product.unitsPerBox
-            : null;
+        const botellas = botellasOf(row);
+        const subtotal = botellas * (Number(row.pricePerBottle) || 0);
+        const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
+        const unitPrice = (Number(row.pricePerBottle) || 0) * perPallet;
 
         return (
           <div
@@ -108,7 +113,7 @@ export function RemitoLinesFields({
               </select>
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-black/60">Cantidad</label>
+              <label className="text-xs text-black/60">Pallets</label>
               <input
                 name="lineQuantity"
                 value={row.quantity}
@@ -116,16 +121,13 @@ export function RemitoLinesFields({
                 inputMode="decimal"
                 className={inputClass}
               />
-              {equivUnits !== null && (
-                <p className="text-xs text-black/40">{equivUnits} unidades</p>
-              )}
+              {botellas > 0 && <p className="text-xs text-black/40">{botellas} botellas</p>}
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-black/60">Precio unit.</label>
+              <label className="text-xs text-black/60">Precio/bot.</label>
               <input
-                name="lineUnitPrice"
-                value={row.unitPrice}
-                onChange={(e) => updateRow(row.key, { unitPrice: e.target.value })}
+                value={row.pricePerBottle}
+                onChange={(e) => updateRow(row.key, { pricePerBottle: e.target.value })}
                 inputMode="decimal"
                 className={inputClass}
               />
@@ -158,6 +160,7 @@ export function RemitoLinesFields({
                 </button>
               )}
             </div>
+            <input type="hidden" name="lineUnitPrice" value={unitPrice} />
           </div>
         );
       })}
