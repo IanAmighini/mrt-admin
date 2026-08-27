@@ -34,6 +34,26 @@ export async function getCurrentPricesForAccount(entityId: string, circuit: Circ
   return current;
 }
 
+/**
+ * Precio vigente hoy de cada producto, para cada entidad+circuito a la vez — para armar la
+ * sugerencia en un formulario donde todavía no se eligió cliente (ej. Nueva entrega).
+ */
+export async function getAllCurrentPrices() {
+  const prices = await prisma.price.findMany({
+    where: { validFrom: { lte: new Date() } },
+    orderBy: { validFrom: "desc" },
+  });
+
+  const current = new Map<string, (typeof prices)[number]>();
+  for (const price of prices) {
+    const key = `${price.entityId}|${price.circuit}|${price.productId}`;
+    if (!current.has(key)) {
+      current.set(key, price);
+    }
+  }
+  return current;
+}
+
 /** Historial completo de precios de una entidad+circuito, para mostrar en la ficha del cliente. */
 export async function getPriceHistory(entityId: string, circuit: Circuit) {
   return prisma.price.findMany({

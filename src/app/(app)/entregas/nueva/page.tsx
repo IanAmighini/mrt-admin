@@ -2,10 +2,11 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getCurrentPricesForAccount } from "@/lib/pricing";
-import { getPedidosPendientesByEntity } from "@/lib/pedidos";
+import { getAllCurrentPrices } from "@/lib/pricing";
+import { getAllPedidosPendientes } from "@/lib/pedidos";
+import { formatProductBrandLabel } from "@/lib/product-label";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
-import { RemitoFormFields } from "@/components/RemitoForm";
+import { NuevaEntregaForm } from "@/components/NuevaEntregaForm";
 
 async function submitRemito(formData: FormData) {
   "use server";
@@ -13,46 +14,48 @@ async function submitRemito(formData: FormData) {
   redirect("/entregas");
 }
 
-export default async function NuevaEntregaPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ entityId?: string }>;
-}) {
-  const { entityId } = await searchParams;
+export default async function NuevaEntregaPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
-  const clientes = await prisma.entity.findMany({
-    where: { type: { in: ["CLIENTE", "AMBOS"] } },
-    orderBy: { name: "asc" },
-  });
-  const selectedEntity = entityId ? clientes.find((c) => c.id === entityId) : undefined;
+  const [clientes, products, allPrices, allPedidos] = await Promise.all([
+    prisma.entity.findMany({
+      where: { type: { in: ["CLIENTE", "AMBOS"] } },
+      orderBy: { name: "asc" },
+    }),
+    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    getAllCurrentPrices(),
+    getAllPedidosPendientes(),
+  ]);
 
-  let priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> | null =
-    null;
-  let products: Awaited<ReturnType<typeof prisma.product.findMany>> = [];
-  let pedidosPendientes: Awaited<ReturnType<typeof getPedidosPendientesByEntity>> = [];
+  const pricesByEntity: Record<
+    string,
+    Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>
+  > = {};
+  for (const price of allPrices.values()) {
+    const byCircuit = (pricesByEntity[price.entityId] ??= { BLANCO: {}, NEGRO: {} });
+    byCircuit[price.circuit][price.productId] = { amount: price.amount.toNumber(), currency: price.currency };
+  }
 
-  if (selectedEntity) {
-    const [blancoPrices, negroPrices, allProducts, pendientes] = await Promise.all([
-      getCurrentPricesForAccount(selectedEntity.id, "BLANCO"),
-      getCurrentPricesForAccount(selectedEntity.id, "NEGRO"),
-      prisma.product.findMany({ orderBy: { name: "asc" } }),
-      getPedidosPendientesByEntity(selectedEntity.id),
-    ]);
-    products = allProducts;
-    pedidosPendientes = pendientes;
-    priceMapByCircuit = { BLANCO: {}, NEGRO: {} };
-    for (const [productId, price] of blancoPrices) {
-      priceMapByCircuit.BLANCO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
-    }
-    for (const [productId, price] of negroPrices) {
-      priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
-    }
+  const pedidosByEntity: Record<
+    string,
+    { id: string; orderNumber: string; status: string; lines: { productId: string; pallets: number; label: string }[] }[]
+  > = {};
+  for (const pedido of allPedidos) {
+    (pedidosByEntity[pedido.entityId] ??= []).push({
+      id: pedido.id,
+      orderNumber: pedido.orderNumber,
+      status: pedido.status,
+      lines: pedido.lines.map((l) => ({
+        productId: l.productId,
+        pallets: l.pallets.toNumber(),
+        label: formatProductBrandLabel(l.product),
+      })),
+    });
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
+    <div className="max-w-4xl space-y-6">
       <div>
         <Link href="/entregas" className="text-sm underline underline-offset-2">
           ← Volver a entregas
@@ -63,47 +66,20 @@ export default async function NuevaEntregaPage({
       {!canEdit && <p className="text-sm text-black/60">No tenés permisos para cargar entregas.</p>}
 
       {canEdit && (
-        <div className="rounded-lg border border-black/10 p-4 space-y-3">
-          <h2 className="text-sm font-semibold">Información general</h2>
-          <form className="flex flex-wrap items-end gap-3">
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="entityId">
-                Cliente
-              </label>
-              <select
-                id="entityId"
-                name="entityId"
-                defaultValue={selectedEntity?.id ?? ""}
-                className="w-64 rounded border border-black/20 px-3 py-2 text-sm"
-              >
-                <option value="">— Elegir cliente —</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="submit"
-              className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
-            >
-              {selectedEntity ? "Cambiar cliente" : "Elegir"}
-            </button>
-          </form>
-        </div>
-      )}
-
-      {canEdit && selectedEntity && priceMapByCircuit && (
-        <form action={submitRemito} className="rounded-lg border border-black/10 p-4 space-y-4">
-          <h2 className="text-sm font-semibold">Detalles de la entrega</h2>
-          <RemitoFormFields
-            entityId={selectedEntity.id}
-            products={products}
-            priceMapByCircuit={priceMapByCircuit}
-            pedidosPendientes={pedidosPendientes}
-          />
-        </form>
+        <NuevaEntregaForm
+          action={submitRemito}
+          clientes={clientes.map((c) => ({ id: c.id, name: c.name }))}
+          products={products.map((p) => ({
+            id: p.id,
+            name: p.name,
+            oilType: p.oilType,
+            presentation: p.presentation,
+            boxesPerPallet: p.boxesPerPallet,
+            unitsPerBox: p.unitsPerBox,
+          }))}
+          pricesByEntity={pricesByEntity}
+          pedidosByEntity={pedidosByEntity}
+        />
       )}
     </div>
   );

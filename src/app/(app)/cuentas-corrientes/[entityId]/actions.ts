@@ -223,7 +223,11 @@ export async function createRemito(formData: FormData) {
         unitPrice: l.unitPrice,
         subtotal: l.quantity.times(l.unitPrice),
       }));
-      const totalAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
+      const netAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
+      // Blanco = facturado, así que ya lleva IVA; Negro no factura, sin IVA.
+      const ivaRate = circuit === "BLANCO" ? toDecimal(DEFAULT_IVA_RATE) : null;
+      const ivaAmount = ivaRate ? netAmount.times(ivaRate).dividedBy(100) : null;
+      const totalAmount = ivaAmount ? netAmount.plus(ivaAmount) : netAmount;
 
       const document = await tx.document.create({
         data: {
@@ -234,7 +238,9 @@ export async function createRemito(formData: FormData) {
           dueDate: dueDateOverride ?? defaultDueDate(date, circuit),
           currency,
           exchangeRate,
-          netAmount: totalAmount,
+          netAmount,
+          ivaRate,
+          ivaAmount,
           totalAmount,
           reason,
           createdById: user.id,
