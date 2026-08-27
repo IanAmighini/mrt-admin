@@ -6,6 +6,7 @@ import type {
   ItemMovementType,
   PalletStatus,
   PaymentMethod,
+  PedidoStatus,
   ProductMovementType,
   SupplierCategory,
 } from "@prisma/client";
@@ -74,4 +75,16 @@ export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
   ETIQUETAS: "Etiquetas",
   PALLET_NORMALIZADO: "Pallet normalizado",
   OTRO: "Otro",
+};
+
+export const PEDIDO_STATUS_LABELS: Record<PedidoStatus, string> = {
+  EN_COLA: "En cola",
+  COMPLETADO: "Completado",
+  ENTREGADO: "Entregado",
+};
+
+export const PEDIDO_STATUS_COLORS: Record<PedidoStatus, string> = {
+  EN_COLA: "bg-amber-100 text-amber-800",
+  COMPLETADO: "bg-blue-100 text-blue-800",
+  ENTREGADO: "bg-green-100 text-green-800",
 };

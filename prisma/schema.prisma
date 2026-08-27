@@ -33,6 +33,7 @@ model User {
   boxMovements     BoxMovement[]
   pallets          Pallet[]
   prices           Price[]
+  pedidos          Pedido[]
 }
 
 enum EntityType {
@@ -67,6 +68,7 @@ model Entity {
   updatedAt          DateTime          @updatedAt
   accounts           Account[]
   prices             Price[]
+  pedidos            Pedido[]
 }
 
 enum Circuit {
@@ -274,6 +276,7 @@ model Product {
   documents       Document[]
   documentLines   DocumentLine[]
   prices          Price[]
+  pedidoLines     PedidoLine[]
 }
 
 model Setting {
@@ -416,4 +419,40 @@ model Price {
 
   @@unique([productId, entityId, circuit, validFrom])
   @@index([productId, entityId, circuit])
+}
+
+enum PedidoStatus {
+  EN_COLA
+  COMPLETADO
+  ENTREGADO
+}
+
+model Pedido {
+  id           String       @id @default(cuid())
+  date         DateTime
+  entityId     String
+  entity       Entity       @relation(fields: [entityId], references: [id])
+  orderNumber  String
+  status       PedidoStatus @default(EN_COLA)
+  deliveryDate DateTime?
+  comments     String?
+  createdById  String
+  createdBy    User         @relation(fields: [createdById], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  lines PedidoLine[]
+
+  @@index([entityId])
+}
+
+model PedidoLine {
+  id        String  @id @default(cuid())
+  pedidoId  String
+  pedido    Pedido  @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  pallets   Decimal @db.Decimal(14, 3)
+
+  @@index([pedidoId])
 }

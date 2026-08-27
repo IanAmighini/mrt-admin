@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/stock", label: "Stock", roles: ALL_ROLES },
   { href: "/clientes", label: "Clientes", roles: ALL_ROLES },
   { href: "/proveedores", label: "Proveedores", roles: ALL_ROLES },
+  { href: "/pedidos", label: "Pedidos", roles: ALL_ROLES },
   { href: "/entregas", label: "Entregas", roles: ALL_ROLES },
   { href: "/compras", label: "Compras", roles: ALL_ROLES },
   { href: "/pagos-clientes", label: "Pagos de Clientes", roles: ALL_ROLES },

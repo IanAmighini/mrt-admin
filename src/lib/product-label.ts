@@ -6,11 +6,20 @@ const OIL_TYPE_SHORT: Record<string, string> = {
   "Alto Oleico": "A.O.",
 };
 
-export type ProductLabelInput = {
+export type ProductBrandLabelInput = {
   name: string;
   oilType: string;
+};
+
+export type ProductLabelInput = ProductBrandLabelInput & {
   bottleCapacityMl: Prisma.Decimal | number | string | null;
 };
+
+/** Marca + tipo de aceite, sin el envase — ej. "Cassan A.O.". */
+export function formatProductBrandLabel(product: ProductBrandLabelInput): string {
+  const oilLabel = OIL_TYPE_SHORT[product.oilType] ?? product.oilType;
+  return `${product.name} ${oilLabel}`;
+}
 
 /**
  * Varios productos comparten marca y hasta el mismo envase (ml) pero son aceites distintos —
@@ -18,7 +27,6 @@ export type ProductLabelInput = {
  * cualquier lugar donde se elige o se lista un producto hay que poder distinguirlos.
  */
 export function formatProductLabel(product: ProductLabelInput): string {
-  const oilLabel = OIL_TYPE_SHORT[product.oilType] ?? product.oilType;
   const ml = product.bottleCapacityMl ? ` — ${formatQuantity(product.bottleCapacityMl)}ml` : "";
-  return `${product.name} ${oilLabel}${ml}`;
+  return `${formatProductBrandLabel(product)}${ml}`;
 }
