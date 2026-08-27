@@ -1,10 +1,8 @@
 import type { Product } from "@prisma/client";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import type { PedidoPendiente } from "@/lib/pedidos";
-import { formatProductBrandLabel } from "@/lib/product-label";
-import { formatQuantity } from "@/lib/money";
-import { PEDIDO_STATUS_LABELS } from "@/lib/labels";
 import { RemitoLinesFields } from "./RemitoLinesFields";
+import { PedidoLinkChecklist } from "./PedidoLinkChecklist";
 
 type PriceMap = Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
 
@@ -22,7 +20,14 @@ export function RemitoFormFields({
   /** Si viene, el formulario edita este remito en vez de crear uno nuevo — las líneas se cargan
    * de nuevo desde cero (no se prellenan), pero el encabezado sí. */
   editingDocumentId?: string;
-  defaultValues?: { number?: string; date?: string; dueDate?: string; currency?: string; exchangeRate?: string };
+  defaultValues?: {
+    number?: string;
+    date?: string;
+    dueDate?: string;
+    currency?: string;
+    exchangeRate?: string;
+    reason?: string;
+  };
   /** Pedidos pendientes (no entregados) de este cliente — al tildarlos se marcan como
    * "Entregado" automáticamente al crear el remito. No se muestra al editar un remito existente. */
   pedidosPendientes?: PedidoPendiente[];
@@ -67,29 +72,10 @@ export function RemitoFormFields({
         }))}
         priceMapByCircuit={priceMapByCircuit}
       />
-      {!editingDocumentId && pedidosPendientes && pedidosPendientes.length > 0 && (
-        <div className="space-y-2 rounded border border-black/10 p-3">
-          <p className="text-sm font-medium">¿Este remito entrega alguno de estos pedidos?</p>
-          <p className="text-xs text-black/50">
-            Los que tildes se marcan como &quot;Entregado&quot; automáticamente al crear el remito.
-          </p>
-          <div className="space-y-1">
-            {pedidosPendientes.map((pedido) => (
-              <label key={pedido.id} className="flex items-start gap-2 text-sm">
-                <input type="checkbox" name="pedidoId" value={pedido.id} className="mt-1" />
-                <span>
-                  #{pedido.orderNumber} — {PEDIDO_STATUS_LABELS[pedido.status]} —{" "}
-                  {pedido.lines
-                    .map(
-                      (l) => `${formatProductBrandLabel(l.product)} (${formatQuantity(l.pallets, "pallets")})`
-                    )
-                    .join(", ")}
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
+      {!editingDocumentId && <PedidoLinkChecklist pedidosPendientes={pedidosPendientes ?? []} />}
+      <Field label="Notas (opcional)">
+        <textarea name="reason" rows={2} defaultValue={defaultValues?.reason} className={inputClass} />
+      </Field>
       <button type="submit" className={submitClass}>
         {editingDocumentId ? "Guardar cambios" : "Crear remito"}
       </button>

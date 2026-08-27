@@ -147,12 +147,21 @@ export async function getInvoiceableRemitos(accountId: string): Promise<Invoicea
 }
 
 /** Remitos (entregas a clientes) más recientes, entre todas las entidades o de una sola. */
-export async function getRecentRemitos(limit = 30, entityId?: string) {
+export async function getRecentRemitos(limit = 30, entityId?: string, search?: string) {
+  const trimmedSearch = search?.trim();
   return prisma.document.findMany({
     where: {
       type: "REMITO",
       lines: { some: {} },
       ...(entityId ? { account: { entityId } } : {}),
+      ...(trimmedSearch
+        ? {
+            OR: [
+              { number: { contains: trimmedSearch, mode: "insensitive" } },
+              { account: { entity: { name: { contains: trimmedSearch, mode: "insensitive" } } } },
+            ],
+          }
+        : {}),
     },
     include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
     orderBy: { date: "desc" },

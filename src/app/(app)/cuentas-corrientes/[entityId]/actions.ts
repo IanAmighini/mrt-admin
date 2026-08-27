@@ -177,6 +177,7 @@ export async function createRemito(formData: FormData) {
   const currency = String(formData.get("currency") || "ARS") as Currency;
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+  const reason = String(formData.get("reason") || "").trim() || null;
 
   const productIds = formData.getAll("lineProductId").map(String);
   const quantities = formData.getAll("lineQuantity").map(String);
@@ -235,6 +236,7 @@ export async function createRemito(formData: FormData) {
           exchangeRate,
           netAmount: totalAmount,
           totalAmount,
+          reason,
           createdById: user.id,
         },
       });
