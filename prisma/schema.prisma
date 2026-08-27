@@ -137,6 +137,7 @@ model Document {
   allocations   PaymentAllocation[]
   lines         DocumentLine[]
   purchaseLines PurchaseLine[]
+  itemMovements ItemMovement[]
 
   @@index([accountId])
 }
@@ -245,11 +246,14 @@ model ItemMovement {
   reason           String
   sourceKg         Decimal?          @db.Decimal(14, 3)
   conversionFactor Decimal?          @db.Decimal(10, 4)
+  documentId       String?
+  document         Document?         @relation(fields: [documentId], references: [id])
   createdById      String
   createdBy        User              @relation(fields: [createdById], references: [id])
   createdAt        DateTime          @default(now())
 
   @@index([itemId])
+  @@index([documentId])
 }
 
 model Product {

@@ -85,6 +85,71 @@ export async function createDocument(formData: FormData) {
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
 }
 
+/** Edita una nota/ajuste ya cargado — campos simples, el pendiente se recalcula solo desde
+ * totalAmount (no hay nada desnormalizado que tocar). */
+export async function updateDocument(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const document = await prisma.document.findUnique({ where: { id: documentId } });
+  if (!document) throw new Error("El comprobante ya no existe.");
+  if (!NON_FACTURA_TYPES.includes(document.type)) {
+    throw new Error("Este comprobante no es una nota ni un ajuste.");
+  }
+
+  const type = String(formData.get("type") || "") as DocumentType;
+  if (!NON_FACTURA_TYPES.includes(type)) throw new Error("Tipo de comprobante inválido.");
+
+  const number = String(formData.get("number") || "").trim();
+  if (!number) throw new Error("El número es obligatorio.");
+
+  const date = parseFormDate(formData.get("date"));
+  const dueDate = parseOptionalFormDate(formData.get("dueDate"));
+  const currency = String(formData.get("currency") || "ARS") as Currency;
+  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
+  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+
+  const amount = parseAmount(formData.get("amount"), "monto");
+  const reason = String(formData.get("reason") || "").trim() || null;
+
+  if (type === "AJUSTE" && !reason) {
+    throw new Error("El ajuste manual requiere un motivo.");
+  }
+
+  const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
+  const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
+
+  const account = await getAccountOrThrow(document.accountId);
+
+  await prisma.document.update({
+    where: { id: documentId },
+    data: { type, number, date, dueDate, currency, exchangeRate, netAmount: amount, totalAmount, reason },
+  });
+
+  revalidatePath(`/cuentas-corrientes/${account.entityId}`);
+}
+
+export async function deleteDocument(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { account: true },
+  });
+  if (!document) throw new Error("El comprobante ya no existe.");
+  if (!NON_FACTURA_TYPES.includes(document.type)) {
+    throw new Error("Este comprobante no es una nota ni un ajuste.");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
+}
+
 /**
  * Variante de createDocument para el botón "+ Movimiento" de la ficha individual: ahí no se
  * conoce el accountId de antemano (se elige la cuenta en el mismo formulario), así que se
@@ -230,6 +295,56 @@ export async function createRemito(formData: FormData) {
   revalidatePath("/dashboard-clientes");
 }
 
+async function getRemitoOrThrow(documentId: string) {
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { remitoLinks: true, lines: true, account: true },
+  });
+  if (!document) throw new Error("El remito ya no existe.");
+  if (document.type !== "REMITO" || document.lines.length === 0) {
+    throw new Error("Este comprobante no es una entrega.");
+  }
+  if (document.remitoLinks.length > 0) {
+    throw new Error("Este remito ya está facturado — hay que borrar la factura primero.");
+  }
+  return document;
+}
+
+export async function deleteRemito(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const document = await getRemitoOrThrow(documentId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
+  revalidatePath("/entregas");
+  revalidatePath("/dashboard-clientes");
+}
+
+/**
+ * Editar una entrega = borrar el comprobante existente y volver a correr createRemito con los
+ * datos nuevos del formulario — evita duplicar la lógica de agrupar líneas por circuito y crear
+ * documentos, a costa de generar un id de Document nuevo (el número puede quedar igual).
+ */
+export async function updateRemito(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  await getRemitoOrThrow(documentId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+  });
+
+  await createRemito(formData);
+}
+
 export async function createCompra(formData: FormData) {
   const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
 
@@ -318,6 +433,7 @@ export async function createCompra(formData: FormData) {
           quantity: l.quantity,
           type: "INGRESO" as const,
           reason: `Compra a ${entity.name} — remito ${number}`,
+          documentId: document.id,
           createdById: user.id,
         })),
       });
@@ -328,6 +444,53 @@ export async function createCompra(formData: FormData) {
   revalidatePath("/stock");
   revalidatePath("/compras");
   revalidatePath("/dashboard-proveedores");
+}
+
+async function getCompraOrThrow(documentId: string) {
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { purchaseLines: true, account: true },
+  });
+  if (!document) throw new Error("La compra ya no existe.");
+  if (document.type !== "REMITO" || document.purchaseLines.length === 0) {
+    throw new Error("Este comprobante no es una compra.");
+  }
+  return document;
+}
+
+export async function deleteCompra(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const document = await getCompraOrThrow(documentId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.itemMovement.deleteMany({ where: { documentId } });
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
+  revalidatePath("/stock");
+  revalidatePath("/compras");
+  revalidatePath("/dashboard-proveedores");
+}
+
+/** Igual patrón que updateRemito: borra el comprobante (revirtiendo el stock que había sumado)
+ * y vuelve a correr createCompra con los datos nuevos del formulario. */
+export async function updateCompra(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  await getCompraOrThrow(documentId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.itemMovement.deleteMany({ where: { documentId } });
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+  });
+
+  await createCompra(formData);
 }
 
 export async function createFactura(formData: FormData) {
@@ -411,6 +574,76 @@ export async function createFactura(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
+}
+
+/** Edita los montos de una factura ya cargada. No toca los remitos que tenga vinculados — para
+ * cambiar eso hay que borrarla y volver a facturar. El saldo pendiente se recalcula solo porque
+ * sale de totalAmount, no hay nada desnormalizado que actualizar. */
+export async function updateFactura(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const factura = await prisma.document.findUnique({ where: { id: documentId } });
+  if (!factura) throw new Error("La factura ya no existe.");
+  if (factura.type !== "FACTURA") throw new Error("Este comprobante no es una factura.");
+
+  const number = String(formData.get("number") || "").trim();
+  if (!number) throw new Error("El número es obligatorio.");
+
+  const date = parseFormDate(formData.get("date"));
+  const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, "BLANCO");
+  const currency = String(formData.get("currency") || "ARS") as Currency;
+  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
+  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+
+  const netAmount = parseAmount(formData.get("netAmount"), "neto");
+  const ivaRate = toDecimal(String(formData.get("ivaRate") || DEFAULT_IVA_RATE));
+  const retentionAmount = toDecimal(String(formData.get("retentionAmount") || "0"));
+  const perceptionAmount = toDecimal(String(formData.get("perceptionAmount") || "0"));
+
+  const ivaAmount = netAmount.times(ivaRate).dividedBy(100);
+  const totalAmount = netAmount.plus(ivaAmount).plus(perceptionAmount).minus(retentionAmount);
+
+  await prisma.document.update({
+    where: { id: documentId },
+    data: {
+      number,
+      date,
+      dueDate,
+      currency,
+      exchangeRate,
+      netAmount,
+      ivaRate,
+      ivaAmount,
+      retentionAmount,
+      perceptionAmount,
+      totalAmount,
+    },
+  });
+
+  const account = await prisma.account.findUnique({ where: { id: factura.accountId } });
+  revalidatePath(`/cuentas-corrientes/${account?.entityId}`);
+}
+
+/** Borrar una factura "desfactura" los remitos que tenía vinculados (vuelven a pendiente). */
+export async function deleteFactura(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const factura = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { account: true },
+  });
+  if (!factura) throw new Error("La factura ya no existe.");
+  if (factura.type !== "FACTURA") throw new Error("Este comprobante no es una factura.");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.documentLink.deleteMany({ where: { facturaId: documentId } });
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${factura.account.entityId}`);
 }
 
 export async function createPayment(formData: FormData) {
@@ -524,6 +757,76 @@ export async function createPaymentForEntity(formData: FormData) {
       });
     }
   });
+
+  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath("/pagos-clientes");
+  revalidatePath("/pagos-proveedores");
+  revalidatePath("/dashboard-clientes");
+  revalidatePath("/dashboard-proveedores");
+}
+
+export async function deletePayment(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const paymentId = String(formData.get("paymentId") || "");
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: { account: true },
+  });
+  if (!payment) throw new Error("El pago ya no existe.");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentAllocation.deleteMany({ where: { paymentId } });
+    await tx.payment.delete({ where: { id: paymentId } });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${payment.account.entityId}`);
+  revalidatePath("/pagos-clientes");
+  revalidatePath("/pagos-proveedores");
+  revalidatePath("/dashboard-clientes");
+  revalidatePath("/dashboard-proveedores");
+}
+
+/** Edita un pago — si cambia el monto o la cuenta (circuito), se borran las imputaciones viejas
+ * y se vuelve a correr allocateFifo con los datos nuevos, mismo camino que crear un pago. */
+export async function updatePayment(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const paymentId = String(formData.get("paymentId") || "");
+  const payment = await prisma.payment.findUnique({
+    where: { id: paymentId },
+    include: { account: true },
+  });
+  if (!payment) throw new Error("El pago ya no existe.");
+
+  const entityId = payment.account.entityId;
+  const circuit = String(formData.get("circuit") || "");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Cuenta inválida.");
+
+  const account = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId, circuit } },
+  });
+  if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
+
+  const date = parseFormDate(formData.get("date"));
+  const amount = parseAmount(formData.get("amount"), "monto del pago");
+  const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
+  const reference = String(formData.get("reference") || "").trim() || null;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentAllocation.deleteMany({ where: { paymentId } });
+    await tx.payment.update({
+      where: { id: paymentId },
+      data: { accountId: account.id, date, amount, method, reference },
+    });
+  });
+
+  const allocations = await allocateFifo(account.id, amount, "ARS");
+  if (allocations.length > 0) {
+    await prisma.paymentAllocation.createMany({
+      data: allocations.map((a) => ({ paymentId, documentId: a.documentId, amount: a.amount })),
+    });
+  }
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
   revalidatePath("/pagos-clientes");

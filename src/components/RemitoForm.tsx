@@ -8,36 +8,44 @@ export function RemitoFormFields({
   entityId,
   products,
   priceMapByCircuit,
+  editingDocumentId,
+  defaultValues,
 }: {
   entityId: string;
   products: Product[];
   priceMapByCircuit: PriceMap;
+  /** Si viene, el formulario edita este remito en vez de crear uno nuevo — las líneas se cargan
+   * de nuevo desde cero (no se prellenan), pero el encabezado sí. */
+  editingDocumentId?: string;
+  defaultValues?: { number?: string; date?: string; dueDate?: string; currency?: string; exchangeRate?: string };
 }) {
   return (
     <>
       <p className="text-xs text-black/50">
-        Un mismo remito puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)
-        — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea.
+        {editingDocumentId
+          ? "Al guardar se reemplazan las líneas de este remito por las que cargues acá."
+          : "Un mismo remito puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro) — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea."}
       </p>
       <input type="hidden" name="entityId" value={entityId} />
+      {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Número">
-          <input name="number" required className={inputClass} />
+          <input name="number" required defaultValue={defaultValues?.number} className={inputClass} />
         </Field>
         <Field label="Fecha">
-          <input type="date" name="date" required className={inputClass} />
+          <input type="date" name="date" required defaultValue={defaultValues?.date} className={inputClass} />
         </Field>
         <Field label="Vencimiento (opcional)">
-          <input type="date" name="dueDate" className={inputClass} />
+          <input type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />
         </Field>
         <Field label="Moneda">
-          <select name="currency" defaultValue="ARS" className={selectClass}>
+          <select name="currency" defaultValue={defaultValues?.currency ?? "ARS"} className={selectClass}>
             <option value="ARS">ARS</option>
             <option value="USD">USD</option>
           </select>
         </Field>
         <Field label="Cotización (si es USD)">
-          <input name="exchangeRate" className={inputClass} />
+          <input name="exchangeRate" defaultValue={defaultValues?.exchangeRate} className={inputClass} />
         </Field>
       </div>
       <RemitoLinesFields
@@ -50,7 +58,7 @@ export function RemitoFormFields({
         priceMapByCircuit={priceMapByCircuit}
       />
       <button type="submit" className={submitClass}>
-        Crear remito
+        {editingDocumentId ? "Guardar cambios" : "Crear remito"}
       </button>
     </>
   );

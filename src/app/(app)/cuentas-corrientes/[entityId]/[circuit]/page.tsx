@@ -4,10 +4,34 @@ import type { Circuit, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAccountDocuments, getDocumentEffect } from "@/lib/ledger";
+import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import {
+  deleteCompra,
+  deleteDocument,
+  deleteFactura,
+  deletePayment,
+  deleteRemito,
+  updateCompra,
+  updateDocument,
+  updateFactura,
+  updatePayment,
+  updateRemito,
+} from "../actions";
+import { FormModal } from "@/components/Modal";
+import { DeleteButton } from "@/components/DeleteButton";
+import { RemitoFormFields } from "@/components/RemitoForm";
+import { CompraFormFields } from "@/components/CompraForm";
+import { EditFacturaFields } from "@/components/EditFacturaFields";
+import { EditDocumentFields } from "@/components/EditDocumentFields";
+import { EditPaymentFields } from "@/components/EditPaymentFields";
 
 const CIRCUIT_BY_SLUG: Record<string, Circuit> = { blanco: "BLANCO", negro: "NEGRO" };
+
+function toDateInputValue(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
 type LedgerRow = {
   key: string;
@@ -16,6 +40,7 @@ type LedgerRow = {
   subtitle: string | null;
   debe: Prisma.Decimal;
   haber: Prisma.Decimal;
+  actions: React.ReactNode;
 };
 
 export default async function AccountLedgerPage({
@@ -24,7 +49,8 @@ export default async function AccountLedgerPage({
   params: Promise<{ entityId: string; circuit: string }>;
 }) {
   const { entityId, circuit: circuitSlug } = await params;
-  await requireUser();
+  const user = await requireUser();
+  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
   const circuit = CIRCUIT_BY_SLUG[circuitSlug];
   if (!circuit) notFound();
@@ -37,14 +63,29 @@ export default async function AccountLedgerPage({
   });
   if (!account) notFound();
 
-  const [documents, payments] = await Promise.all([
+  const [documents, payments, products, items, blancoPrices, negroPrices] = await Promise.all([
     getAccountDocuments(account.id),
     prisma.payment.findMany({
       where: { accountId: account.id },
       include: { allocations: true },
       orderBy: { date: "asc" },
     }),
+    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.item.findMany({ orderBy: { name: "asc" } }),
+    getCurrentPricesForAccount(entityId, "BLANCO"),
+    getCurrentPricesForAccount(entityId, "NEGRO"),
   ]);
+
+  const priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> = {
+    BLANCO: {},
+    NEGRO: {},
+  };
+  for (const [productId, price] of blancoPrices) {
+    priceMapByCircuit.BLANCO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
+  }
+  for (const [productId, price] of negroPrices) {
+    priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
+  }
 
   const rows: LedgerRow[] = [];
 
@@ -57,6 +98,104 @@ export default async function AccountLedgerPage({
           ? doc.purchaseLines.map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`).join(" · ")
           : doc.reason;
 
+    let actions: React.ReactNode = null;
+    if (canEdit) {
+      const headerDefaults = {
+        number: doc.number,
+        date: toDateInputValue(doc.date),
+        dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
+        currency: doc.currency,
+        exchangeRate: doc.exchangeRate?.toString(),
+      };
+
+      if (doc.lines.length > 0) {
+        actions = (
+          <div className="flex items-center gap-2">
+            <FormModal triggerLabel="Editar" title="Editar remito" action={updateRemito} maxWidthClass="max-w-2xl">
+              <RemitoFormFields
+                entityId={entityId}
+                products={products}
+                priceMapByCircuit={priceMapByCircuit}
+                editingDocumentId={doc.id}
+                defaultValues={headerDefaults}
+              />
+            </FormModal>
+            <DeleteButton
+              action={deleteRemito}
+              hiddenName="documentId"
+              hiddenValue={doc.id}
+              confirmMessage="¿Borrar este remito? Esta acción no se puede deshacer."
+            />
+          </div>
+        );
+      } else if (doc.purchaseLines.length > 0) {
+        actions = (
+          <div className="flex items-center gap-2">
+            <FormModal triggerLabel="Editar" title="Editar compra" action={updateCompra} maxWidthClass="max-w-2xl">
+              <CompraFormFields
+                entityId={entityId}
+                items={items}
+                editingDocumentId={doc.id}
+                defaultValues={headerDefaults}
+              />
+            </FormModal>
+            <DeleteButton
+              action={deleteCompra}
+              hiddenName="documentId"
+              hiddenValue={doc.id}
+              confirmMessage="¿Borrar esta compra? El stock que sumó se revierte. Esta acción no se puede deshacer."
+            />
+          </div>
+        );
+      } else if (doc.type === "FACTURA") {
+        actions = (
+          <div className="flex items-center gap-2">
+            <FormModal triggerLabel="Editar" title="Editar factura" action={updateFactura}>
+              <EditFacturaFields
+                documentId={doc.id}
+                defaultValues={{
+                  ...headerDefaults,
+                  netAmount: doc.netAmount.toString(),
+                  ivaRate: doc.ivaRate?.toString(),
+                  retentionAmount: doc.retentionAmount?.toString(),
+                  perceptionAmount: doc.perceptionAmount?.toString(),
+                }}
+              />
+            </FormModal>
+            <DeleteButton
+              action={deleteFactura}
+              hiddenName="documentId"
+              hiddenValue={doc.id}
+              confirmMessage="¿Borrar esta factura? Los remitos vinculados vuelven a quedar pendientes de facturar."
+            />
+          </div>
+        );
+      } else {
+        actions = (
+          <div className="flex items-center gap-2">
+            <FormModal triggerLabel="Editar" title="Editar movimiento" action={updateDocument}>
+              <EditDocumentFields
+                documentId={doc.id}
+                defaultValues={{
+                  ...headerDefaults,
+                  type: doc.type as "NOTA_CREDITO" | "NOTA_DEBITO" | "AJUSTE",
+                  amount: doc.netAmount.toString(),
+                  ajusteEffect: doc.totalAmount.lessThan(0) ? "RESTA" : "SUMA",
+                  reason: doc.reason ?? undefined,
+                }}
+              />
+            </FormModal>
+            <DeleteButton
+              action={deleteDocument}
+              hiddenName="documentId"
+              hiddenValue={doc.id}
+              confirmMessage="¿Borrar este movimiento? Esta acción no se puede deshacer."
+            />
+          </div>
+        );
+      }
+    }
+
     rows.push({
       key: `doc-${doc.id}`,
       date: doc.date,
@@ -64,6 +203,7 @@ export default async function AccountLedgerPage({
       subtitle: lineSummary,
       debe: effect.greaterThan(0) ? effect : ZERO,
       haber: effect.lessThan(0) ? effect.negated() : ZERO,
+      actions,
     });
   }
 
@@ -74,7 +214,10 @@ export default async function AccountLedgerPage({
     // no mostrar un saldo acumulado que no coincida con el de la tarjeta/ficha.
     const imputado = sumDecimals(payment.allocations.map((a) => a.amount));
     const sinImputar = payment.amount.minus(imputado);
-    const subtitleParts = [payment.reference, sinImputar.greaterThan(0) ? `${formatMoney(sinImputar, payment.currency)} sin imputar` : null].filter(Boolean);
+    const subtitleParts = [
+      payment.reference,
+      sinImputar.greaterThan(0) ? `${formatMoney(sinImputar, payment.currency)} sin imputar` : null,
+    ].filter(Boolean);
 
     rows.push({
       key: `pay-${payment.id}`,
@@ -83,6 +226,28 @@ export default async function AccountLedgerPage({
       subtitle: subtitleParts.length > 0 ? subtitleParts.join(" · ") : null,
       debe: ZERO,
       haber: imputado,
+      actions: canEdit ? (
+        <div className="flex items-center gap-2">
+          <FormModal triggerLabel="Editar" title="Editar pago" action={updatePayment}>
+            <EditPaymentFields
+              paymentId={payment.id}
+              defaultValues={{
+                circuit,
+                method: payment.method,
+                date: toDateInputValue(payment.date),
+                amount: payment.amount.toString(),
+                reference: payment.reference ?? undefined,
+              }}
+            />
+          </FormModal>
+          <DeleteButton
+            action={deletePayment}
+            hiddenName="paymentId"
+            hiddenValue={payment.id}
+            confirmMessage="¿Borrar este pago? Esta acción no se puede deshacer."
+          />
+        </div>
+      ) : null,
     });
   }
 
@@ -135,6 +300,7 @@ export default async function AccountLedgerPage({
               <th className="py-2 pr-4">Debe</th>
               <th className="py-2 pr-4">Haber</th>
               <th className="py-2 pr-4">Saldo Acum.</th>
+              {canEdit && <th className="py-2 pr-4"></th>}
             </tr>
           </thead>
           <tbody>
@@ -155,11 +321,12 @@ export default async function AccountLedgerPage({
                   <td className="py-2 pr-4">{row.debe.isZero() ? "—" : formatMoney(row.debe)}</td>
                   <td className="py-2 pr-4">{row.haber.isZero() ? "—" : formatMoney(row.haber)}</td>
                   <td className="py-2 pr-4 font-medium">{formatMoney(row.saldoAcumulado)}</td>
+                  {canEdit && <td className="py-2 pr-4">{row.actions}</td>}
                 </tr>
               ))}
             {rowsWithBalance.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-black/40">
+                <td colSpan={canEdit ? 6 : 5} className="py-6 text-center text-black/40">
                   Sin movimientos todavía.
                 </td>
               </tr>
