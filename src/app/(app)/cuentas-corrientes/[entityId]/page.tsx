@@ -14,6 +14,7 @@ import {
   getRecentRemitos,
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
+import { getPedidosPendientesByEntity } from "@/lib/pedidos";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
@@ -107,9 +108,10 @@ export default async function EntityLedgerPage({
     card4Value = String(compras.count);
   }
 
-  const [recentRemitos, recentCompras] = await Promise.all([
+  const [recentRemitos, recentCompras, pedidosPendientes] = await Promise.all([
     isCliente ? getRecentRemitos(5, entity.id) : Promise.resolve([]),
     isProveedor ? getRecentCompras(5, entity.id) : Promise.resolve([]),
+    isCliente ? getPedidosPendientesByEntity(entity.id) : Promise.resolve([]),
   ]);
 
   return (
@@ -154,6 +156,7 @@ export default async function EntityLedgerPage({
               priceMapByCircuit={priceMapByCircuit}
               remitos={recentRemitos}
               canEdit={canEdit}
+              pedidosPendientes={pedidosPendientes}
             />
           )}
           {isProveedor && (

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getRecentRemitos } from "@/lib/ledger";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
+import { getPedidosPendientesByEntity, type PedidoPendiente } from "@/lib/pedidos";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { formatProductLabel } from "@/lib/product-label";
 import { RemitoForm } from "@/components/RemitoForm";
@@ -31,14 +32,17 @@ export default async function EntregasPage({
   let priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> | null =
     null;
   let products: Awaited<ReturnType<typeof prisma.product.findMany>> = [];
+  let pedidosPendientes: PedidoPendiente[] = [];
 
   if (selectedEntity) {
-    const [blancoPrices, negroPrices, allProducts] = await Promise.all([
+    const [blancoPrices, negroPrices, allProducts, pendientes] = await Promise.all([
       getCurrentPricesForAccount(selectedEntity.id, "BLANCO"),
       getCurrentPricesForAccount(selectedEntity.id, "NEGRO"),
       prisma.product.findMany({ orderBy: { name: "asc" } }),
+      getPedidosPendientesByEntity(selectedEntity.id),
     ]);
     products = allProducts;
+    pedidosPendientes = pendientes;
     priceMapByCircuit = { BLANCO: {}, NEGRO: {} };
     for (const [productId, price] of blancoPrices) {
       priceMapByCircuit.BLANCO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
@@ -91,6 +95,7 @@ export default async function EntregasPage({
           entityId={selectedEntity.id}
           products={products}
           priceMapByCircuit={priceMapByCircuit}
+          pedidosPendientes={pedidosPendientes}
         />
       )}
 

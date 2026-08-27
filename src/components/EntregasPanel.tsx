@@ -1,5 +1,6 @@
 import type { Product } from "@prisma/client";
 import type { getRecentRemitos } from "@/lib/ledger";
+import type { PedidoPendiente } from "@/lib/pedidos";
 import { formatMoney } from "@/lib/money";
 import { formatProductLabel } from "@/lib/product-label";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
@@ -12,12 +13,14 @@ export function EntregasPanel({
   priceMapByCircuit,
   remitos,
   canEdit,
+  pedidosPendientes,
 }: {
   entityId: string;
   products: Product[];
   priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
   remitos: Awaited<ReturnType<typeof getRecentRemitos>>;
   canEdit: boolean;
+  pedidosPendientes?: PedidoPendiente[];
 }) {
   return (
     <div className="rounded-lg border border-black/10 p-5 space-y-4">
@@ -30,7 +33,12 @@ export function EntregasPanel({
             action={createRemito}
             maxWidthClass="max-w-2xl"
           >
-            <RemitoFormFields entityId={entityId} products={products} priceMapByCircuit={priceMapByCircuit} />
+            <RemitoFormFields
+              entityId={entityId}
+              products={products}
+              priceMapByCircuit={priceMapByCircuit}
+              pedidosPendientes={pedidosPendientes}
+            />
           </FormModal>
         )}
       </div>

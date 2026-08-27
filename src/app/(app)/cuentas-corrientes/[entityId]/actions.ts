@@ -199,6 +199,8 @@ export async function createRemito(formData: FormData) {
     throw new Error("Circuito inválido en alguna línea.");
   }
 
+  const pedidoIds = formData.getAll("pedidoId").map(String).filter(Boolean);
+
   const accounts = await prisma.account.findMany({ where: { entityId } });
   const accountByCircuit = new Map(accounts.map((a) => [a.circuit, a]));
 
@@ -241,11 +243,19 @@ export async function createRemito(formData: FormData) {
         data: lineData.map((l) => ({ ...l, documentId: document.id })),
       });
     }
+
+    if (pedidoIds.length > 0) {
+      await tx.pedido.updateMany({
+        where: { id: { in: pedidoIds }, entityId },
+        data: { status: "ENTREGADO", deliveryDate: date },
+      });
+    }
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
   revalidatePath("/entregas");
   revalidatePath("/dashboard-clientes");
+  if (pedidoIds.length > 0) revalidatePath("/pedidos");
 }
 
 async function getRemitoOrThrow(documentId: string) {
