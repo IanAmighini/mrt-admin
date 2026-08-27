@@ -9,14 +9,14 @@ export default async function UsuariosPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-xl font-semibold mb-1">Usuarios</h1>
-        <p className="text-sm text-black/60">
+        <p className="text-sm text-foreground/60">
           Alta de usuarios y asignación de rol (Admin, Carga diaria, Solo lectura).
         </p>
       </div>
 
       <form
         action={createUser}
-        className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+        className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
       >
         <h2 className="text-sm font-semibold">Nuevo usuario</h2>
         <div className="grid grid-cols-2 gap-3">
@@ -28,7 +28,7 @@ export default async function UsuariosPage() {
               id="name"
               name="name"
               required
-              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
             />
           </div>
           <div className="space-y-1">
@@ -40,7 +40,7 @@ export default async function UsuariosPage() {
               name="email"
               type="email"
               required
-              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
             />
           </div>
           <div className="space-y-1">
@@ -53,7 +53,7 @@ export default async function UsuariosPage() {
               type="password"
               required
               minLength={8}
-              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
             />
           </div>
           <div className="space-y-1">
@@ -65,7 +65,7 @@ export default async function UsuariosPage() {
               name="role"
               required
               defaultValue="CARGA_DIARIA"
-              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
             >
               <option value="ADMIN">Admin</option>
               <option value="CARGA_DIARIA">Carga diaria</option>
@@ -84,7 +84,7 @@ export default async function UsuariosPage() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Nombre</th>
               <th className="py-2 pr-4">Email</th>
               <th className="py-2 pr-4">Rol</th>
@@ -94,7 +94,7 @@ export default async function UsuariosPage() {
           </thead>
           <tbody>
             {users.map((u) => (
-              <tr key={u.id} className="border-b border-black/5">
+              <tr key={u.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4">{u.name}</td>
                 <td className="py-2 pr-4">{u.email}</td>
                 <td className="py-2 pr-4">
@@ -103,7 +103,7 @@ export default async function UsuariosPage() {
                     <select
                       name="role"
                       defaultValue={u.role}
-                      className="rounded border border-black/20 px-2 py-1 text-xs"
+                      className="rounded border border-foreground/20 px-2 py-1 text-xs"
                     >
                       <option value="ADMIN">Admin</option>
                       <option value="CARGA_DIARIA">Carga diaria</option>
@@ -129,7 +129,7 @@ export default async function UsuariosPage() {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-black/40">
+      <p className="text-xs text-foreground/40">
         Roles: {Object.entries(ROLE_LABELS).map(([k, v]) => `${v} (${k})`).join(" · ")}
       </p>
     </div>

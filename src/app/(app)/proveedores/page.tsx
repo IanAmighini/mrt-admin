@@ -24,7 +24,7 @@ export default async function ProveedoresPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold mb-1">Proveedores</h1>
-          <p className="text-sm text-black/60">
+          <p className="text-sm text-foreground/60">
             Cada proveedor recibe automáticamente dos cuentas corrientes independientes: Blanco y
             Negro.
           </p>
@@ -39,7 +39,7 @@ export default async function ProveedoresPage() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Nombre</th>
               <th className="py-2 pr-4">Tipo</th>
               <th className="py-2 pr-4">Tipo de insumo</th>
@@ -51,7 +51,7 @@ export default async function ProveedoresPage() {
           </thead>
           <tbody>
             {rows.map(({ entity, blancoSaldo, negroSaldo, total }) => (
-              <tr key={entity.id} className="border-b border-black/5">
+              <tr key={entity.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4">
                   <Link
                     href={`/cuentas-corrientes/${entity.id}`}
@@ -72,7 +72,7 @@ export default async function ProveedoresPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-6 text-center text-black/40">
+                <td colSpan={7} className="py-6 text-center text-foreground/40">
                   Todavía no hay proveedores cargados.
                 </td>
               </tr>

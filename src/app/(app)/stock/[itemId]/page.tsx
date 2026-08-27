@@ -33,7 +33,7 @@ export default async function ItemDetailPage({
           <h1 className="text-xl font-semibold">{item.name}</h1>
           <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
         </div>
-        <p className="mt-1 text-sm text-black/60">
+        <p className="mt-1 text-sm text-foreground/60">
           Costo unitario: {item.unitCost ? formatMoney(item.unitCost) : "sin cargar"}
         </p>
       </div>
@@ -41,7 +41,7 @@ export default async function ItemDetailPage({
       {canEdit && (
         <form
           action={updateItemCost}
-          className="flex flex-wrap items-end gap-3 rounded-lg border border-black/10 p-4"
+          className="flex flex-wrap items-end gap-3 rounded-lg border border-foreground/10 p-4"
         >
           <input type="hidden" name="itemId" value={item.id} />
           <div className="space-y-1">
@@ -54,7 +54,7 @@ export default async function ItemDetailPage({
               required
               inputMode="decimal"
               defaultValue={item.unitCost?.toString() ?? ""}
-              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
             />
           </div>
           <button
@@ -69,7 +69,7 @@ export default async function ItemDetailPage({
       {canEdit && (
         <form
           action={createItemMovement}
-          className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
         >
           <h2 className="text-sm font-semibold">Nuevo movimiento</h2>
           <input type="hidden" name="itemId" value={item.id} />
@@ -83,7 +83,7 @@ export default async function ItemDetailPage({
                 name="type"
                 required
                 defaultValue="INGRESO"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               >
                 <option value="INGRESO">Ingreso</option>
                 <option value="AJUSTE">Ajuste</option>
@@ -100,7 +100,7 @@ export default async function ItemDetailPage({
                 type="date"
                 name="date"
                 required
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -111,7 +111,7 @@ export default async function ItemDetailPage({
                 id="quantity"
                 name="quantity"
                 inputMode="decimal"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -122,14 +122,14 @@ export default async function ItemDetailPage({
                 id="effect"
                 name="effect"
                 defaultValue="RESTA"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               >
                 <option value="SUMA">Suma al stock</option>
                 <option value="RESTA">Resta al stock</option>
               </select>
             </div>
           </div>
-          <p className="text-xs text-black/50">
+          <p className="text-xs text-foreground/50">
             Para ingresos de aceite a granel: si cargás Kg + factor de conversión, la cantidad se
             calcula sola (Kg × factor) y pisa el campo de arriba.
           </p>
@@ -142,7 +142,7 @@ export default async function ItemDetailPage({
                 id="sourceKg"
                 name="sourceKg"
                 inputMode="decimal"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -153,7 +153,7 @@ export default async function ItemDetailPage({
                 id="conversionFactor"
                 name="conversionFactor"
                 inputMode="decimal"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -166,7 +166,7 @@ export default async function ItemDetailPage({
               name="reason"
               required
               placeholder="Compra a proveedor X, conteo físico, rotura..."
-              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
             />
           </div>
           <button
@@ -183,7 +183,7 @@ export default async function ItemDetailPage({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-black/60">
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">Fecha</th>
                 <th className="py-2 pr-4">Tipo</th>
                 <th className="py-2 pr-4">Cantidad</th>
@@ -193,14 +193,14 @@ export default async function ItemDetailPage({
             </thead>
             <tbody>
               {movementsDesc.map((m) => (
-                <tr key={m.id} className="border-b border-black/5">
+                <tr key={m.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{m.date.toLocaleDateString("es-AR")}</td>
                   <td className="py-2 pr-4">{ITEM_MOVEMENT_TYPE_LABELS[m.type]}</td>
                   <td className="py-2 pr-4">
                     {m.quantity.greaterThan(0) ? "+" : ""}
                     {formatQuantity(m.quantity, item.unit)}
                     {m.sourceKg && m.conversionFactor && (
-                      <span className="text-black/40">
+                      <span className="text-foreground/40">
                         {" "}
                         ({formatQuantity(m.sourceKg, "Kg")} × {m.conversionFactor.toString()})
                       </span>
@@ -212,7 +212,7 @@ export default async function ItemDetailPage({
               ))}
               {movementsDesc.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-black/40">
+                  <td colSpan={5} className="py-4 text-center text-foreground/40">
                     Sin movimientos todavía.
                   </td>
                 </tr>

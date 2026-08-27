@@ -19,7 +19,7 @@ export default async function DashboardProveedoresPage() {
     <div className="space-y-10">
       <div>
         <h1 className="text-xl font-semibold mb-1">Dashboard Proveedores</h1>
-        <p className="text-sm text-black/60">
+        <p className="text-sm text-foreground/60">
           Últimas compras, últimos pagos y proveedores a los que más les debemos.
         </p>
       </div>
@@ -30,7 +30,7 @@ export default async function DashboardProveedoresPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/10 text-left text-black/60">
+                <tr className="border-b border-foreground/10 text-left text-foreground/60">
                   <th className="py-2 pr-4">Proveedor</th>
                   <th className="py-2 pr-4">Remito</th>
                   <th className="py-2 pr-4">Fecha</th>
@@ -39,7 +39,7 @@ export default async function DashboardProveedoresPage() {
               </thead>
               <tbody>
                 {compras.map((doc) => (
-                  <tr key={doc.id} className="border-b border-black/5">
+                  <tr key={doc.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">
                       <Link
                         href={`/cuentas-corrientes/${doc.account.entityId}`}
@@ -55,7 +55,7 @@ export default async function DashboardProveedoresPage() {
                 ))}
                 {compras.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-black/40">
+                    <td colSpan={4} className="py-4 text-center text-foreground/40">
                       Todavía no hay compras cargadas.
                     </td>
                   </tr>
@@ -70,7 +70,7 @@ export default async function DashboardProveedoresPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/10 text-left text-black/60">
+                <tr className="border-b border-foreground/10 text-left text-foreground/60">
                   <th className="py-2 pr-4">Proveedor</th>
                   <th className="py-2 pr-4">Monto</th>
                   <th className="py-2 pr-4">Medio</th>
@@ -79,7 +79,7 @@ export default async function DashboardProveedoresPage() {
               </thead>
               <tbody>
                 {pagos.map((payment) => (
-                  <tr key={payment.id} className="border-b border-black/5">
+                  <tr key={payment.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">
                       <Link
                         href={`/cuentas-corrientes/${payment.account.entityId}`}
@@ -95,7 +95,7 @@ export default async function DashboardProveedoresPage() {
                 ))}
                 {pagos.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-black/40">
+                    <td colSpan={4} className="py-4 text-center text-foreground/40">
                       Todavía no hay pagos cargados.
                     </td>
                   </tr>
@@ -110,7 +110,7 @@ export default async function DashboardProveedoresPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/10 text-left text-black/60">
+                <tr className="border-b border-foreground/10 text-left text-foreground/60">
                   <th className="py-2 pr-4">Proveedor</th>
                   <th className="py-2 pr-4">Saldo Blanco</th>
                   <th className="py-2 pr-4">Saldo Negro</th>
@@ -119,7 +119,7 @@ export default async function DashboardProveedoresPage() {
               </thead>
               <tbody>
                 {saldos.slice(0, 8).map(({ entity, blancoSaldo, negroSaldo, total }) => (
-                  <tr key={entity.id} className="border-b border-black/5">
+                  <tr key={entity.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">
                       <Link
                         href={`/cuentas-corrientes/${entity.id}`}
@@ -135,7 +135,7 @@ export default async function DashboardProveedoresPage() {
                 ))}
                 {saldos.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-4 text-center text-black/40">
+                    <td colSpan={4} className="py-4 text-center text-foreground/40">
                       Todavía no hay proveedores cargados.
                     </td>
                   </tr>
@@ -159,23 +159,23 @@ async function ReportesGerenciales() {
       <h2 className="text-lg font-semibold">Reportes gerenciales</h2>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-black/10 p-4">
+        <div className="rounded-lg border border-foreground/10 p-4">
           <p className="text-sm font-semibold mb-1">Costo de insumos consumidos (este mes)</p>
           <p className="text-2xl font-semibold">{formatMoney(costo.total)}</p>
-          <p className="text-xs text-black/50 mt-1">
+          <p className="text-xs text-foreground/50 mt-1">
             insumos consumidos en producción este mes, valorizados a costo unitario.
             {costo.itemsSinCosto > 0 &&
               ` — ${costo.itemsSinCosto} insumo(s) consumido(s) sin costo unitario cargado, no se incluyeron.`}
           </p>
         </div>
-        <div className="rounded-lg border border-black/10 p-4">
+        <div className="rounded-lg border border-foreground/10 p-4">
           <p className="text-sm font-semibold mb-1">Valuación de insumos en stock</p>
           <p className="text-2xl font-semibold">{formatMoney(valuacion.total)}</p>
           <div className="mt-2 max-h-40 overflow-y-auto">
             <table className="w-full text-xs">
               <tbody>
                 {valuacion.rows.map(({ item, stock, valuacion: v }) => (
-                  <tr key={item.id} className="border-b border-black/5">
+                  <tr key={item.id} className="border-b border-foreground/5">
                     <td className="py-1 pr-2">{item.name}</td>
                     <td className="py-1 pr-2">{formatQuantity(stock, item.unit)}</td>
                     <td className="py-1 pr-2">{v ? formatMoney(v) : "sin costo"}</td>
@@ -183,7 +183,7 @@ async function ReportesGerenciales() {
                 ))}
                 {valuacion.rows.length === 0 && (
                   <tr>
-                    <td className="py-2 text-black/40">Todavía no hay insumos cargados.</td>
+                    <td className="py-2 text-foreground/40">Todavía no hay insumos cargados.</td>
                   </tr>
                 )}
               </tbody>

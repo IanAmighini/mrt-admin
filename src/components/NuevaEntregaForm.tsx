@@ -149,7 +149,7 @@ export function NuevaEntregaForm({
 
   return (
     <form action={action} className="space-y-6">
-      <div className="rounded-lg border border-black/10 p-4 space-y-3">
+      <div className="rounded-lg border border-foreground/10 p-4 space-y-3">
         <h2 className="text-sm font-semibold">Información general</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
@@ -187,7 +187,7 @@ export function NuevaEntregaForm({
         </div>
       </div>
 
-      <div className="rounded-lg border border-black/10 p-4 space-y-3">
+      <div className="rounded-lg border border-foreground/10 p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Ítems del remito</h2>
           <button type="button" onClick={addRow} className={secondaryButtonClass}>
@@ -199,9 +199,9 @@ export function NuevaEntregaForm({
           {computedRows.map(({ row, botellas, subtotal, iva, unitPrice }) => {
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
-              <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded border border-black/10 p-2">
+              <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded border border-foreground/10 p-2">
                 <div className="col-span-3">
-                  <label className="text-xs text-black/60">Marca</label>
+                  <label className="text-xs text-foreground/60">Marca</label>
                   <select
                     value={row.marcaKey}
                     onChange={(e) => updateRow(row.key, { marcaKey: e.target.value })}
@@ -216,7 +216,7 @@ export function NuevaEntregaForm({
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs text-black/60">Formato</label>
+                  <label className="text-xs text-foreground/60">Formato</label>
                   <select
                     value={row.productId}
                     onChange={(e) => updateRow(row.key, { productId: e.target.value })}
@@ -232,7 +232,7 @@ export function NuevaEntregaForm({
                   </select>
                 </div>
                 <div className="col-span-1">
-                  <label className="text-xs text-black/60">Pallets</label>
+                  <label className="text-xs text-foreground/60">Pallets</label>
                   <input
                     value={row.pallets}
                     onChange={(e) => updateRow(row.key, { pallets: e.target.value })}
@@ -241,11 +241,11 @@ export function NuevaEntregaForm({
                   />
                 </div>
                 <div className="col-span-1">
-                  <label className="text-xs text-black/60">Botellas</label>
-                  <p className="px-2 py-2 text-sm text-black/60">{formatQuantity(botellas)}</p>
+                  <label className="text-xs text-foreground/60">Botellas</label>
+                  <p className="px-2 py-2 text-sm text-foreground/60">{formatQuantity(botellas)}</p>
                 </div>
                 <div className="col-span-2">
-                  <label className="text-xs text-black/60">Precio/bot.</label>
+                  <label className="text-xs text-foreground/60">Precio/bot.</label>
                   <input
                     value={row.pricePerBottle}
                     onChange={(e) => updateRow(row.key, { pricePerBottle: e.target.value })}
@@ -254,25 +254,25 @@ export function NuevaEntregaForm({
                   />
                 </div>
                 <div className="col-span-1">
-                  <label className="text-xs text-black/60">Fact.</label>
+                  <label className="text-xs text-foreground/60">Fact.</label>
                   <button
                     type="button"
                     onClick={() => updateRow(row.key, { facturado: !row.facturado })}
                     className={`w-full rounded border px-2 py-2 text-xs font-medium ${
                       row.facturado
-                        ? "border-green-600 bg-green-100 text-green-800"
-                        : "border-black/20 bg-black/5 text-black/60"
+                        ? "border-green-600 bg-green-100 text-green-800 dark:border-green-500 dark:bg-green-900/40 dark:text-green-300"
+                        : "border-foreground/20 bg-foreground/5 text-foreground/60"
                     }`}
                   >
                     {row.facturado ? "C/Fact" : "S/Fact"}
                   </button>
                 </div>
                 <div className="col-span-1">
-                  <label className="text-xs text-black/60">Subtotal</label>
+                  <label className="text-xs text-foreground/60">Subtotal</label>
                   <p className="px-2 py-2 text-sm">
                     {formatMoney(subtotal)}
                     {row.facturado && iva > 0 && (
-                      <span className="block text-xs text-green-700">+IVA {formatMoney(iva)}</span>
+                      <span className="block text-xs text-green-700 dark:text-green-400">+IVA {formatMoney(iva)}</span>
                     )}
                   </p>
                 </div>
@@ -281,7 +281,7 @@ export function NuevaEntregaForm({
                     <button
                       type="button"
                       onClick={() => removeRow(row.key)}
-                      className="px-2 text-black/40 hover:text-black"
+                      className="px-2 text-foreground/40 hover:text-foreground"
                       aria-label="Quitar línea"
                     >
                       ×
@@ -298,38 +298,38 @@ export function NuevaEntregaForm({
           })}
         </div>
 
-        <div className="flex flex-wrap justify-end gap-6 border-t border-black/10 pt-3 text-sm">
+        <div className="flex flex-wrap justify-end gap-6 border-t border-foreground/10 pt-3 text-sm">
           <div className="text-center">
-            <p className="text-xs text-black/50">Total pallets</p>
+            <p className="text-xs text-foreground/50">Total pallets</p>
             <p className="font-semibold">{formatQuantity(totals.pallets)}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-black/50">Total botellas</p>
+            <p className="text-xs text-foreground/50">Total botellas</p>
             <p className="font-semibold">{formatQuantity(totals.botellas)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-green-700">Facturado (s/IVA)</p>
-            <p className="font-semibold text-green-700">{formatMoney(totals.facturado)}</p>
+            <p className="text-xs text-green-700 dark:text-green-400">Facturado (s/IVA)</p>
+            <p className="font-semibold text-green-700 dark:text-green-400">{formatMoney(totals.facturado)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-black/50">IVA {IVA_RATE}%</p>
+            <p className="text-xs text-foreground/50">IVA {IVA_RATE}%</p>
             <p className="font-semibold">{formatMoney(totals.iva)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-black/50">No facturado</p>
+            <p className="text-xs text-foreground/50">No facturado</p>
             <p className="font-semibold">{formatMoney(totals.noFacturado)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-black/50">Total</p>
+            <p className="text-xs text-foreground/50">Total</p>
             <p className="text-lg font-bold">{formatMoney(total)}</p>
           </div>
         </div>
       </div>
 
       {pedidosPendientes.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-black/10 p-4">
+        <div className="space-y-2 rounded-lg border border-foreground/10 p-4">
           <p className="text-sm font-medium">¿Este remito entrega alguno de estos pedidos?</p>
-          <p className="text-xs text-black/50">
+          <p className="text-xs text-foreground/50">
             Los que tildes se marcan como &quot;Entregado&quot; automáticamente al crear el remito.
           </p>
           <div className="space-y-1">
@@ -360,7 +360,7 @@ export function NuevaEntregaForm({
         </div>
       )}
 
-      <div className="rounded-lg border border-black/10 p-4 space-y-2">
+      <div className="rounded-lg border border-foreground/10 p-4 space-y-2">
         <label className="text-sm font-semibold" htmlFor="reason">
           Notas
         </label>
@@ -379,5 +379,5 @@ export function NuevaEntregaForm({
   );
 }
 
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
-const secondaryButtonClass = "rounded border border-black/20 px-3 py-1.5 text-sm hover:bg-black/5";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
+const secondaryButtonClass = "rounded border border-foreground/20 px-3 py-1.5 text-sm hover:bg-foreground/5";

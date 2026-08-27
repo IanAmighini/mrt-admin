@@ -40,7 +40,7 @@ export default async function ProductDetailPage({
         <div className="mt-2 flex items-baseline justify-between">
           <div>
             <h1 className="text-xl font-semibold">{product.name}</h1>
-            <p className="text-sm text-black/60">
+            <p className="text-sm text-foreground/60">
               {product.oilType} — {product.presentation}
               {product.boxesPerPallet && product.unitsPerBox && (
                 <>
@@ -58,7 +58,7 @@ export default async function ProductDetailPage({
       {canEdit && (
         <form
           action={updateProduct}
-          className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
         >
           <h2 className="text-sm font-semibold">Editar producto</h2>
           <input type="hidden" name="productId" value={product.id} />
@@ -72,7 +72,7 @@ export default async function ProductDetailPage({
                 name="name"
                 required
                 defaultValue={product.name}
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -84,7 +84,7 @@ export default async function ProductDetailPage({
                 name="oilType"
                 required
                 defaultValue={product.oilType}
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -96,7 +96,7 @@ export default async function ProductDetailPage({
                 name="presentation"
                 required
                 defaultValue={product.presentation}
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -108,7 +108,7 @@ export default async function ProductDetailPage({
                 name="boxesPerPallet"
                 inputMode="numeric"
                 defaultValue={product.boxesPerPallet ?? ""}
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -120,7 +120,7 @@ export default async function ProductDetailPage({
                 name="unitsPerBox"
                 inputMode="numeric"
                 defaultValue={product.unitsPerBox ?? ""}
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -132,7 +132,7 @@ export default async function ProductDetailPage({
                 name="bottleCapacityMl"
                 inputMode="decimal"
                 defaultValue={product.bottleCapacityMl?.toString() ?? ""}
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -148,10 +148,10 @@ export default async function ProductDetailPage({
       {canEdit && product.boxesPerPallet && product.unitsPerBox && (
         <form
           action={generateRecipeFromPresentation}
-          className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
         >
           <h2 className="text-sm font-semibold">Generar receta desde presentación</h2>
-          <p className="text-xs text-black/50">
+          <p className="text-xs text-foreground/50">
             Calcula automáticamente la cantidad de cada insumo por pallet armado a partir de
             cajas/botellas/capacidad y la eficiencia de llenado. Dejá en blanco los insumos que
             no apliquen.
@@ -221,7 +221,7 @@ export default async function ProductDetailPage({
       {canEdit && (
         <form
           action={upsertRecipeLine}
-          className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
         >
           <h2 className="text-sm font-semibold">Agregar / actualizar insumo de la receta</h2>
           <input type="hidden" name="productId" value={product.id} />
@@ -234,7 +234,7 @@ export default async function ProductDetailPage({
                 id="itemId"
                 name="itemId"
                 required
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               >
                 {items.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -252,11 +252,11 @@ export default async function ProductDetailPage({
                 name="quantityPerUnit"
                 required
                 inputMode="decimal"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
           </div>
-          <p className="text-xs text-black/50">
+          <p className="text-xs text-foreground/50">
             &quot;Unidad de producto&quot; acá es 1 pallet armado (así se carga la producción
             diaria de este producto).
           </p>
@@ -274,7 +274,7 @@ export default async function ProductDetailPage({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-black/60">
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">Insumo</th>
                 <th className="py-2 pr-4">Cantidad por unidad</th>
                 {canEdit && <th className="py-2 pr-4"></th>}
@@ -282,7 +282,7 @@ export default async function ProductDetailPage({
             </thead>
             <tbody>
               {product.recipe.map((line) => (
-                <tr key={line.id} className="border-b border-black/5">
+                <tr key={line.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{line.item.name}</td>
                   <td className="py-2 pr-4">
                     {formatQuantity(line.quantityPerUnit, line.item.unit)}
@@ -302,7 +302,7 @@ export default async function ProductDetailPage({
               ))}
               {product.recipe.length === 0 && (
                 <tr>
-                  <td colSpan={canEdit ? 3 : 2} className="py-4 text-center text-black/40">
+                  <td colSpan={canEdit ? 3 : 2} className="py-4 text-center text-foreground/40">
                     Este producto todavía no tiene receta cargada.
                   </td>
                 </tr>
@@ -324,4 +324,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const selectClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const selectClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";

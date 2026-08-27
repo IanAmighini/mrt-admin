@@ -16,7 +16,7 @@ type Row = {
   pallets: string;
 };
 
-const inputClass = "w-full rounded border border-black/20 px-2 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-2 py-2 text-sm";
 const selectClass = inputClass;
 
 export function PedidoLinesFields({
@@ -50,9 +50,9 @@ export function PedidoLinesFields({
     <div className="space-y-3">
       <p className="text-sm font-medium">Líneas del pedido</p>
       {rows.map((row) => (
-        <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded border border-black/10 p-2">
+        <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded border border-foreground/10 p-2">
           <div className="col-span-8">
-            <label className="text-xs text-black/60">Producto</label>
+            <label className="text-xs text-foreground/60">Producto</label>
             <select
               name="lineProductId"
               value={row.productId}
@@ -68,7 +68,7 @@ export function PedidoLinesFields({
             </select>
           </div>
           <div className="col-span-3">
-            <label className="text-xs text-black/60">Pallets</label>
+            <label className="text-xs text-foreground/60">Pallets</label>
             <input
               name="linePallets"
               value={row.pallets}
@@ -82,7 +82,7 @@ export function PedidoLinesFields({
               <button
                 type="button"
                 onClick={() => removeRow(row.key)}
-                className="px-2 text-black/40 hover:text-black"
+                className="px-2 text-foreground/40 hover:text-foreground"
                 aria-label="Quitar línea"
               >
                 ×

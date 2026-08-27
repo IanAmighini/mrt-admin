@@ -1,8 +1,8 @@
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";
 const toggleClass =
-  "cursor-pointer rounded-lg border border-black/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
+  "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
 export function DocumentFormFields({ fixedEntityId }: { fixedEntityId: string }) {
   return (

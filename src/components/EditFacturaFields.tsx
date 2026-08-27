@@ -1,6 +1,6 @@
 import { DEFAULT_IVA_RATE } from "@/lib/money";
 
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";
 
@@ -24,7 +24,7 @@ export function EditFacturaFields({
   return (
     <>
       <input type="hidden" name="documentId" value={documentId} />
-      <p className="text-xs text-black/50">
+      <p className="text-xs text-foreground/50">
         No se pueden cambiar acá los remitos vinculados a esta factura — para eso hay que
         borrarla y volver a facturar.
       </p>

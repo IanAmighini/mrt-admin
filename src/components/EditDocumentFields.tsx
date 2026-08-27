@@ -1,4 +1,4 @@
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";
 

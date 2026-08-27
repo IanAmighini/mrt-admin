@@ -39,7 +39,7 @@ export default async function EntregasPage({
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold mb-1">Entregas</h1>
-          <p className="text-sm text-black/60">{filteredRows.length} entregas registradas</p>
+          <p className="text-sm text-foreground/60">{filteredRows.length} entregas registradas</p>
         </div>
         {canEdit && (
           <Link
@@ -59,9 +59,9 @@ export default async function EntregasPage({
             name="q"
             defaultValue={q}
             placeholder="Buscar por cliente o remito…"
-            className="flex-1 rounded border border-black/20 px-3 py-2 text-sm"
+            className="flex-1 rounded border border-foreground/20 px-3 py-2 text-sm"
           />
-          <button type="submit" className="rounded border border-black/20 px-3 py-2 text-sm hover:bg-black/5">
+          <button type="submit" className="rounded border border-foreground/20 px-3 py-2 text-sm hover:bg-foreground/5">
             Buscar
           </button>
         </form>
@@ -73,7 +73,7 @@ export default async function EntregasPage({
               className={`rounded px-3 py-1.5 text-sm ${
                 pagoFilter === f.value
                   ? "bg-primary text-primary-foreground"
-                  : "border border-black/20 hover:bg-black/5"
+                  : "border border-foreground/20 hover:bg-foreground/5"
               }`}
             >
               {f.label}
@@ -85,7 +85,7 @@ export default async function EntregasPage({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Remito</th>
               <th className="py-2 pr-4">Cliente</th>
               <th className="py-2 pr-4">Fecha</th>
@@ -96,7 +96,7 @@ export default async function EntregasPage({
           </thead>
           <tbody>
             {filteredRows.map(({ doc, pallets, pagado }) => (
-              <tr key={doc.id} className="border-b border-black/5">
+              <tr key={doc.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4">#{doc.number}</td>
                 <td className="py-2 pr-4">
                   <Link
@@ -112,7 +112,9 @@ export default async function EntregasPage({
                 <td className="py-2 pr-4">
                   <span
                     className={`rounded px-2 py-1 text-xs font-medium ${
-                      pagado ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
+                      pagado
+                        ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
                     }`}
                   >
                     {pagado ? "Pagado" : "Sin pagar"}
@@ -122,7 +124,7 @@ export default async function EntregasPage({
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-black/40">
+                <td colSpan={6} className="py-6 text-center text-foreground/40">
                   {q || pagoFilter ? "No hay entregas con este filtro." : "Todavía no hay entregas cargadas."}
                 </td>
               </tr>

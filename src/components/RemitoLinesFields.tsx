@@ -24,7 +24,7 @@ type Row = {
   circuit: Circuit;
 };
 
-const inputClass = "w-full rounded border border-black/20 px-2 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-2 py-2 text-sm";
 const selectClass = inputClass;
 
 export function RemitoLinesFields({
@@ -94,10 +94,10 @@ export function RemitoLinesFields({
         return (
           <div
             key={row.key}
-            className="grid grid-cols-12 items-end gap-2 rounded border border-black/10 p-2"
+            className="grid grid-cols-12 items-end gap-2 rounded border border-foreground/10 p-2"
           >
             <div className="col-span-3">
-              <label className="text-xs text-black/60">Producto</label>
+              <label className="text-xs text-foreground/60">Producto</label>
               <select
                 name="lineProductId"
                 value={row.productId}
@@ -113,7 +113,7 @@ export function RemitoLinesFields({
               </select>
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-black/60">Pallets</label>
+              <label className="text-xs text-foreground/60">Pallets</label>
               <input
                 name="lineQuantity"
                 value={row.quantity}
@@ -121,10 +121,10 @@ export function RemitoLinesFields({
                 inputMode="decimal"
                 className={inputClass}
               />
-              {botellas > 0 && <p className="text-xs text-black/40">{botellas} botellas</p>}
+              {botellas > 0 && <p className="text-xs text-foreground/40">{botellas} botellas</p>}
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-black/60">Precio/bot.</label>
+              <label className="text-xs text-foreground/60">Precio/bot.</label>
               <input
                 value={row.pricePerBottle}
                 onChange={(e) => updateRow(row.key, { pricePerBottle: e.target.value })}
@@ -133,7 +133,7 @@ export function RemitoLinesFields({
               />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-black/60">Circuito</label>
+              <label className="text-xs text-foreground/60">Circuito</label>
               <select
                 name="lineCircuit"
                 value={row.circuit}
@@ -145,7 +145,7 @@ export function RemitoLinesFields({
               </select>
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-black/60">Subtotal</label>
+              <label className="text-xs text-foreground/60">Subtotal</label>
               <p className="px-2 py-2 text-sm">{subtotal.toFixed(2)}</p>
             </div>
             <div className="col-span-1">
@@ -153,7 +153,7 @@ export function RemitoLinesFields({
                 <button
                   type="button"
                   onClick={() => removeRow(row.key)}
-                  className="px-2 text-black/40 hover:text-black"
+                  className="px-2 text-foreground/40 hover:text-foreground"
                   aria-label="Quitar línea"
                 >
                   ×
@@ -167,7 +167,7 @@ export function RemitoLinesFields({
       <button type="button" onClick={addRow} className="text-sm underline underline-offset-2">
         + Agregar línea
       </button>
-      <div className="flex gap-4 border-t border-black/10 pt-2 text-sm">
+      <div className="flex gap-4 border-t border-foreground/10 pt-2 text-sm">
         <span>Total Blanco: {totals.BLANCO.toFixed(2)}</span>
         <span>Total Negro: {totals.NEGRO.toFixed(2)}</span>
         <span className="font-semibold">Total: {totals.total.toFixed(2)}</span>

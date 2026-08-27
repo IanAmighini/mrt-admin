@@ -37,12 +37,12 @@ export function DeleteButton({
         <button
           type="submit"
           disabled={pending}
-          className="text-xs text-red-600 underline underline-offset-2 hover:text-red-700 disabled:opacity-50"
+          className="text-xs text-red-600 underline underline-offset-2 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300"
         >
           {pending ? "Borrando…" : "Borrar"}
         </button>
       </form>
-      {error && <p className="mt-1 max-w-xs text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 max-w-xs text-xs text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

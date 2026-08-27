@@ -291,16 +291,16 @@ export default async function AccountLedgerPage({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3 max-w-xl">
-        <div className="rounded-lg border border-black/10 p-4">
-          <p className="text-sm text-black/60">Debe</p>
+        <div className="rounded-lg border border-foreground/10 p-4">
+          <p className="text-sm text-foreground/60">Debe</p>
           <p className="text-lg font-semibold">{formatMoney(totalDebe)}</p>
         </div>
-        <div className="rounded-lg border border-black/10 p-4">
-          <p className="text-sm text-black/60">Haber</p>
+        <div className="rounded-lg border border-foreground/10 p-4">
+          <p className="text-sm text-foreground/60">Haber</p>
           <p className="text-lg font-semibold">{formatMoney(totalHaber)}</p>
         </div>
-        <div className="rounded-lg border border-black/10 p-4">
-          <p className="text-sm text-black/60">Saldo</p>
+        <div className="rounded-lg border border-foreground/10 p-4">
+          <p className="text-sm text-foreground/60">Saldo</p>
           <p className="text-lg font-semibold">{formatMoney(saldoAcumulado)}</p>
         </div>
       </div>
@@ -308,7 +308,7 @@ export default async function AccountLedgerPage({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Fecha</th>
               <th className="py-2 pr-4">Descripción</th>
               <th className="py-2 pr-4">Debe</th>
@@ -322,14 +322,14 @@ export default async function AccountLedgerPage({
               .slice()
               .reverse()
               .map((row) => (
-                <tr key={row.key} className="border-b border-black/5">
+                <tr key={row.key} className="border-b border-foreground/5">
                   <td className="py-2 pr-4 whitespace-nowrap">
                     {row.date.toLocaleDateString("es-AR")}
                   </td>
                   <td className="py-2 pr-4">
                     {row.title}
                     {row.subtitle && (
-                      <p className="text-xs font-normal text-black/50">{row.subtitle}</p>
+                      <p className="text-xs font-normal text-foreground/50">{row.subtitle}</p>
                     )}
                   </td>
                   <td className="py-2 pr-4">{row.debe.isZero() ? "—" : formatMoney(row.debe)}</td>
@@ -340,7 +340,7 @@ export default async function AccountLedgerPage({
               ))}
             {rowsWithBalance.length === 0 && (
               <tr>
-                <td colSpan={canEdit ? 6 : 5} className="py-6 text-center text-black/40">
+                <td colSpan={canEdit ? 6 : 5} className="py-6 text-center text-foreground/40">
                   Sin movimientos todavía.
                 </td>
               </tr>

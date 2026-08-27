@@ -14,13 +14,13 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <div className="h-1 bg-primary" />
-      <header className="flex items-center justify-between border-b border-black/10 px-6 py-4">
+      <header className="flex items-center justify-between border-b border-foreground/10 px-6 py-4">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" width={32} height={32} className="shrink-0" />
           <div>
             <p className="font-semibold">Envasadora</p>
-            <p className="text-sm text-black/60">
+            <p className="text-sm text-foreground/60">
               {user.name} · {ROLE_LABELS[user.role]}
             </p>
           </div>
@@ -37,7 +37,7 @@ export default async function AppLayout({
         </form>
       </header>
       <div className="flex flex-1">
-        <nav className="flex w-56 shrink-0 flex-col gap-1 border-r border-black/10 p-4">
+        <nav className="flex w-56 shrink-0 flex-col gap-1 border-r border-foreground/10 p-4">
           {items.map((item) => (
             <Link
               key={item.href}

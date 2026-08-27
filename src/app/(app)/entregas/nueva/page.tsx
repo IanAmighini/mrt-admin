@@ -63,7 +63,7 @@ export default async function NuevaEntregaPage() {
         <h1 className="text-xl font-semibold mt-2">Nueva entrega</h1>
       </div>
 
-      {!canEdit && <p className="text-sm text-black/60">No tenés permisos para cargar entregas.</p>}
+      {!canEdit && <p className="text-sm text-foreground/60">No tenés permisos para cargar entregas.</p>}
 
       {canEdit && (
         <NuevaEntregaForm

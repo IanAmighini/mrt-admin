@@ -39,7 +39,7 @@ export function PedidoStatusSelect({ pedidoId, status }: { pedidoId: string; sta
           ))}
         </select>
       </form>
-      {error && <p className="mt-1 max-w-xs text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 max-w-xs text-xs text-red-600 dark:text-red-400">{error}</p>}
     </div>
   );
 }

@@ -29,13 +29,13 @@ export default async function ComprasPage({
     <div className="space-y-10">
       <div>
         <h1 className="text-xl font-semibold mb-1">Compras</h1>
-        <p className="text-sm text-black/60">
+        <p className="text-sm text-foreground/60">
           Cargar una compra de insumos a un proveedor, eligiéndolo directamente acá.
         </p>
       </div>
 
       {canEdit && (
-        <form className="flex flex-wrap items-end gap-3 rounded-lg border border-black/10 p-4">
+        <form className="flex flex-wrap items-end gap-3 rounded-lg border border-foreground/10 p-4">
           <div className="space-y-1">
             <label className="text-sm" htmlFor="entityId">
               Proveedor
@@ -44,7 +44,7 @@ export default async function ComprasPage({
               id="entityId"
               name="entityId"
               defaultValue={selectedEntity?.id ?? ""}
-              className="w-64 rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-64 rounded border border-foreground/20 px-3 py-2 text-sm"
             >
               <option value="">— Elegir proveedor —</option>
               {proveedores.map((p) => (
@@ -70,7 +70,7 @@ export default async function ComprasPage({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-black/60">
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">Proveedor</th>
                 <th className="py-2 pr-4">Remito</th>
                 <th className="py-2 pr-4">Fecha</th>
@@ -79,7 +79,7 @@ export default async function ComprasPage({
             </thead>
             <tbody>
               {compras.map((doc) => (
-                <tr key={doc.id} className="border-b border-black/5">
+                <tr key={doc.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">
                     <Link
                       href={`/cuentas-corrientes/${doc.account.entityId}`}
@@ -90,7 +90,7 @@ export default async function ComprasPage({
                   </td>
                   <td className="py-2 pr-4">
                     #{doc.number}
-                    <p className="text-xs font-normal text-black/50">
+                    <p className="text-xs font-normal text-foreground/50">
                       {doc.purchaseLines
                         .map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`)
                         .join(" · ")}
@@ -102,7 +102,7 @@ export default async function ComprasPage({
               ))}
               {compras.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-6 text-center text-black/40">
+                  <td colSpan={4} className="py-6 text-center text-foreground/40">
                     Todavía no hay compras cargadas.
                   </td>
                 </tr>

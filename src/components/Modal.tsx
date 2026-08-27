@@ -47,7 +47,7 @@ export function FormModal({
       </button>
       <dialog
         ref={dialogRef}
-        className={`fixed inset-0 m-auto w-full ${maxWidthClass} rounded-lg border border-black/10 p-0 backdrop:bg-black/50`}
+        className={`fixed inset-0 m-auto w-full ${maxWidthClass} rounded-lg border border-foreground/10 bg-background p-0 text-foreground backdrop:bg-black/50`}
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}
@@ -58,14 +58,14 @@ export function FormModal({
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
-              className="text-black/40 hover:text-black"
+              className="text-foreground/40 hover:text-foreground"
               aria-label="Cerrar"
             >
               ×
             </button>
           </div>
           {error && (
-            <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+            <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">{error}</p>
           )}
           <form action={formAction} className="space-y-3">
             {children}

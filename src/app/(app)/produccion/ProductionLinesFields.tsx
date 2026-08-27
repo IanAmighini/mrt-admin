@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { formatProductLabel } from "@/lib/product-label";
 
-const selectClass = "flex-1 rounded border border-black/20 px-3 py-2 text-sm";
-const quantityClass = "w-32 rounded border border-black/20 px-3 py-2 text-sm";
+const selectClass = "flex-1 rounded border border-foreground/20 px-3 py-2 text-sm";
+const quantityClass = "w-32 rounded border border-foreground/20 px-3 py-2 text-sm";
 
 export function ProductionLinesFields({
   products,
@@ -31,7 +31,7 @@ export function ProductionLinesFields({
             <button
               type="button"
               onClick={() => setRowKeys(rowKeys.filter((k) => k !== key))}
-              className="px-2 text-black/40 hover:text-black"
+              className="px-2 text-foreground/40 hover:text-foreground"
               aria-label="Quitar fila"
             >
               ×

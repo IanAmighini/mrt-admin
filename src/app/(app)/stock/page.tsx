@@ -23,16 +23,16 @@ export default async function StockPage() {
     <div className="space-y-10">
       <div>
         <h1 className="text-xl font-semibold mb-1">Stock</h1>
-        <p className="text-sm text-black/60">
+        <p className="text-sm text-foreground/60">
           Producto terminado e insumos — el stock se calcula a partir del historial de movimientos
           (kardex) de cada uno.
         </p>
       </div>
 
-      <div className="rounded-lg border border-black/10 p-4 max-w-xs">
+      <div className="rounded-lg border border-foreground/10 p-4 max-w-xs">
         <p className="text-sm font-semibold mb-1">Litros envasados</p>
         <p className="text-2xl font-semibold">{formatQuantity(litros.esteMes, "L")}</p>
-        <p className="text-xs text-black/50 mt-1">
+        <p className="text-xs text-foreground/50 mt-1">
           este mes — {formatQuantity(litros.total, "L")} total histórico
         </p>
       </div>
@@ -42,7 +42,7 @@ export default async function StockPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-black/60">
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">Producto</th>
                 <th className="py-2 pr-4">Suelto</th>
                 <th className="py-2 pr-4">En cajas</th>
@@ -53,7 +53,7 @@ export default async function StockPage() {
               {products.map((product) => {
                 const levels = productLevels.get(product.id);
                 return (
-                  <tr key={product.id} className="border-b border-black/5">
+                  <tr key={product.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">
                       <Link
                         href={`/produccion/${product.id}`}
@@ -70,7 +70,7 @@ export default async function StockPage() {
               })}
               {products.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-6 text-center text-black/40">
+                  <td colSpan={4} className="py-6 text-center text-foreground/40">
                     Todavía no hay productos cargados.
                   </td>
                 </tr>
@@ -84,7 +84,7 @@ export default async function StockPage() {
         <h2 className="text-lg font-semibold">Insumos</h2>
 
         {canEdit && (
-        <form action={createItem} className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4">
+        <form action={createItem} className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4">
           <h2 className="text-sm font-semibold">Nuevo insumo</h2>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -95,7 +95,7 @@ export default async function StockPage() {
                 id="name"
                 name="name"
                 required
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -107,7 +107,7 @@ export default async function StockPage() {
                 name="unit"
                 required
                 placeholder="L, unidad, kg..."
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -118,7 +118,7 @@ export default async function StockPage() {
                 id="minStock"
                 name="minStock"
                 inputMode="decimal"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -129,7 +129,7 @@ export default async function StockPage() {
                 id="unitCost"
                 name="unitCost"
                 inputMode="decimal"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -140,7 +140,7 @@ export default async function StockPage() {
                 id="stockInicial"
                 name="stockInicial"
                 inputMode="decimal"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -160,7 +160,7 @@ export default async function StockPage() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Insumo</th>
               <th className="py-2 pr-4">Unidad</th>
               <th className="py-2 pr-4">Stock actual</th>
@@ -170,7 +170,7 @@ export default async function StockPage() {
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.id} className="border-b border-black/5">
+              <tr key={item.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4">
                   <Link href={`/stock/${item.id}`} className="underline underline-offset-2">
                     {item.name}
@@ -186,7 +186,7 @@ export default async function StockPage() {
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-black/40">
+                <td colSpan={5} className="py-6 text-center text-foreground/40">
                   Todavía no hay insumos cargados.
                 </td>
               </tr>

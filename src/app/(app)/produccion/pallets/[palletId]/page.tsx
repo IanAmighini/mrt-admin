@@ -36,7 +36,7 @@ export default async function PalletDetailPage({
         <div className="mt-2 flex items-baseline justify-between">
           <div>
             <h1 className="text-xl font-semibold">{pallet.label || `Pallet ${pallet.id.slice(0, 8)}`}</h1>
-            <p className="text-sm text-black/60">
+            <p className="text-sm text-foreground/60">
               {pallet.date.toLocaleDateString("es-AR")} — cargado por {pallet.createdBy.name}
             </p>
           </div>
@@ -57,20 +57,20 @@ export default async function PalletDetailPage({
       )}
 
       {pallet.status === "DESARMADO" && pallet.dismantledAt && (
-        <p className="text-sm text-black/60">
+        <p className="text-sm text-foreground/60">
           Desarmado el {pallet.dismantledAt.toLocaleDateString("es-AR")}. Las cajas volvieron a
           stock; el pallet de madera y el film consumidos no se recuperan.
         </p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-black/10 p-4">
+        <div className="rounded-lg border border-foreground/10 p-4">
           <p className="text-sm font-semibold mb-1">Pallet de madera</p>
-          <p className="text-sm text-black/60">{pallet.woodItem.name} — 1 unidad consumida</p>
+          <p className="text-sm text-foreground/60">{pallet.woodItem.name} — 1 unidad consumida</p>
         </div>
-        <div className="rounded-lg border border-black/10 p-4">
+        <div className="rounded-lg border border-foreground/10 p-4">
           <p className="text-sm font-semibold mb-1">Film</p>
-          <p className="text-sm text-black/60">
+          <p className="text-sm text-foreground/60">
             {pallet.filmItem.name} — {formatQuantity(pallet.filmQuantity)} consumido
           </p>
         </div>
@@ -81,7 +81,7 @@ export default async function PalletDetailPage({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-black/60">
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">Tipo de caja</th>
                 <th className="py-2 pr-4">Producto</th>
                 <th className="py-2 pr-4">Cantidad</th>
@@ -89,7 +89,7 @@ export default async function PalletDetailPage({
             </thead>
             <tbody>
               {pallet.boxes.map((box) => (
-                <tr key={box.id} className="border-b border-black/5">
+                <tr key={box.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{box.boxType.label}</td>
                   <td className="py-2 pr-4">{formatProductLabel(box.boxType.product)}</td>
                   <td className="py-2 pr-4">{formatQuantity(box.quantity)}</td>

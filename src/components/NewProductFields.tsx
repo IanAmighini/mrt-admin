@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 
 /** Acepta "105x12x850", "105 X 12 X 850", etc. — cajas x botellas por caja x ml. */
 const PRESENTATION_PATTERN = /^\s*(\d+)\s*x\s*(\d+)\s*x\s*(\d+(?:[.,]\d+)?)\s*$/i;
@@ -50,7 +50,7 @@ export function NewProductFields() {
           onChange={(e) => handlePresentationChange(e.target.value)}
           className={inputClass}
         />
-        <p className="text-xs text-black/40">Cajas x botellas por caja x ml — completa los 3 campos solos.</p>
+        <p className="text-xs text-foreground/40">Cajas x botellas por caja x ml — completa los 3 campos solos.</p>
       </div>
       <div className="space-y-1">
         <label className="text-sm" htmlFor="boxesPerPallet">

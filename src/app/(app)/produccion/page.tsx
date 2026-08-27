@@ -48,7 +48,7 @@ export default async function ProduccionPage() {
     <div className="space-y-10">
       <div>
         <h1 className="text-xl font-semibold mb-1">Producción</h1>
-        <p className="text-sm text-black/60">
+        <p className="text-sm text-foreground/60">
           Productos, receta (BOM) y carga de producción diaria.
         </p>
       </div>
@@ -56,7 +56,7 @@ export default async function ProduccionPage() {
       {canEdit && (
         <form
           action={createProduct}
-          className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
         >
           <h2 className="text-sm font-semibold">Nuevo producto</h2>
           <div className="grid grid-cols-2 gap-3">
@@ -71,9 +71,9 @@ export default async function ProduccionPage() {
         </form>
       )}
 
-      <div className="max-w-xs rounded-lg border border-black/10 p-4">
+      <div className="max-w-xs rounded-lg border border-foreground/10 p-4">
         <h2 className="text-sm font-semibold mb-2">Eficiencia de llenado de aceite</h2>
-        <p className="text-xs text-black/50 mb-3">
+        <p className="text-xs text-foreground/50 mb-3">
           Porcentaje del volumen nominal de la botella que realmente se consume en aceite, usado
           al generar la receta de un producto.
         </p>
@@ -83,7 +83,7 @@ export default async function ProduccionPage() {
               name="oilFillEfficiencyPercent"
               defaultValue={oilFillEfficiencyPercent}
               inputMode="decimal"
-              className="w-24 rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-24 rounded border border-foreground/20 px-3 py-2 text-sm"
             />
             <span className="text-sm">%</span>
             <button
@@ -101,7 +101,7 @@ export default async function ProduccionPage() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Producto</th>
               <th className="py-2 pr-4">Tipo de aceite</th>
               <th className="py-2 pr-4">Presentación</th>
@@ -116,7 +116,7 @@ export default async function ProduccionPage() {
                 return stock !== undefined && !stock.isZero();
               })
               .map((product) => (
-                <tr key={product.id} className="border-b border-black/5">
+                <tr key={product.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">
                     <Link href={`/produccion/${product.id}`} className="underline underline-offset-2">
                       {product.name}
@@ -126,7 +126,7 @@ export default async function ProduccionPage() {
                   <td className="py-2 pr-4">{product.presentation}</td>
                   <td className="py-2 pr-4">
                     {product.recipe.length === 0 ? (
-                      <span className="text-black/40">Sin receta</span>
+                      <span className="text-foreground/40">Sin receta</span>
                     ) : (
                       product.recipe.length
                     )}
@@ -136,7 +136,7 @@ export default async function ProduccionPage() {
               ))}
             {products.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-black/40">
+                <td colSpan={5} className="py-6 text-center text-foreground/40">
                   Todavía no hay productos cargados.
                 </td>
               </tr>
@@ -147,7 +147,7 @@ export default async function ProduccionPage() {
                 return stock === undefined || stock.isZero();
               }) && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-black/40">
+                  <td colSpan={5} className="py-6 text-center text-foreground/40">
                     No hay stock cargado — todos los productos están en 0.
                   </td>
                 </tr>
@@ -159,7 +159,7 @@ export default async function ProduccionPage() {
       {canEdit && (
         <form
           action={createProductionRun}
-          className="space-y-3 rounded-lg border border-black/10 p-4"
+          className="space-y-3 rounded-lg border border-foreground/10 p-4"
         >
           <h2 className="text-sm font-semibold">Parte de producción diaria</h2>
           <div className="space-y-1 max-w-xs">
@@ -171,7 +171,7 @@ export default async function ProduccionPage() {
               type="date"
               name="date"
               required
-              className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
             />
           </div>
           <ProductionLinesFields
@@ -196,7 +196,7 @@ export default async function ProduccionPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-black/60">
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">Fecha</th>
                 <th className="py-2 pr-4">Producción</th>
                 <th className="py-2 pr-4">Cargado por</th>
@@ -204,7 +204,7 @@ export default async function ProduccionPage() {
             </thead>
             <tbody>
               {runs.map((run) => (
-                <tr key={run.id} className="border-b border-black/5">
+                <tr key={run.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{run.date.toLocaleDateString("es-AR")}</td>
                   <td className="py-2 pr-4">
                     {run.lines
@@ -216,7 +216,7 @@ export default async function ProduccionPage() {
               ))}
               {runs.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-4 text-center text-black/40">
+                  <td colSpan={3} className="py-4 text-center text-foreground/40">
                     Sin partes de producción todavía.
                   </td>
                 </tr>
@@ -226,10 +226,10 @@ export default async function ProduccionPage() {
         </div>
       </div>
 
-      <section className="space-y-6 border-t border-black/10 pt-10">
+      <section className="space-y-6 border-t border-foreground/10 pt-10">
         <div>
           <h2 className="text-lg font-semibold mb-1">Armado de cajas y pallets</h2>
-          <p className="text-sm text-black/60">
+          <p className="text-sm text-foreground/60">
             Producto suelto → caja armada → pallet armado.
           </p>
         </div>
@@ -237,7 +237,7 @@ export default async function ProduccionPage() {
         {canEdit && (
           <form
             action={createBoxType}
-            className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+            className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
           >
             <h3 className="text-sm font-semibold">Nuevo tipo de caja</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -249,7 +249,7 @@ export default async function ProduccionPage() {
                   id="boxProductId"
                   name="productId"
                   required
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 >
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
@@ -267,7 +267,7 @@ export default async function ProduccionPage() {
                   name="label"
                   required
                   placeholder="Caja x12"
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -279,7 +279,7 @@ export default async function ProduccionPage() {
                   name="unitsPerBox"
                   required
                   inputMode="decimal"
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -295,7 +295,7 @@ export default async function ProduccionPage() {
         {canEdit && boxTypes.length > 0 && (
           <form
             action={createBoxMovement}
-            className="grid max-w-xl gap-3 rounded-lg border border-black/10 p-4"
+            className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
           >
             <h3 className="text-sm font-semibold">Armar cajas</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -307,7 +307,7 @@ export default async function ProduccionPage() {
                   id="boxTypeId"
                   name="boxTypeId"
                   required
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 >
                   {boxTypes.map((boxType) => (
                     <option key={boxType.id} value={boxType.id}>
@@ -325,7 +325,7 @@ export default async function ProduccionPage() {
                   name="quantity"
                   required
                   inputMode="decimal"
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -337,7 +337,7 @@ export default async function ProduccionPage() {
                   type="date"
                   name="date"
                   required
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -350,7 +350,7 @@ export default async function ProduccionPage() {
                 name="reason"
                 required
                 placeholder="Armado de cajas para pedido X"
-                className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
               />
             </div>
             <button
@@ -367,7 +367,7 @@ export default async function ProduccionPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/10 text-left text-black/60">
+                <tr className="border-b border-foreground/10 text-left text-foreground/60">
                   <th className="py-2 pr-4">Tipo de caja</th>
                   <th className="py-2 pr-4">Producto</th>
                   <th className="py-2 pr-4">Unidades por caja</th>
@@ -376,7 +376,7 @@ export default async function ProduccionPage() {
               </thead>
               <tbody>
                 {boxTypes.map((boxType) => (
-                  <tr key={boxType.id} className="border-b border-black/5">
+                  <tr key={boxType.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">{boxType.label}</td>
                     <td className="py-2 pr-4">{formatProductLabel(boxType.product)}</td>
                     <td className="py-2 pr-4">{formatQuantity(boxType.unitsPerBox)}</td>
@@ -387,7 +387,7 @@ export default async function ProduccionPage() {
                 ))}
                 {boxTypes.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="py-6 text-center text-black/40">
+                    <td colSpan={4} className="py-6 text-center text-foreground/40">
                       Todavía no hay tipos de caja cargados.
                     </td>
                   </tr>
@@ -398,7 +398,7 @@ export default async function ProduccionPage() {
         </div>
 
         {canEdit && boxTypes.length > 0 && (
-          <form action={createPallet} className="space-y-3 rounded-lg border border-black/10 p-4">
+          <form action={createPallet} className="space-y-3 rounded-lg border border-foreground/10 p-4">
             <h3 className="text-sm font-semibold">Armar pallet</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -410,7 +410,7 @@ export default async function ProduccionPage() {
                   type="date"
                   name="date"
                   required
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -423,7 +423,7 @@ export default async function ProduccionPage() {
                   type="number"
                   min={1}
                   defaultValue={1}
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1 col-span-2">
@@ -434,7 +434,7 @@ export default async function ProduccionPage() {
                   id="palletLabel"
                   name="label"
                   placeholder="Pallet marca X"
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -445,7 +445,7 @@ export default async function ProduccionPage() {
                   id="woodItemId"
                   name="woodItemId"
                   required
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 >
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -462,7 +462,7 @@ export default async function ProduccionPage() {
                   id="filmItemId"
                   name="filmItemId"
                   required
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 >
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -480,7 +480,7 @@ export default async function ProduccionPage() {
                   name="filmQuantity"
                   required
                   inputMode="decimal"
-                  className="w-full rounded border border-black/20 px-3 py-2 text-sm"
+                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -491,7 +491,7 @@ export default async function ProduccionPage() {
                   <select
                     name="boxTypeId"
                     defaultValue=""
-                    className="flex-1 rounded border border-black/20 px-3 py-2 text-sm"
+                    className="flex-1 rounded border border-foreground/20 px-3 py-2 text-sm"
                   >
                     <option value="">— Tipo de caja —</option>
                     {boxTypes.map((boxType) => (
@@ -504,7 +504,7 @@ export default async function ProduccionPage() {
                     name="boxQuantity"
                     placeholder="Cantidad"
                     inputMode="decimal"
-                    className="w-32 rounded border border-black/20 px-3 py-2 text-sm"
+                    className="w-32 rounded border border-foreground/20 px-3 py-2 text-sm"
                   />
                 </div>
               ))}
@@ -523,7 +523,7 @@ export default async function ProduccionPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/10 text-left text-black/60">
+                <tr className="border-b border-foreground/10 text-left text-foreground/60">
                   <th className="py-2 pr-4">Fecha</th>
                   <th className="py-2 pr-4">Etiqueta</th>
                   <th className="py-2 pr-4">Cajas</th>
@@ -533,7 +533,7 @@ export default async function ProduccionPage() {
               </thead>
               <tbody>
                 {pallets.map((pallet) => (
-                  <tr key={pallet.id} className="border-b border-black/5">
+                  <tr key={pallet.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">{pallet.date.toLocaleDateString("es-AR")}</td>
                     <td className="py-2 pr-4">
                       <Link
@@ -557,7 +557,7 @@ export default async function ProduccionPage() {
                 ))}
                 {pallets.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-black/40">
+                    <td colSpan={5} className="py-6 text-center text-foreground/40">
                       Todavía no hay pallets armados.
                     </td>
                   </tr>

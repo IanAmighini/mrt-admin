@@ -17,7 +17,7 @@ export function ComprasPanel({
   canEdit: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-black/10 p-5 space-y-4">
+    <div className="rounded-lg border border-foreground/10 p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Compras</h2>
         {canEdit && (
@@ -34,10 +34,10 @@ export function ComprasPanel({
 
       <div className="space-y-2">
         {compras.map((doc) => (
-          <div key={doc.id} className="flex items-center justify-between border-b border-black/5 pb-2">
+          <div key={doc.id} className="flex items-center justify-between border-b border-foreground/5 pb-2">
             <div>
               <p className="text-sm font-medium">Remito #{doc.number}</p>
-              <p className="text-xs text-black/50">
+              <p className="text-xs text-foreground/50">
                 {doc.date.toLocaleDateString("es-AR")} ·{" "}
                 {doc.purchaseLines.map((l) => l.item.name).join(", ") || "—"}
               </p>
@@ -46,7 +46,7 @@ export function ComprasPanel({
           </div>
         ))}
         {compras.length === 0 && (
-          <p className="py-4 text-center text-sm text-black/40">Todavía no hay compras.</p>
+          <p className="py-4 text-center text-sm text-foreground/40">Todavía no hay compras.</p>
         )}
       </div>
     </div>

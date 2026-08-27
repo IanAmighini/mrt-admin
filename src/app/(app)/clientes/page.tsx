@@ -23,7 +23,7 @@ export default async function ClientesPage() {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold mb-1">Clientes</h1>
-          <p className="text-sm text-black/60">
+          <p className="text-sm text-foreground/60">
             Cada cliente recibe automáticamente dos cuentas corrientes independientes: Blanco y
             Negro.
           </p>
@@ -38,7 +38,7 @@ export default async function ClientesPage() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Nombre</th>
               <th className="py-2 pr-4">Tipo</th>
               <th className="py-2 pr-4">CUIT</th>
@@ -49,7 +49,7 @@ export default async function ClientesPage() {
           </thead>
           <tbody>
             {rows.map(({ entity, blancoSaldo, negroSaldo, total }) => (
-              <tr key={entity.id} className="border-b border-black/5">
+              <tr key={entity.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4">
                   <Link
                     href={`/cuentas-corrientes/${entity.id}`}
@@ -67,7 +67,7 @@ export default async function ClientesPage() {
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-black/40">
+                <td colSpan={6} className="py-6 text-center text-foreground/40">
                   Todavía no hay clientes cargados.
                 </td>
               </tr>

@@ -31,7 +31,7 @@ export async function PagosPageContent({
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold mb-1">{title}</h1>
-          <p className="text-sm text-black/60">Últimos pagos registrados.</p>
+          <p className="text-sm text-foreground/60">Últimos pagos registrados.</p>
         </div>
         {canEdit && (
           <FormModal
@@ -50,7 +50,7 @@ export async function PagosPageContent({
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-black/10 text-left text-black/60">
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">{entityNoun}</th>
                 <th className="py-2 pr-4">Monto</th>
                 <th className="py-2 pr-4">Medio</th>
@@ -60,7 +60,7 @@ export async function PagosPageContent({
             </thead>
             <tbody>
               {pagos.map((payment) => (
-                <tr key={payment.id} className="border-b border-black/5">
+                <tr key={payment.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">
                     <Link
                       href={`/cuentas-corrientes/${payment.account.entityId}`}
@@ -77,7 +77,7 @@ export async function PagosPageContent({
               ))}
               {pagos.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-black/40">
+                  <td colSpan={5} className="py-6 text-center text-foreground/40">
                     Todavía no hay pagos cargados.
                   </td>
                 </tr>

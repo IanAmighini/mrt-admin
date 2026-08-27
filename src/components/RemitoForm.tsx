@@ -34,7 +34,7 @@ export function RemitoFormFields({
 }) {
   return (
     <>
-      <p className="text-xs text-black/50">
+      <p className="text-xs text-foreground/50">
         {editingDocumentId
           ? "Al guardar se reemplazan las líneas de este remito por las que cargues acá."
           : "Un mismo remito puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro) — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea."}
@@ -95,7 +95,7 @@ export function RemitoForm({
   pedidosPendientes?: PedidoPendiente[];
 }) {
   return (
-    <form action={createRemito} className="space-y-4 rounded-lg border border-black/10 p-4">
+    <form action={createRemito} className="space-y-4 rounded-lg border border-foreground/10 p-4">
       <h2 className="text-sm font-semibold">Nuevo remito</h2>
       <RemitoFormFields
         entityId={entityId}
@@ -116,7 +116,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 const selectClass = inputClass;
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";

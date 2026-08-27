@@ -56,7 +56,7 @@ export default async function PedidosPage({
     <div className="space-y-8">
       <div>
         <h1 className="text-xl font-semibold mb-1">Pedidos</h1>
-        <p className="text-sm text-black/60">
+        <p className="text-sm text-foreground/60">
           Pedidos recibidos por WhatsApp — en cola de producción, completados (en stock, sin
           retirar) y entregados.
         </p>
@@ -80,7 +80,7 @@ export default async function PedidosPage({
               className={`rounded px-3 py-1.5 text-sm ${
                 statusFilter === s.value
                   ? "bg-primary text-primary-foreground"
-                  : "border border-black/20 hover:bg-black/5"
+                  : "border border-foreground/20 hover:bg-foreground/5"
               }`}
             >
               {s.label}
@@ -97,7 +97,7 @@ export default async function PedidosPage({
               id="entityId"
               name="entityId"
               defaultValue={entityId ?? ""}
-              className="w-56 rounded border border-black/20 px-3 py-2 text-sm"
+              className="w-56 rounded border border-foreground/20 px-3 py-2 text-sm"
             >
               <option value="">— Todos —</option>
               {clientes.map((c) => (
@@ -109,7 +109,7 @@ export default async function PedidosPage({
           </div>
           <button
             type="submit"
-            className="rounded border border-black/20 px-3 py-2 text-sm hover:bg-black/5"
+            className="rounded border border-foreground/20 px-3 py-2 text-sm hover:bg-foreground/5"
           >
             Filtrar
           </button>
@@ -119,7 +119,7 @@ export default async function PedidosPage({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-black/10 text-left text-black/60">
+            <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Fecha</th>
               <th className="py-2 pr-4">Cliente</th>
               <th className="py-2 pr-4">Nº Pedido</th>
@@ -138,7 +138,7 @@ export default async function PedidosPage({
                 {pedido.lines.map((line, li) => (
                   <tr
                     key={line.id}
-                    className={`border-b border-black/5 ${i % 2 === 1 ? "bg-black/[0.02]" : ""}`}
+                    className={`border-b border-foreground/5 ${i % 2 === 1 ? "bg-foreground/[0.02]" : ""}`}
                   >
                     {li === 0 && (
                       <>
@@ -217,7 +217,7 @@ export default async function PedidosPage({
             ))}
             {pedidos.length === 0 && (
               <tr>
-                <td colSpan={canEdit ? 10 : 9} className="py-6 text-center text-black/40">
+                <td colSpan={canEdit ? 10 : 9} className="py-6 text-center text-foreground/40">
                   No hay pedidos cargados{statusFilter || entityId ? " con este filtro." : "."}
                 </td>
               </tr>

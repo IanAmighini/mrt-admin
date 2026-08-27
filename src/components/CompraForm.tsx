@@ -15,7 +15,7 @@ export function CompraFormFields({
 }) {
   return (
     <>
-      <p className="text-xs text-black/50">
+      <p className="text-xs text-foreground/50">
         {editingDocumentId
           ? "Al guardar se reemplazan las líneas de esta compra por las que cargues acá, y el stock se recalcula."
           : "Al cargar la compra se suma el stock de cada insumo automáticamente y se imputa a la cuenta corriente del proveedor — una misma compra puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)."}
@@ -52,7 +52,7 @@ export function CompraFormFields({
 
 export function CompraForm({ entityId, items }: { entityId: string; items: Item[] }) {
   return (
-    <form action={createCompra} className="space-y-4 rounded-lg border border-black/10 p-4">
+    <form action={createCompra} className="space-y-4 rounded-lg border border-foreground/10 p-4">
       <h2 className="text-sm font-semibold">Nueva compra de insumos</h2>
       <CompraFormFields entityId={entityId} items={items} />
     </form>
@@ -68,7 +68,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 const selectClass = inputClass;
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";

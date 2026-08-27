@@ -229,15 +229,15 @@ function PricesSection({
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-semibold text-black/60">Circuito {CIRCUIT_LABELS[circuit]}</h2>
-      <details className="rounded-lg border border-black/10 p-4">
+      <h2 className="text-sm font-semibold text-foreground/60">Circuito {CIRCUIT_LABELS[circuit]}</h2>
+      <details className="rounded-lg border border-foreground/10 p-4">
         <summary className="cursor-pointer text-sm font-semibold">Listado de precios</summary>
 
         <div className="mt-4 space-y-4">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-black/10 text-left text-black/60">
+                <tr className="border-b border-foreground/10 text-left text-foreground/60">
                   <th className="py-2 pr-4">Producto</th>
                   <th className="py-2 pr-4">Precio vigente</th>
                   <th className="py-2 pr-4">Vigente desde</th>
@@ -247,7 +247,7 @@ function PricesSection({
                 {pricedProducts.map((product) => {
                   const price = currentPrices.get(product.id)!;
                   return (
-                    <tr key={product.id} className="border-b border-black/5">
+                    <tr key={product.id} className="border-b border-foreground/5">
                       <td className="py-2 pr-4">{productLabel(product)}</td>
                       <td className="py-2 pr-4">{formatMoney(price.amount, price.currency)}</td>
                       <td className="py-2 pr-4">{price.validFrom.toLocaleDateString("es-AR")}</td>
@@ -256,7 +256,7 @@ function PricesSection({
                 })}
                 {pricedProducts.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="py-4 text-center text-black/40">
+                    <td colSpan={3} className="py-4 text-center text-foreground/40">
                       Todavía no hay precios cargados para este circuito.
                     </td>
                   </tr>
@@ -266,7 +266,7 @@ function PricesSection({
           </div>
 
           {canEdit && (
-            <form action={createPrice} className="space-y-3 rounded-lg border border-black/10 p-4">
+            <form action={createPrice} className="space-y-3 rounded-lg border border-foreground/10 p-4">
               <h4 className="text-sm font-semibold">Cargar precio</h4>
               <input type="hidden" name="entityId" value={entityId} />
               <input type="hidden" name="circuit" value={circuit} />
@@ -305,7 +305,7 @@ function PricesSection({
             <div className="mt-2 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-black/10 text-left text-black/60">
+                  <tr className="border-b border-foreground/10 text-left text-foreground/60">
                     <th className="py-2 pr-4">Producto</th>
                     <th className="py-2 pr-4">Precio</th>
                     <th className="py-2 pr-4">Vigente desde</th>
@@ -314,7 +314,7 @@ function PricesSection({
                 </thead>
                 <tbody>
                   {priceHistory.map((price) => (
-                    <tr key={price.id} className="border-b border-black/5">
+                    <tr key={price.id} className="border-b border-foreground/5">
                       <td className="py-2 pr-4">{productLabel(price.product)}</td>
                       <td className="py-2 pr-4">{formatMoney(price.amount, price.currency)}</td>
                       <td className="py-2 pr-4">{price.validFrom.toLocaleDateString("es-AR")}</td>
@@ -323,7 +323,7 @@ function PricesSection({
                   ))}
                   {priceHistory.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-4 text-center text-black/40">
+                      <td colSpan={4} className="py-4 text-center text-foreground/40">
                         Sin precios cargados todavía.
                       </td>
                     </tr>
@@ -347,7 +347,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 const selectClass = inputClass;
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";

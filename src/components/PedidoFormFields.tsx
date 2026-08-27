@@ -22,7 +22,7 @@ export function PedidoFormFields({
   return (
     <>
       {editingPedidoId && (
-        <p className="text-xs text-black/50">
+        <p className="text-xs text-foreground/50">
           Al guardar se reemplazan las líneas de este pedido por las que cargues acá.
         </p>
       )}
@@ -86,7 +86,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputClass = "w-full rounded border border-black/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
 const selectClass = inputClass;
 const submitClass =
   "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";
