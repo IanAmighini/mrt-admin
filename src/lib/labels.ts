@@ -27,6 +27,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   EFECTIVO: "Efectivo",
   TRANSFERENCIA: "Transferencia",
   CHEQUE: "Cheque",
+  ECHEQ: "Echeq",
   OTRO: "Otro",
 };
 

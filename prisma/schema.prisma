@@ -104,6 +104,7 @@ enum PaymentMethod {
   EFECTIVO
   TRANSFERENCIA
   CHEQUE
+  ECHEQ
   OTRO
 }
 

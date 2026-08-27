@@ -7,11 +7,13 @@ export function FormModal({
   title,
   action,
   children,
+  maxWidthClass = "max-w-lg",
 }: {
   triggerLabel: string;
   title: string;
   action: (formData: FormData) => Promise<void>;
   children: React.ReactNode;
+  maxWidthClass?: string;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [error, formAction, pending] = useActionState<string | null, FormData>(
@@ -45,7 +47,7 @@ export function FormModal({
       </button>
       <dialog
         ref={dialogRef}
-        className="fixed inset-0 m-auto w-full max-w-lg rounded-lg border border-black/10 p-0 backdrop:bg-black/50"
+        className={`fixed inset-0 m-auto w-full ${maxWidthClass} rounded-lg border border-black/10 p-0 backdrop:bg-black/50`}
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}

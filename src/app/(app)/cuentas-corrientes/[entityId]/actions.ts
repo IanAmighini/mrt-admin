@@ -414,6 +414,64 @@ export async function createPayment(formData: FormData) {
   revalidatePath("/dashboard-proveedores");
 }
 
+/**
+ * Variante de createPayment para el modal "Nuevo pago" de /pagos-clientes y
+ * /pagos-proveedores: ahí no se conoce el accountId de antemano (se elige la entidad y la
+ * cuenta en el mismo formulario), así que se resuelve acá. Siempre imputa por FIFO — la
+ * imputación manual sigue disponible desde la ficha individual de la entidad.
+ */
+export async function createPaymentForEntity(formData: FormData) {
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new Error("Falta el cliente o proveedor.");
+
+  const circuit = String(formData.get("circuit") || "");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Cuenta inválida.");
+
+  const account = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId, circuit } },
+  });
+  if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
+
+  const date = parseFormDate(formData.get("date"));
+  const amount = parseAmount(formData.get("amount"), "monto del pago");
+  const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
+  const reference = String(formData.get("reference") || "").trim() || null;
+
+  const allocations = await allocateFifo(account.id, amount, "ARS");
+
+  await prisma.$transaction(async (tx) => {
+    const payment = await tx.payment.create({
+      data: {
+        accountId: account.id,
+        date,
+        amount,
+        currency: "ARS",
+        method,
+        reference,
+        createdById: user.id,
+      },
+    });
+
+    if (allocations.length > 0) {
+      await tx.paymentAllocation.createMany({
+        data: allocations.map((a) => ({
+          paymentId: payment.id,
+          documentId: a.documentId,
+          amount: a.amount,
+        })),
+      });
+    }
+  });
+
+  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath("/pagos-clientes");
+  revalidatePath("/pagos-proveedores");
+  revalidatePath("/dashboard-clientes");
+  revalidatePath("/dashboard-proveedores");
+}
+
 export async function moveRemitoToBlanco(formData: FormData) {
   await requireRole(["ADMIN", "CARGA_DIARIA"]);
 
