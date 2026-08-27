@@ -13,6 +13,7 @@ import {
   deleteFactura,
   deletePayment,
   deleteRemito,
+  moveRemitoToBlanco,
   updateCompra,
   updateDocument,
   updateFactura,
@@ -108,6 +109,16 @@ export default async function AccountLedgerPage({
         exchangeRate: doc.exchangeRate?.toString(),
       };
 
+      const moveToBlanco =
+        circuit === "NEGRO" && doc.remitoLinks.length === 0 ? (
+          <form action={moveRemitoToBlanco}>
+            <input type="hidden" name="documentId" value={doc.id} />
+            <button type="submit" className="text-xs underline underline-offset-2">
+              Mover a Blanco
+            </button>
+          </form>
+        ) : null;
+
       if (doc.lines.length > 0) {
         actions = (
           <div className="flex items-center gap-2">
@@ -126,6 +137,7 @@ export default async function AccountLedgerPage({
               hiddenValue={doc.id}
               confirmMessage="¿Borrar este remito? Esta acción no se puede deshacer."
             />
+            {moveToBlanco}
           </div>
         );
       } else if (doc.purchaseLines.length > 0) {
@@ -145,6 +157,7 @@ export default async function AccountLedgerPage({
               hiddenValue={doc.id}
               confirmMessage="¿Borrar esta compra? El stock que sumó se revierte. Esta acción no se puede deshacer."
             />
+            {moveToBlanco}
           </div>
         );
       } else if (doc.type === "FACTURA") {

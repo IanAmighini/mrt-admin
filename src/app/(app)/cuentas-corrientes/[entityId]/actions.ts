@@ -38,53 +38,6 @@ async function getAccountOrThrow(accountId: string) {
   return account;
 }
 
-export async function createDocument(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
-
-  const accountId = String(formData.get("accountId") || "");
-  const type = String(formData.get("type") || "") as DocumentType;
-  if (!NON_FACTURA_TYPES.includes(type)) throw new Error("Tipo de comprobante inválido.");
-
-  const account = await getAccountOrThrow(accountId);
-
-  const number = String(formData.get("number") || "").trim();
-  if (!number) throw new Error("El número es obligatorio.");
-
-  const date = parseFormDate(formData.get("date"));
-  const dueDate = parseOptionalFormDate(formData.get("dueDate"));
-  const currency = String(formData.get("currency") || "ARS") as Currency;
-  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
-
-  const amount = parseAmount(formData.get("amount"), "monto");
-  const reason = String(formData.get("reason") || "").trim() || null;
-
-  if (type === "AJUSTE" && !reason) {
-    throw new Error("El ajuste manual requiere un motivo.");
-  }
-
-  const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
-  const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
-
-  await prisma.document.create({
-    data: {
-      accountId: account.id,
-      type,
-      number,
-      date,
-      dueDate,
-      currency,
-      exchangeRate,
-      netAmount: amount,
-      totalAmount,
-      reason,
-      createdById: user.id,
-    },
-  });
-
-  revalidatePath(`/cuentas-corrientes/${account.entityId}`);
-}
-
 /** Edita una nota/ajuste ya cargado — campos simples, el pendiente se recalcula solo desde
  * totalAmount (no hay nada desnormalizado que tocar). */
 export async function updateDocument(formData: FormData) {
