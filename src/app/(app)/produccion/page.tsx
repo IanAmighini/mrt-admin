@@ -6,10 +6,9 @@ import { formatProductBrandLabel } from "@/lib/product-label";
 import { getSetting } from "@/lib/settings";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { NewProductFields } from "@/components/NewProductFields";
 import { ProductionRunFormFields } from "@/components/ProductionRunFormFields";
 import { OilEfficiencyFields } from "@/components/OilEfficiencyFields";
-import { createProduct, createProductionRun, deleteProductionRun, updateProductionRun, updateOilEfficiency } from "./actions";
+import { createProductionRun, deleteProductionRun, updateProductionRun, updateOilEfficiency } from "./actions";
 
 function toDateInputValue(date: Date): string {
   return date.toISOString().slice(0, 10);
@@ -19,11 +18,7 @@ export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
-  const [products, runs, oilFillEfficiencyPercent, marcas, formatos] = await Promise.all([
-    prisma.product.findMany({
-      orderBy: { name: "asc" },
-      select: { id: true, name: true, oilType: true, presentation: true },
-    }),
+  const [runs, oilFillEfficiencyPercent, marcas, formatos] = await Promise.all([
     prisma.productionRun.findMany({
       orderBy: { date: "desc" },
       include: {
@@ -35,17 +30,10 @@ export default async function ProduccionPage() {
     getSetting("oilFillEfficiencyPercent", "100"),
     prisma.marca.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }] }),
     prisma.formato.findMany({
-      orderBy: { presentation: "asc" },
+      orderBy: [{ bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
       select: { id: true, presentation: true },
     }),
   ]);
-
-  const productFields = products.map((p) => ({
-    id: p.id,
-    name: p.name,
-    oilType: p.oilType,
-    presentation: p.presentation,
-  }));
 
   const runTotals = runs.map((run) => {
     let pallets = 0;
@@ -71,21 +59,18 @@ export default async function ProduccionPage() {
             href="/produccion/catalogo"
             className="mt-1 inline-block text-sm underline underline-offset-2"
           >
-            Ver catálogo (marcas, formatos, productos) →
+            Ver catálogo (marcas, formatos) →
           </Link>
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <FormModal triggerLabel="Nuevo producto" title="Nuevo producto" action={createProduct}>
-              <NewProductFields marcas={marcas} formatos={formatos} />
-            </FormModal>
             <FormModal
               triggerLabel="Nueva producción"
               title="Cargar producción"
               action={createProductionRun}
               maxWidthClass="max-w-xl"
             >
-              <ProductionRunFormFields products={productFields} />
+              <ProductionRunFormFields marcas={marcas} formatos={formatos} />
             </FormModal>
             <FormModal
               triggerLabel="Rendimiento de aceite"
@@ -130,7 +115,8 @@ export default async function ProduccionPage() {
                       iconName="edit"
                     >
                       <ProductionRunFormFields
-                        products={productFields}
+                        marcas={marcas}
+                        formatos={formatos}
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
                       />
@@ -151,7 +137,12 @@ export default async function ProduccionPage() {
                 return (
                   <div key={line.id} className="flex items-center justify-between px-4 py-2 text-sm">
                     <div className="flex items-center gap-4">
-                      <span className="font-medium">{formatProductBrandLabel(line.product)}</span>
+                      <Link
+                        href={`/produccion/${line.product.id}`}
+                        className="font-medium underline underline-offset-2"
+                      >
+                        {formatProductBrandLabel(line.product)}
+                      </Link>
                       <span className="text-foreground/50">{line.product.presentation}</span>
                     </div>
                     <span
