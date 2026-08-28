@@ -41,9 +41,9 @@ export default async function AppLayout({
           </button>
         </form>
       </header>
-      <div className="flex flex-1">
+      <div className="flex flex-1 flex-col md:flex-row">
         <SidebarNav items={items} />
-        <main className="flex-1 p-6">{children}</main>
+        <main className="flex-1 p-4 md:p-6">{children}</main>
       </div>
     </div>
   );
