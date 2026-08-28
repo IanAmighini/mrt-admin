@@ -20,7 +20,7 @@ export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
-  const [products, stocks, runs, oilFillEfficiencyPercent] = await Promise.all([
+  const [products, stocks, runs, oilFillEfficiencyPercent, marcas, formatos] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
       include: { recipe: true },
@@ -35,6 +35,8 @@ export default async function ProduccionPage() {
       take: 30,
     }),
     getSetting("oilFillEfficiencyPercent", "100"),
+    prisma.marca.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }] }),
+    prisma.formato.findMany({ orderBy: { presentation: "asc" } }),
   ]);
 
   const productFields = products.map((p) => ({
@@ -68,7 +70,7 @@ export default async function ProduccionPage() {
         {canEdit && (
           <div className="flex flex-wrap gap-2">
             <FormModal triggerLabel="Nuevo producto" title="Nuevo producto" action={createProduct}>
-              <NewProductFields />
+              <NewProductFields marcas={marcas} formatos={formatos} />
             </FormModal>
             <FormModal
               triggerLabel="Nueva producción"

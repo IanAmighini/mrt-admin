@@ -20,29 +20,76 @@ function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Un producto = una marca (nombre + tipo de aceite) en un formato (cajas x botellas por caja x
+ * ml). Ambas se eligen de un catálogo reutilizable o se cargan nuevas acá mismo — así una marca
+ * nueva puede usar un formato que ya existe (y viceversa) sin volver a tipear los números.
+ */
 export async function createProduct(formData: FormData) {
   await requireRole(["ADMIN", "CARGA_DIARIA"]);
 
-  const name = String(formData.get("name") || "").trim();
-  const oilType = String(formData.get("oilType") || "").trim();
-  const presentation = String(formData.get("presentation") || "").trim();
-  const boxesPerPallet = parseOptionalInt(formData.get("boxesPerPallet"));
-  const unitsPerBox = parseOptionalInt(formData.get("unitsPerBox"));
-  const bottleCapacityMlRaw = String(formData.get("bottleCapacityMl") || "").trim();
+  const marcaId = String(formData.get("marcaId") || "");
+  let name: string;
+  let oilType: string;
 
-  if (!name) throw new Error("El nombre es obligatorio.");
-  if (!oilType) throw new Error("El tipo de aceite es obligatorio.");
-  if (!presentation) throw new Error("La presentación es obligatoria.");
+  if (marcaId && marcaId !== "__new__") {
+    const marca = await prisma.marca.findUnique({ where: { id: marcaId } });
+    if (!marca) throw new Error("La marca elegida ya no existe.");
+    name = marca.name;
+    oilType = marca.oilType;
+  } else {
+    name = String(formData.get("newMarcaName") || "").trim();
+    oilType = String(formData.get("newMarcaOilType") || "").trim();
+    if (!name) throw new Error("Falta el nombre de la marca.");
+    if (!oilType) throw new Error("Falta el tipo de aceite.");
+
+    await prisma.marca.upsert({
+      where: { name_oilType: { name, oilType } },
+      update: {},
+      create: { name, oilType },
+    });
+  }
+
+  const formatoId = String(formData.get("formatoId") || "");
+  let presentation: string;
+  let boxesPerPallet: number;
+  let unitsPerBox: number;
+  let bottleCapacityMl: string;
+
+  if (formatoId && formatoId !== "__new__") {
+    const formato = await prisma.formato.findUnique({ where: { id: formatoId } });
+    if (!formato) throw new Error("El formato elegido ya no existe.");
+    presentation = formato.presentation;
+    boxesPerPallet = formato.boxesPerPallet;
+    unitsPerBox = formato.unitsPerBox;
+    bottleCapacityMl = formato.bottleCapacityMl.toString();
+  } else {
+    presentation = String(formData.get("newPresentation") || "").trim();
+    const boxesPerPalletParsed = parseOptionalInt(formData.get("newBoxesPerPallet"));
+    const unitsPerBoxParsed = parseOptionalInt(formData.get("newUnitsPerBox"));
+    bottleCapacityMl = String(formData.get("newBottleCapacityMl") || "").trim();
+
+    if (!presentation) throw new Error("Falta la presentación del formato.");
+    if (!boxesPerPalletParsed || !unitsPerBoxParsed || !bottleCapacityMl) {
+      throw new Error("Completá cajas por pallet, botellas por caja y capacidad de botella.");
+    }
+    boxesPerPallet = boxesPerPalletParsed;
+    unitsPerBox = unitsPerBoxParsed;
+
+    await prisma.formato.upsert({
+      where: { presentation },
+      update: { boxesPerPallet, unitsPerBox, bottleCapacityMl },
+      create: { presentation, boxesPerPallet, unitsPerBox, bottleCapacityMl },
+    });
+  }
+
+  const existing = await prisma.product.findFirst({ where: { name, oilType, presentation } });
+  if (existing) {
+    throw new Error(`Ya existe "${name} ${oilType}" en el formato "${presentation}".`);
+  }
 
   await prisma.product.create({
-    data: {
-      name,
-      oilType,
-      presentation,
-      boxesPerPallet,
-      unitsPerBox,
-      bottleCapacityMl: bottleCapacityMlRaw || null,
-    },
+    data: { name, oilType, presentation, boxesPerPallet, unitsPerBox, bottleCapacityMl },
   });
 
   revalidatePath("/produccion");

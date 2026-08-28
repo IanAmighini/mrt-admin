@@ -276,6 +276,27 @@ model Product {
   pedidoLines     PedidoLine[]
 }
 
+/** Marca (nombre + tipo de aceite), sin formato — catálogo reutilizable al crear productos. */
+model Marca {
+  id        String   @id @default(cuid())
+  name      String
+  oilType   String
+  createdAt DateTime @default(now())
+
+  @@unique([name, oilType])
+}
+
+/** Formato de pallet (cajas x botellas por caja x ml), universal — se define una vez y
+ * cualquier marca lo puede reusar al crear un producto, sin volver a tipear los números. */
+model Formato {
+  id               String   @id @default(cuid())
+  presentation     String   @unique
+  boxesPerPallet   Int
+  unitsPerBox      Int
+  bottleCapacityMl Decimal  @db.Decimal(10, 2)
+  createdAt        DateTime @default(now())
+}
+
 model Setting {
   key   String @id
   value String
