@@ -168,98 +168,98 @@ export default async function StockPage({
       </section>
 
       <section className="space-y-6">
-        <h2 className="text-lg font-semibold">Insumos</h2>
-
-        {canEdit && (
-          <form action={createItem} className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-            <h3 className="text-sm font-semibold">Nuevo insumo</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="name">
-                  Nombre
-                </label>
-                <input
-                  id="name"
-                  name="name"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold">Insumos</h2>
+          {canEdit && (
+            <FormModal triggerLabel="Nuevo insumo" title="Nuevo insumo" action={createItem}>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-sm" htmlFor="name">
+                    Nombre
+                  </label>
+                  <input
+                    id="name"
+                    name="name"
+                    required
+                    className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm" htmlFor="category">
+                    Categoría
+                  </label>
+                  <select
+                    id="category"
+                    name="category"
+                    required
+                    className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                  >
+                    {CATEGORY_ORDER.map((c) => (
+                      <option key={c} value={c}>
+                        {SUPPLIER_CATEGORY_LABELS[c]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm" htmlFor="unit">
+                    Unidad de medida
+                  </label>
+                  <input
+                    id="unit"
+                    name="unit"
+                    required
+                    placeholder="L, unidad, kg..."
+                    className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm" htmlFor="minStock">
+                    Stock mínimo (opcional)
+                  </label>
+                  <input
+                    id="minStock"
+                    name="minStock"
+                    inputMode="decimal"
+                    className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm" htmlFor="unitCost">
+                    Costo unitario (opcional)
+                  </label>
+                  <input
+                    id="unitCost"
+                    name="unitCost"
+                    inputMode="decimal"
+                    className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm" htmlFor="stockInicial">
+                    Stock inicial (opcional)
+                  </label>
+                  <input
+                    id="stockInicial"
+                    name="stockInicial"
+                    inputMode="decimal"
+                    className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="category">
-                  Categoría
-                </label>
-                <select
-                  id="category"
-                  name="category"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                >
-                  {CATEGORY_ORDER.map((c) => (
-                    <option key={c} value={c}>
-                      {SUPPLIER_CATEGORY_LABELS[c]}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="unit">
-                  Unidad de medida
-                </label>
-                <input
-                  id="unit"
-                  name="unit"
-                  required
-                  placeholder="L, unidad, kg..."
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="minStock">
-                  Stock mínimo (opcional)
-                </label>
-                <input
-                  id="minStock"
-                  name="minStock"
-                  inputMode="decimal"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="unitCost">
-                  Costo unitario (opcional)
-                </label>
-                <input
-                  id="unitCost"
-                  name="unitCost"
-                  inputMode="decimal"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="stockInicial">
-                  Stock inicial (opcional)
-                </label>
-                <input
-                  id="stockInicial"
-                  name="stockInicial"
-                  inputMode="decimal"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="isResellable" />
-              Es revendible
-            </label>
-            <button
-              type="submit"
-              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-            >
-              Crear
-            </button>
-          </form>
-        )}
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="isResellable" />
+                Es revendible
+              </label>
+              <button
+                type="submit"
+                className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+              >
+                Crear
+              </button>
+            </FormModal>
+          )}
+        </div>
 
         <div className="space-y-4">
           {CATEGORY_ORDER.map((category) => {
