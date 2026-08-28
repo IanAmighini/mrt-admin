@@ -95,7 +95,7 @@ export async function createProductionRun(formData: FormData) {
     }
 
     await syncPedidoStatuses(tx);
-  });
+  }, { timeout: 20000 });
 
   revalidatePath("/produccion");
   revalidatePath("/stock");

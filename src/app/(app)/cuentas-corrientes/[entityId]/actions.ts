@@ -272,7 +272,7 @@ export async function createRemito(formData: FormData) {
         data: { status: "ENTREGADO", deliveryDate: date },
       });
     }
-  });
+  }, { timeout: 20000 });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
   revalidatePath("/entregas");

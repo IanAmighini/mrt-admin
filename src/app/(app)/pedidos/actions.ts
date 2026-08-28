@@ -68,7 +68,7 @@ export async function createPedido(formData: FormData) {
     }
 
     await syncPedidoStatuses(tx);
-  });
+  }, { timeout: 20000 });
 
   revalidatePath("/pedidos");
 }
@@ -117,7 +117,7 @@ export async function updatePedido(formData: FormData) {
     if (existing.status === "EN_COLA") {
       await syncPedidoStatuses(tx);
     }
-  });
+  }, { timeout: 20000 });
 
   revalidatePath("/pedidos");
 }
