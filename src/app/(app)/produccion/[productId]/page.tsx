@@ -198,6 +198,16 @@ export default async function ProductDetailPage({
                 ))}
               </select>
             </Field>
+            <Field label="Caja">
+              <select name="boxItemId" defaultValue="" className={selectClass}>
+                <option value="">— No aplica —</option>
+                {items.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label="Aceite">
               <select name="oilItemId" defaultValue="" className={selectClass}>
                 <option value="">— No aplica —</option>

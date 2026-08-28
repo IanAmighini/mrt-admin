@@ -65,6 +65,7 @@ export async function generateRecipeFromPresentation(formData: FormData) {
   const bottleItemId = String(formData.get("bottleItemId") || "");
   const capItemId = String(formData.get("capItemId") || "");
   const labelItemId = String(formData.get("labelItemId") || "");
+  const boxItemId = String(formData.get("boxItemId") || "");
   const oilItemId = String(formData.get("oilItemId") || "");
 
   const lines: { itemId: string; quantityPerUnit: ReturnType<typeof toDecimal> }[] = [];
@@ -76,6 +77,9 @@ export async function generateRecipeFromPresentation(formData: FormData) {
     if (itemId) {
       lines.push({ itemId, quantityPerUnit: toDecimal(unitsPerPallet) });
     }
+  }
+  if (boxItemId) {
+    lines.push({ itemId: boxItemId, quantityPerUnit: toDecimal(product.boxesPerPallet) });
   }
   if (oilItemId) {
     if (!product.bottleCapacityMl) {
