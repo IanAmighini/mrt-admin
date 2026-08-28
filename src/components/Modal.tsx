@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { Pencil, Plus, X, type LucideIcon } from "lucide-react";
 
 const TRIGGER_ICONS: Record<string, LucideIcon> = {
@@ -25,6 +25,10 @@ export function FormModal({
 }) {
   const TriggerIcon = TRIGGER_ICONS[iconName];
   const dialogRef = useRef<HTMLDialogElement>(null);
+  // Se incrementa cada vez que el <dialog> se cierra (submit exitoso, X, click afuera, Escape) —
+  // al usarlo como key del <form> se fuerza a remontar los campos, así el próximo "Nuevo X" no
+  // arranca con los valores/líneas que habían quedado cargados la vez anterior.
+  const [resetKey, setResetKey] = useState(0);
   const [error, formAction, pending] = useActionState<string | null, FormData>(
     async (_prevState, formData) => {
       try {
@@ -61,6 +65,7 @@ export function FormModal({
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}
+        onClose={() => setResetKey((k) => k + 1)}
       >
         <div className="space-y-4 p-6">
           <div className="flex items-center justify-between">
@@ -77,7 +82,7 @@ export function FormModal({
           {error && (
             <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">{error}</p>
           )}
-          <form action={formAction} className="space-y-3">
+          <form key={resetKey} action={formAction} className="space-y-3">
             {children}
           </form>
         </div>
