@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getAllProductStocks } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
-import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
+import { formatProductBrandLabel } from "@/lib/product-label";
 import { getSetting } from "@/lib/settings";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
@@ -20,12 +19,11 @@ export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
-  const [products, stocks, runs, oilFillEfficiencyPercent, marcas, formatos] = await Promise.all([
+  const [products, runs, oilFillEfficiencyPercent, marcas, formatos] = await Promise.all([
     prisma.product.findMany({
       orderBy: { name: "asc" },
-      include: { recipe: true },
+      select: { id: true, name: true, oilType: true, presentation: true },
     }),
-    getAllProductStocks(),
     prisma.productionRun.findMany({
       orderBy: { date: "desc" },
       include: {
@@ -36,7 +34,10 @@ export default async function ProduccionPage() {
     }),
     getSetting("oilFillEfficiencyPercent", "100"),
     prisma.marca.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }] }),
-    prisma.formato.findMany({ orderBy: { presentation: "asc" } }),
+    prisma.formato.findMany({
+      orderBy: { presentation: "asc" },
+      select: { id: true, presentation: true },
+    }),
   ]);
 
   const productFields = products.map((p) => ({
@@ -66,6 +67,12 @@ export default async function ProduccionPage() {
         <div>
           <h1 className="text-xl font-semibold mb-1">Producción</h1>
           <p className="text-sm text-foreground/60">Historial de producción diaria.</p>
+          <Link
+            href="/produccion/catalogo"
+            className="mt-1 inline-block text-sm underline underline-offset-2"
+          >
+            Ver catálogo (marcas, formatos, productos) →
+          </Link>
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
@@ -172,53 +179,6 @@ export default async function ProduccionPage() {
           </p>
         )}
       </div>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Productos</h2>
-        <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                <th className="py-2 px-4">Producto</th>
-                <th className="py-2 px-4">Tipo de aceite</th>
-                <th className="py-2 px-4">Presentación</th>
-                <th className="py-2 px-4">Insumos en receta</th>
-                <th className="py-2 px-4">Stock actual</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => (
-                <tr key={product.id} className="border-b border-foreground/5 last:border-0">
-                  <td className="py-2 px-4">
-                    <Link href={`/produccion/${product.id}`} className="underline underline-offset-2">
-                      {formatProductLabel(product)}
-                    </Link>
-                  </td>
-                  <td className="py-2 px-4">{product.oilType}</td>
-                  <td className="py-2 px-4">{product.presentation}</td>
-                  <td className="py-2 px-4">
-                    {product.recipe.length === 0 ? (
-                      <span className="text-foreground/40">Sin receta</span>
-                    ) : (
-                      product.recipe.length
-                    )}
-                  </td>
-                  <td className="py-2 px-4">
-                    {formatQuantity(stocks.get(product.id) ?? 0, "pallets")}
-                  </td>
-                </tr>
-              ))}
-              {products.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-foreground/40">
-                    Todavía no hay productos cargados.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </div>
   );
 }
