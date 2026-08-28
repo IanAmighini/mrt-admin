@@ -198,10 +198,10 @@ export async function getRecentCompras(limit = 30, entityId?: string) {
   });
 }
 
-/** Litros entregados a un cliente: misma fórmula que se usa para descontar aceite en producción
- * (cantidad de la línea × cajas/pallet × botellas/caja = unidades, × litros de aceite por unidad
- * según la receta del producto). Ignora líneas de productos sin receta de aceite o sin
- * cajas/pallet y botellas/caja cargados. */
+/** Litros entregados a un cliente: cantidad de la línea (pallets) × litros de aceite por pallet
+ * según la receta del producto (RecipeItem.quantityPerUnit ya está expresado por pallet armado,
+ * no por botella). Ignora líneas de productos sin receta de aceite o sin cajas/pallet y
+ * botellas/caja cargados. */
 export async function getLitrosEntregados(entityId: string): Promise<Prisma.Decimal> {
   const documents = await prisma.document.findMany({
     where: { type: "REMITO", account: { entityId }, lines: { some: {} } },
@@ -221,10 +221,7 @@ export async function getLitrosEntregados(entityId: string): Promise<Prisma.Deci
       if (!product.boxesPerPallet || !product.unitsPerBox) continue;
       const oilRecipe = product.recipe.find((r) => r.item.unit === "L");
       if (!oilRecipe) continue;
-      const unidades = toDecimal(line.quantity)
-        .times(product.boxesPerPallet)
-        .times(product.unitsPerBox);
-      litros = litros.plus(unidades.times(oilRecipe.quantityPerUnit));
+      litros = litros.plus(toDecimal(line.quantity).times(oilRecipe.quantityPerUnit));
     }
   }
   return litros;
