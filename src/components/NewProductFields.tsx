@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 
 /** Acepta "105x12x850", "105 X 12 X 850", etc. — cajas x botellas por caja x ml. */
 const PRESENTATION_PATTERN = /^\s*(\d+)\s*x\s*(\d+)\s*x\s*(\d+(?:[.,]\d+)?)\s*$/i;

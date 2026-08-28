@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { Trash2 } from "lucide-react";
 
 export function DeleteButton({
   action,
@@ -37,8 +38,9 @@ export function DeleteButton({
         <button
           type="submit"
           disabled={pending}
-          className="text-xs text-red-600 underline underline-offset-2 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300"
+          className="flex items-center gap-1 text-xs text-red-600 underline underline-offset-2 hover:text-red-700 disabled:opacity-50 dark:text-red-400 dark:hover:text-red-300"
         >
+          <Trash2 size={13} />
           {pending ? "Borrando…" : "Borrar"}
         </button>
       </form>

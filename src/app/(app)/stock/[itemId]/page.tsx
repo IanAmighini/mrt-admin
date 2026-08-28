@@ -41,7 +41,7 @@ export default async function ItemDetailPage({
       {canEdit && (
         <form
           action={updateItemCost}
-          className="flex flex-wrap items-end gap-3 rounded-lg border border-foreground/10 p-4"
+          className="flex flex-wrap items-end gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <input type="hidden" name="itemId" value={item.id} />
           <div className="space-y-1">
@@ -54,12 +54,12 @@ export default async function ItemDetailPage({
               required
               inputMode="decimal"
               defaultValue={item.unitCost?.toString() ?? ""}
-              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
           <button
             type="submit"
-            className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Guardar costo
           </button>
@@ -69,7 +69,7 @@ export default async function ItemDetailPage({
       {canEdit && (
         <form
           action={createItemMovement}
-          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
+          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Nuevo movimiento</h2>
           <input type="hidden" name="itemId" value={item.id} />
@@ -83,7 +83,7 @@ export default async function ItemDetailPage({
                 name="type"
                 required
                 defaultValue="INGRESO"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               >
                 <option value="INGRESO">Ingreso</option>
                 <option value="AJUSTE">Ajuste</option>
@@ -100,7 +100,7 @@ export default async function ItemDetailPage({
                 type="date"
                 name="date"
                 required
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -111,7 +111,7 @@ export default async function ItemDetailPage({
                 id="quantity"
                 name="quantity"
                 inputMode="decimal"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -122,7 +122,7 @@ export default async function ItemDetailPage({
                 id="effect"
                 name="effect"
                 defaultValue="RESTA"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               >
                 <option value="SUMA">Suma al stock</option>
                 <option value="RESTA">Resta al stock</option>
@@ -142,7 +142,7 @@ export default async function ItemDetailPage({
                 id="sourceKg"
                 name="sourceKg"
                 inputMode="decimal"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -153,7 +153,7 @@ export default async function ItemDetailPage({
                 id="conversionFactor"
                 name="conversionFactor"
                 inputMode="decimal"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -166,12 +166,12 @@ export default async function ItemDetailPage({
               name="reason"
               required
               placeholder="Compra a proveedor X, conteo físico, rotura..."
-              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Registrar movimiento
           </button>

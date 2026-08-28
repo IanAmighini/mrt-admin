@@ -35,7 +35,7 @@ export default async function ComprasPage({
       </div>
 
       {canEdit && (
-        <form className="flex flex-wrap items-end gap-3 rounded-lg border border-foreground/10 p-4">
+        <form className="flex flex-wrap items-end gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <div className="space-y-1">
             <label className="text-sm" htmlFor="entityId">
               Proveedor
@@ -44,7 +44,7 @@ export default async function ComprasPage({
               id="entityId"
               name="entityId"
               defaultValue={selectedEntity?.id ?? ""}
-              className="w-64 rounded border border-foreground/20 px-3 py-2 text-sm"
+              className="w-64 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             >
               <option value="">— Elegir proveedor —</option>
               {proveedores.map((p) => (
@@ -56,7 +56,7 @@ export default async function ComprasPage({
           </div>
           <button
             type="submit"
-            className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Elegir
           </button>

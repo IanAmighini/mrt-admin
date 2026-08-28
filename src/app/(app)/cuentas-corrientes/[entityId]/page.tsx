@@ -138,7 +138,7 @@ export default async function EntityLedgerPage({
           <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
         </div>
         {canEdit && (
-          <FormModal triggerLabel="Editar" title="Editar cliente/proveedor" action={updateEntity}>
+          <FormModal triggerLabel="Editar" iconName="edit" title="Editar cliente/proveedor" action={updateEntity}>
             <EntityFormFields
               defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
               showSupplierCategory={entity.type !== "CLIENTE"}
@@ -230,7 +230,7 @@ function PricesSection({
   return (
     <section className="space-y-2">
       <h2 className="text-sm font-semibold text-foreground/60">Circuito {CIRCUIT_LABELS[circuit]}</h2>
-      <details className="rounded-lg border border-foreground/10 p-4">
+      <details className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
         <summary className="cursor-pointer text-sm font-semibold">Listado de precios</summary>
 
         <div className="mt-4 space-y-4">
@@ -266,7 +266,7 @@ function PricesSection({
           </div>
 
           {canEdit && (
-            <form action={createPrice} className="space-y-3 rounded-lg border border-foreground/10 p-4">
+            <form action={createPrice} className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
               <h4 className="text-sm font-semibold">Cargar precio</h4>
               <input type="hidden" name="entityId" value={entityId} />
               <input type="hidden" name="circuit" value={circuit} />
@@ -347,7 +347,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const selectClass = inputClass;
 const submitClass =
-  "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";
+  "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";

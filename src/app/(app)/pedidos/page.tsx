@@ -63,7 +63,7 @@ export default async function PedidosPage({
       </div>
 
       {canEdit && (
-        <FormModal triggerLabel="+ Nuevo pedido" title="Nuevo pedido" action={createPedido} maxWidthClass="max-w-2xl">
+        <FormModal triggerLabel="Nuevo pedido" title="Nuevo pedido" action={createPedido} maxWidthClass="max-w-2xl">
           <PedidoFormFields clientes={clientes} products={products} />
         </FormModal>
       )}
@@ -97,7 +97,7 @@ export default async function PedidosPage({
               id="entityId"
               name="entityId"
               defaultValue={entityId ?? ""}
-              className="w-56 rounded border border-foreground/20 px-3 py-2 text-sm"
+              className="w-56 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             >
               <option value="">— Todos —</option>
               {clientes.map((c) => (
@@ -109,7 +109,7 @@ export default async function PedidosPage({
           </div>
           <button
             type="submit"
-            className="rounded border border-foreground/20 px-3 py-2 text-sm hover:bg-foreground/5"
+            className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5"
           >
             Filtrar
           </button>
@@ -179,7 +179,7 @@ export default async function PedidosPage({
                           <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
                             <div className="flex flex-col gap-1">
                               <FormModal
-                                triggerLabel="Editar"
+                                triggerLabel="Editar" iconName="edit"
                                 title="Editar pedido"
                                 action={updatePedido}
                                 maxWidthClass="max-w-2xl"

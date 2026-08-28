@@ -7,7 +7,7 @@ export function PedidoLinkChecklist({ pedidosPendientes }: { pedidosPendientes: 
   if (pedidosPendientes.length === 0) return null;
 
   return (
-    <div className="space-y-2 rounded border border-foreground/10 p-3">
+    <div className="space-y-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-3">
       <p className="text-sm font-medium">¿Este remito entrega alguno de estos pedidos?</p>
       <p className="text-xs text-foreground/50">
         Los que tildes se marcan como &quot;Entregado&quot; automáticamente al crear el remito.

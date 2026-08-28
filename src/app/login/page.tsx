@@ -35,7 +35,7 @@ export default async function LoginPage({
     <main className="flex min-h-screen items-center justify-center p-6">
       <form
         action={login}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-foreground/10 p-6"
+        className="w-full max-w-sm space-y-4 rounded-xl border border-foreground/10 bg-background shadow-sm p-6"
       >
         <div className="flex flex-col items-center gap-2 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -58,7 +58,7 @@ export default async function LoginPage({
             type="email"
             required
             autoComplete="email"
-            className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
           />
         </div>
         <div className="space-y-1">
@@ -71,12 +71,12 @@ export default async function LoginPage({
             type="password"
             required
             autoComplete="current-password"
-            className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
           />
         </div>
         <button
           type="submit"
-          className="w-full rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+          className="w-full rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
         >
           Entrar
         </button>

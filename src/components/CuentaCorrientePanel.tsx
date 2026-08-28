@@ -29,7 +29,7 @@ export function CuentaCorrientePanel({
   };
 }) {
   return (
-    <div className="rounded-lg border border-foreground/10 p-5 space-y-4">
+    <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Cuenta corriente</h2>
         {canEdit && (
@@ -37,11 +37,11 @@ export function CuentaCorrientePanel({
             <FormModal triggerLabel="Registrar pago" title="Registrar pago" action={createPaymentForEntity}>
               <PaymentFormFields fixedEntityId={entityId} />
             </FormModal>
-            <FormModal triggerLabel="+ Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
+            <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
               <DocumentFormFields fixedEntityId={entityId} />
             </FormModal>
             {factura && (
-              <FormModal triggerLabel="+ Factura" title="Nueva factura" action={createFactura}>
+              <FormModal triggerLabel="Factura" title="Nueva factura" action={createFactura}>
                 <FacturaFormFields
                   accountId={factura.blancoAccountId}
                   isWithholdingAgent={factura.isWithholdingAgent}

@@ -24,7 +24,7 @@ type Row = {
   circuit: Circuit;
 };
 
-const inputClass = "w-full rounded border border-foreground/20 px-2 py-2 text-sm";
+const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-2 text-sm";
 const selectClass = inputClass;
 
 export function RemitoLinesFields({
@@ -94,7 +94,7 @@ export function RemitoLinesFields({
         return (
           <div
             key={row.key}
-            className="grid grid-cols-12 items-end gap-2 rounded border border-foreground/10 p-2"
+            className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
           >
             <div className="col-span-3">
               <label className="text-xs text-foreground/60">Producto</label>

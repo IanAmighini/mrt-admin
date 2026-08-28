@@ -159,7 +159,7 @@ async function ReportesGerenciales() {
       <h2 className="text-lg font-semibold">Reportes gerenciales</h2>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Costo de insumos consumidos (este mes)</p>
           <p className="text-2xl font-semibold">{formatMoney(costo.total)}</p>
           <p className="text-xs text-foreground/50 mt-1">
@@ -168,7 +168,7 @@ async function ReportesGerenciales() {
               ` — ${costo.itemsSinCosto} insumo(s) consumido(s) sin costo unitario cargado, no se incluyeron.`}
           </p>
         </div>
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Valuación de insumos en stock</p>
           <p className="text-2xl font-semibold">{formatMoney(valuacion.total)}</p>
           <div className="mt-2 max-h-40 overflow-y-auto">

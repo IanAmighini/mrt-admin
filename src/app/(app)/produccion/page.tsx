@@ -56,7 +56,7 @@ export default async function ProduccionPage() {
       {canEdit && (
         <form
           action={createProduct}
-          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
+          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Nuevo producto</h2>
           <div className="grid grid-cols-2 gap-3">
@@ -64,14 +64,14 @@ export default async function ProduccionPage() {
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Crear
           </button>
         </form>
       )}
 
-      <div className="max-w-xs rounded-lg border border-foreground/10 p-4">
+      <div className="max-w-xs rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
         <h2 className="text-sm font-semibold mb-2">Eficiencia de llenado de aceite</h2>
         <p className="text-xs text-foreground/50 mb-3">
           Porcentaje del volumen nominal de la botella que realmente se consume en aceite, usado
@@ -83,12 +83,12 @@ export default async function ProduccionPage() {
               name="oilFillEfficiencyPercent"
               defaultValue={oilFillEfficiencyPercent}
               inputMode="decimal"
-              className="w-24 rounded border border-foreground/20 px-3 py-2 text-sm"
+              className="w-24 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
             <span className="text-sm">%</span>
             <button
               type="submit"
-              className="rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
             >
               Guardar
             </button>
@@ -159,7 +159,7 @@ export default async function ProduccionPage() {
       {canEdit && (
         <form
           action={createProductionRun}
-          className="space-y-3 rounded-lg border border-foreground/10 p-4"
+          className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Parte de producción diaria</h2>
           <div className="space-y-1 max-w-xs">
@@ -171,7 +171,7 @@ export default async function ProduccionPage() {
               type="date"
               name="date"
               required
-              className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
           <ProductionLinesFields
@@ -184,7 +184,7 @@ export default async function ProduccionPage() {
           />
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Registrar parte
           </button>
@@ -237,7 +237,7 @@ export default async function ProduccionPage() {
         {canEdit && (
           <form
             action={createBoxType}
-            className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
+            className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
           >
             <h3 className="text-sm font-semibold">Nuevo tipo de caja</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -249,7 +249,7 @@ export default async function ProduccionPage() {
                   id="boxProductId"
                   name="productId"
                   required
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 >
                   {products.map((product) => (
                     <option key={product.id} value={product.id}>
@@ -267,7 +267,7 @@ export default async function ProduccionPage() {
                   name="label"
                   required
                   placeholder="Caja x12"
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -279,13 +279,13 @@ export default async function ProduccionPage() {
                   name="unitsPerBox"
                   required
                   inputMode="decimal"
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
             </div>
             <button
               type="submit"
-              className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
             >
               Crear
             </button>
@@ -295,7 +295,7 @@ export default async function ProduccionPage() {
         {canEdit && boxTypes.length > 0 && (
           <form
             action={createBoxMovement}
-            className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
+            className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
           >
             <h3 className="text-sm font-semibold">Armar cajas</h3>
             <div className="grid grid-cols-2 gap-3">
@@ -307,7 +307,7 @@ export default async function ProduccionPage() {
                   id="boxTypeId"
                   name="boxTypeId"
                   required
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 >
                   {boxTypes.map((boxType) => (
                     <option key={boxType.id} value={boxType.id}>
@@ -325,7 +325,7 @@ export default async function ProduccionPage() {
                   name="quantity"
                   required
                   inputMode="decimal"
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -337,7 +337,7 @@ export default async function ProduccionPage() {
                   type="date"
                   name="date"
                   required
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -350,12 +350,12 @@ export default async function ProduccionPage() {
                 name="reason"
                 required
                 placeholder="Armado de cajas para pedido X"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <button
               type="submit"
-              className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
             >
               Registrar armado
             </button>
@@ -398,7 +398,7 @@ export default async function ProduccionPage() {
         </div>
 
         {canEdit && boxTypes.length > 0 && (
-          <form action={createPallet} className="space-y-3 rounded-lg border border-foreground/10 p-4">
+          <form action={createPallet} className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
             <h3 className="text-sm font-semibold">Armar pallet</h3>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -410,7 +410,7 @@ export default async function ProduccionPage() {
                   type="date"
                   name="date"
                   required
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -423,7 +423,7 @@ export default async function ProduccionPage() {
                   type="number"
                   min={1}
                   defaultValue={1}
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1 col-span-2">
@@ -434,7 +434,7 @@ export default async function ProduccionPage() {
                   id="palletLabel"
                   name="label"
                   placeholder="Pallet marca X"
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
@@ -445,7 +445,7 @@ export default async function ProduccionPage() {
                   id="woodItemId"
                   name="woodItemId"
                   required
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 >
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -462,7 +462,7 @@ export default async function ProduccionPage() {
                   id="filmItemId"
                   name="filmItemId"
                   required
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 >
                   {items.map((item) => (
                     <option key={item.id} value={item.id}>
@@ -480,7 +480,7 @@ export default async function ProduccionPage() {
                   name="filmQuantity"
                   required
                   inputMode="decimal"
-                  className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
             </div>
@@ -491,7 +491,7 @@ export default async function ProduccionPage() {
                   <select
                     name="boxTypeId"
                     defaultValue=""
-                    className="flex-1 rounded border border-foreground/20 px-3 py-2 text-sm"
+                    className="flex-1 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                   >
                     <option value="">— Tipo de caja —</option>
                     {boxTypes.map((boxType) => (
@@ -504,14 +504,14 @@ export default async function ProduccionPage() {
                     name="boxQuantity"
                     placeholder="Cantidad"
                     inputMode="decimal"
-                    className="w-32 rounded border border-foreground/20 px-3 py-2 text-sm"
+                    className="w-32 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                   />
                 </div>
               ))}
             </div>
             <button
               type="submit"
-              className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
             >
               Armar pallet
             </button>

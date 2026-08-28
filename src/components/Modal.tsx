@@ -1,6 +1,12 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { Pencil, Plus, X, type LucideIcon } from "lucide-react";
+
+const TRIGGER_ICONS: Record<string, LucideIcon> = {
+  plus: Plus,
+  edit: Pencil,
+};
 
 export function FormModal({
   triggerLabel,
@@ -8,13 +14,16 @@ export function FormModal({
   action,
   children,
   maxWidthClass = "max-w-lg",
+  iconName = "plus",
 }: {
   triggerLabel: string;
   title: string;
   action: (formData: FormData) => Promise<void>;
   children: React.ReactNode;
   maxWidthClass?: string;
+  iconName?: keyof typeof TRIGGER_ICONS;
 }) {
+  const TriggerIcon = TRIGGER_ICONS[iconName];
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [error, formAction, pending] = useActionState<string | null, FormData>(
     async (_prevState, formData) => {
@@ -41,13 +50,14 @@ export function FormModal({
       <button
         type="button"
         onClick={() => dialogRef.current?.showModal()}
-        className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+        className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
       >
+        <TriggerIcon size={16} />
         {triggerLabel}
       </button>
       <dialog
         ref={dialogRef}
-        className={`fixed inset-0 m-auto w-full ${maxWidthClass} rounded-lg border border-foreground/10 bg-background p-0 text-foreground backdrop:bg-black/50`}
+        className={`fixed inset-0 m-auto w-full ${maxWidthClass} rounded-xl border border-foreground/10 bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50`}
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}
@@ -58,10 +68,10 @@ export function FormModal({
             <button
               type="button"
               onClick={() => dialogRef.current?.close()}
-              className="text-foreground/40 hover:text-foreground"
+              className="rounded-lg p-1 text-foreground/40 transition-colors hover:bg-foreground/5 hover:text-foreground"
               aria-label="Cerrar"
             >
-              ×
+              <X size={18} />
             </button>
           </div>
           {error && (

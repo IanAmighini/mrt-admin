@@ -149,7 +149,7 @@ export function NuevaEntregaForm({
 
   return (
     <form action={action} className="space-y-6">
-      <div className="rounded-lg border border-foreground/10 p-4 space-y-3">
+      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
         <h2 className="text-sm font-semibold">Información general</h2>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1">
@@ -187,7 +187,7 @@ export function NuevaEntregaForm({
         </div>
       </div>
 
-      <div className="rounded-lg border border-foreground/10 p-4 space-y-3">
+      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Ítems del remito</h2>
           <button type="button" onClick={addRow} className={secondaryButtonClass}>
@@ -199,7 +199,7 @@ export function NuevaEntregaForm({
           {computedRows.map(({ row, botellas, subtotal, iva, unitPrice }) => {
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
-              <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded border border-foreground/10 p-2">
+              <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
                 <div className="col-span-3">
                   <label className="text-xs text-foreground/60">Marca</label>
                   <select
@@ -327,7 +327,7 @@ export function NuevaEntregaForm({
       </div>
 
       {pedidosPendientes.length > 0 && (
-        <div className="space-y-2 rounded-lg border border-foreground/10 p-4">
+        <div className="space-y-2 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-medium">¿Este remito entrega alguno de estos pedidos?</p>
           <p className="text-xs text-foreground/50">
             Los que tildes se marcan como &quot;Entregado&quot; automáticamente al crear el remito.
@@ -360,7 +360,7 @@ export function NuevaEntregaForm({
         </div>
       )}
 
-      <div className="rounded-lg border border-foreground/10 p-4 space-y-2">
+      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-2">
         <label className="text-sm font-semibold" htmlFor="reason">
           Notas
         </label>
@@ -370,7 +370,7 @@ export function NuevaEntregaForm({
       <div className="flex justify-end">
         <button
           type="submit"
-          className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
         >
           Crear entrega
         </button>
@@ -379,5 +379,5 @@ export function NuevaEntregaForm({
   );
 }
 
-const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
-const secondaryButtonClass = "rounded border border-foreground/20 px-3 py-1.5 text-sm hover:bg-foreground/5";
+const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
+const secondaryButtonClass = "rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-1.5 text-sm hover:bg-foreground/5";

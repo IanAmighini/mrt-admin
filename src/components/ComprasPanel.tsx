@@ -17,12 +17,12 @@ export function ComprasPanel({
   canEdit: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-foreground/10 p-5 space-y-4">
+    <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Compras</h2>
         {canEdit && (
           <FormModal
-            triggerLabel="+ Nueva"
+            triggerLabel="Nueva compra"
             title="Nueva compra de insumos"
             action={createCompra}
             maxWidthClass="max-w-2xl"

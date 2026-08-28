@@ -1,6 +1,7 @@
-import Link from "next/link";
+import { LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth-helpers";
 import { NAV_ITEMS, ROLE_LABELS } from "@/lib/nav";
+import { SidebarNav } from "@/components/SidebarNav";
 import { signOut } from "@/auth";
 
 export default async function AppLayout({
@@ -14,10 +15,10 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-screen flex-col">
       <div className="h-1 bg-primary" />
-      <header className="flex items-center justify-between border-b border-foreground/10 px-6 py-4">
+      <header className="flex items-center justify-between border-b border-foreground/10 bg-background px-6 py-3.5 shadow-sm">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="" width={32} height={32} className="shrink-0" />
+          <img src="/logo.png" alt="" width={32} height={32} className="shrink-0 rounded-lg" />
           <div>
             <p className="font-semibold">Envasadora</p>
             <p className="text-sm text-foreground/60">
@@ -31,23 +32,17 @@ export default async function AppLayout({
             await signOut({ redirectTo: "/login" });
           }}
         >
-          <button type="submit" className="text-sm underline underline-offset-2">
+          <button
+            type="submit"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
+          >
+            <LogOut size={16} />
             Cerrar sesión
           </button>
         </form>
       </header>
       <div className="flex flex-1">
-        <nav className="flex w-56 shrink-0 flex-col gap-1 border-r border-foreground/10 p-4">
-          {items.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded px-3 py-2 text-sm hover:bg-primary/15"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <SidebarNav items={items} />
         <main className="flex-1 p-6">{children}</main>
       </div>
     </div>

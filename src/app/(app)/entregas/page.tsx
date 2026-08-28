@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Plus, Search } from "lucide-react";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentRemitos } from "@/lib/ledger";
 import { formatMoney, formatQuantity, sumDecimals } from "@/lib/money";
@@ -44,9 +45,10 @@ export default async function EntregasPage({
         {canEdit && (
           <Link
             href="/entregas/nueva"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
-            + Nueva entrega
+            <Plus size={16} />
+            Nueva entrega
           </Link>
         )}
       </div>
@@ -54,14 +56,17 @@ export default async function EntregasPage({
       <div className="flex flex-wrap items-center gap-3">
         <form className="flex flex-1 min-w-[240px] gap-2">
           {pagoFilter && <input type="hidden" name="pago" value={pagoFilter} />}
-          <input
-            type="text"
-            name="q"
-            defaultValue={q}
-            placeholder="Buscar por cliente o remito…"
-            className="flex-1 rounded border border-foreground/20 px-3 py-2 text-sm"
-          />
-          <button type="submit" className="rounded border border-foreground/20 px-3 py-2 text-sm hover:bg-foreground/5">
+          <div className="relative flex-1">
+            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
+            <input
+              type="text"
+              name="q"
+              defaultValue={q}
+              placeholder="Buscar por cliente o remito…"
+              className="w-full rounded-lg border border-foreground/20 bg-background py-2 pl-9 pr-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+            />
+          </div>
+          <button type="submit" className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5">
             Buscar
           </button>
         </form>

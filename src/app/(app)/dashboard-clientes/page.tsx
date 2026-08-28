@@ -220,7 +220,7 @@ async function ReportesGerenciales() {
       <h2 className="text-lg font-semibold">Reportes gerenciales</h2>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Ingresos del mes</p>
           {ingresos.size === 0 ? (
             <p className="text-2xl font-semibold">{formatMoney(0)}</p>
@@ -235,7 +235,7 @@ async function ReportesGerenciales() {
             suma de comprobantes del mes (remitos, facturas, notas y ajustes), cifra bruta.
           </p>
         </div>
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Rentabilidad del mes</p>
           <p className="text-2xl font-semibold">{formatMoney(rentabilidad.rentabilidad)}</p>
           <p className="text-xs text-foreground/50 mt-1">
@@ -245,7 +245,7 @@ async function ReportesGerenciales() {
               ` — ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) sin costo unitario cargado, no se descontaron.`}
           </p>
         </div>
-        <div className="rounded-lg border border-foreground/10 p-4 sm:col-span-2">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 sm:col-span-2">
           <p className="text-sm font-semibold mb-1">Producto entregado valorizado (este mes)</p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

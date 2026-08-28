@@ -1,10 +1,10 @@
 import type { Entity } from "@prisma/client";
 import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 
-const inputClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
+const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const selectClass = inputClass;
 const submitClass =
-  "w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover";
+  "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
 
 export function EntityFormFields({
   defaultType,

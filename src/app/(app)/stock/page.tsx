@@ -29,7 +29,7 @@ export default async function StockPage() {
         </p>
       </div>
 
-      <div className="rounded-lg border border-foreground/10 p-4 max-w-xs">
+      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 max-w-xs">
         <p className="text-sm font-semibold mb-1">Litros envasados</p>
         <p className="text-2xl font-semibold">{formatQuantity(litros.esteMes, "L")}</p>
         <p className="text-xs text-foreground/50 mt-1">
@@ -84,7 +84,7 @@ export default async function StockPage() {
         <h2 className="text-lg font-semibold">Insumos</h2>
 
         {canEdit && (
-        <form action={createItem} className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4">
+        <form action={createItem} className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <h2 className="text-sm font-semibold">Nuevo insumo</h2>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
@@ -95,7 +95,7 @@ export default async function StockPage() {
                 id="name"
                 name="name"
                 required
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -107,7 +107,7 @@ export default async function StockPage() {
                 name="unit"
                 required
                 placeholder="L, unidad, kg..."
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -118,7 +118,7 @@ export default async function StockPage() {
                 id="minStock"
                 name="minStock"
                 inputMode="decimal"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -129,7 +129,7 @@ export default async function StockPage() {
                 id="unitCost"
                 name="unitCost"
                 inputMode="decimal"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -140,7 +140,7 @@ export default async function StockPage() {
                 id="stockInicial"
                 name="stockInicial"
                 inputMode="decimal"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -150,7 +150,7 @@ export default async function StockPage() {
           </label>
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Crear
           </button>

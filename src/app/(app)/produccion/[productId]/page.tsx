@@ -58,7 +58,7 @@ export default async function ProductDetailPage({
       {canEdit && (
         <form
           action={updateProduct}
-          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
+          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Editar producto</h2>
           <input type="hidden" name="productId" value={product.id} />
@@ -72,7 +72,7 @@ export default async function ProductDetailPage({
                 name="name"
                 required
                 defaultValue={product.name}
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -84,7 +84,7 @@ export default async function ProductDetailPage({
                 name="oilType"
                 required
                 defaultValue={product.oilType}
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -96,7 +96,7 @@ export default async function ProductDetailPage({
                 name="presentation"
                 required
                 defaultValue={product.presentation}
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -108,7 +108,7 @@ export default async function ProductDetailPage({
                 name="boxesPerPallet"
                 inputMode="numeric"
                 defaultValue={product.boxesPerPallet ?? ""}
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -120,7 +120,7 @@ export default async function ProductDetailPage({
                 name="unitsPerBox"
                 inputMode="numeric"
                 defaultValue={product.unitsPerBox ?? ""}
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-1">
@@ -132,13 +132,13 @@ export default async function ProductDetailPage({
                 name="bottleCapacityMl"
                 inputMode="decimal"
                 defaultValue={product.bottleCapacityMl?.toString() ?? ""}
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Guardar cambios
           </button>
@@ -148,7 +148,7 @@ export default async function ProductDetailPage({
       {canEdit && product.boxesPerPallet && product.unitsPerBox && (
         <form
           action={generateRecipeFromPresentation}
-          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
+          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Generar receta desde presentación</h2>
           <p className="text-xs text-foreground/50">
@@ -211,7 +211,7 @@ export default async function ProductDetailPage({
           </div>
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Generar receta
           </button>
@@ -221,7 +221,7 @@ export default async function ProductDetailPage({
       {canEdit && (
         <form
           action={upsertRecipeLine}
-          className="grid max-w-xl gap-3 rounded-lg border border-foreground/10 p-4"
+          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Agregar / actualizar insumo de la receta</h2>
           <input type="hidden" name="productId" value={product.id} />
@@ -234,7 +234,7 @@ export default async function ProductDetailPage({
                 id="itemId"
                 name="itemId"
                 required
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               >
                 {items.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -252,7 +252,7 @@ export default async function ProductDetailPage({
                 name="quantityPerUnit"
                 required
                 inputMode="decimal"
-                className="w-full rounded border border-foreground/20 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
           </div>
@@ -262,7 +262,7 @@ export default async function ProductDetailPage({
           </p>
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Guardar
           </button>
@@ -324,4 +324,4 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-const selectClass = "w-full rounded border border-foreground/20 px-3 py-2 text-sm";
+const selectClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";

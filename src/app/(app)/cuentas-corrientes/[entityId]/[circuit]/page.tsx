@@ -123,7 +123,7 @@ export default async function AccountLedgerPage({
       if (doc.lines.length > 0) {
         actions = (
           <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" title="Editar remito" action={updateRemito} maxWidthClass="max-w-2xl">
+            <FormModal triggerLabel="Editar" iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-2xl">
               <RemitoFormFields
                 entityId={entityId}
                 products={products}
@@ -144,7 +144,7 @@ export default async function AccountLedgerPage({
       } else if (doc.purchaseLines.length > 0) {
         actions = (
           <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" title="Editar compra" action={updateCompra} maxWidthClass="max-w-2xl">
+            <FormModal triggerLabel="Editar" iconName="edit" title="Editar compra" action={updateCompra} maxWidthClass="max-w-2xl">
               <CompraFormFields
                 entityId={entityId}
                 items={items}
@@ -164,7 +164,7 @@ export default async function AccountLedgerPage({
       } else if (doc.type === "FACTURA") {
         actions = (
           <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" title="Editar factura" action={updateFactura}>
+            <FormModal triggerLabel="Editar" iconName="edit" title="Editar factura" action={updateFactura}>
               <EditFacturaFields
                 documentId={doc.id}
                 defaultValues={{
@@ -187,7 +187,7 @@ export default async function AccountLedgerPage({
       } else {
         actions = (
           <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" title="Editar movimiento" action={updateDocument}>
+            <FormModal triggerLabel="Editar" iconName="edit" title="Editar movimiento" action={updateDocument}>
               <EditDocumentFields
                 documentId={doc.id}
                 defaultValues={{
@@ -242,7 +242,7 @@ export default async function AccountLedgerPage({
       haber: imputado,
       actions: canEdit ? (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" title="Editar pago" action={updatePayment}>
+          <FormModal triggerLabel="Editar" iconName="edit" title="Editar pago" action={updatePayment}>
             <EditPaymentFields
               paymentId={payment.id}
               defaultValues={{
@@ -291,15 +291,15 @@ export default async function AccountLedgerPage({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3 max-w-xl">
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm text-foreground/60">Debe</p>
           <p className="text-lg font-semibold">{formatMoney(totalDebe)}</p>
         </div>
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm text-foreground/60">Haber</p>
           <p className="text-lg font-semibold">{formatMoney(totalHaber)}</p>
         </div>
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm text-foreground/60">Saldo</p>
           <p className="text-lg font-semibold">{formatMoney(saldoAcumulado)}</p>
         </div>

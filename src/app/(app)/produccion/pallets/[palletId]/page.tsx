@@ -49,7 +49,7 @@ export default async function PalletDetailPage({
           <input type="hidden" name="palletId" value={pallet.id} />
           <button
             type="submit"
-            className="w-fit rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             Desarmar pallet
           </button>
@@ -64,11 +64,11 @@ export default async function PalletDetailPage({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Pallet de madera</p>
           <p className="text-sm text-foreground/60">{pallet.woodItem.name} — 1 unidad consumida</p>
         </div>
-        <div className="rounded-lg border border-foreground/10 p-4">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Film</p>
           <p className="text-sm text-foreground/60">
             {pallet.filmItem.name} — {formatQuantity(pallet.filmQuantity)} consumido

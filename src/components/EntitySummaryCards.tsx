@@ -3,7 +3,7 @@ import { formatMoney } from "@/lib/money";
 import type { Prisma } from "@prisma/client";
 
 function Card({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-foreground/10 p-4">{children}</div>;
+  return <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">{children}</div>;
 }
 
 export function EntitySummaryCards({

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { formatProductLabel } from "@/lib/product-label";
 
-const selectClass = "flex-1 rounded border border-foreground/20 px-3 py-2 text-sm";
-const quantityClass = "w-32 rounded border border-foreground/20 px-3 py-2 text-sm";
+const selectClass = "flex-1 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
+const quantityClass = "w-32 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 
 export function ProductionLinesFields({
   products,
