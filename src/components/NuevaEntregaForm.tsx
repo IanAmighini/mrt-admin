@@ -200,7 +200,7 @@ export function NuevaEntregaForm({
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
               <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
-                <div className="col-span-3">
+                <div className="col-span-3 min-w-0">
                   <label className="text-xs text-foreground/60">Marca</label>
                   <select
                     value={row.marcaKey}
@@ -215,7 +215,7 @@ export function NuevaEntregaForm({
                     ))}
                   </select>
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-2 min-w-0">
                   <label className="text-xs text-foreground/60">Formato</label>
                   <select
                     value={row.productId}
@@ -231,7 +231,7 @@ export function NuevaEntregaForm({
                     ))}
                   </select>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-1 min-w-0">
                   <label className="text-xs text-foreground/60">Pallets</label>
                   <input
                     value={row.pallets}
@@ -240,11 +240,11 @@ export function NuevaEntregaForm({
                     className={inputClass}
                   />
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-1 min-w-0">
                   <label className="text-xs text-foreground/60">Botellas</label>
                   <p className="px-2 py-2 text-sm text-foreground/60">{formatQuantity(botellas)}</p>
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-2 min-w-0">
                   <label className="text-xs text-foreground/60">Precio/bot.</label>
                   <input
                     value={row.pricePerBottle}
@@ -253,7 +253,7 @@ export function NuevaEntregaForm({
                     className={inputClass}
                   />
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-1 min-w-0">
                   <label className="text-xs text-foreground/60">Fact.</label>
                   <button
                     type="button"
@@ -267,7 +267,7 @@ export function NuevaEntregaForm({
                     {row.facturado ? "C/Fact" : "S/Fact"}
                   </button>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-1 min-w-0">
                   <label className="text-xs text-foreground/60">Subtotal</label>
                   <p className="px-2 py-2 text-sm">
                     {formatMoney(subtotal)}
@@ -276,7 +276,7 @@ export function NuevaEntregaForm({
                     )}
                   </p>
                 </div>
-                <div className="col-span-1">
+                <div className="col-span-1 min-w-0">
                   {rows.length > 1 && (
                     <button
                       type="button"

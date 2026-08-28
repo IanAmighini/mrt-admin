@@ -130,6 +130,16 @@ export default async function AccountLedgerPage({
         ) : null;
 
       if (doc.lines.length > 0) {
+        const defaultLines = doc.lines.map((l) => {
+          const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
+          const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
+          return {
+            productId: l.productId,
+            quantity: l.quantity.toString(),
+            pricePerBottle: pricePerBottle.toString(),
+            circuit,
+          };
+        });
         actions = (
           <div className="flex items-center gap-2">
             <FormModal triggerLabel="Editar" iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-2xl">
@@ -139,6 +149,7 @@ export default async function AccountLedgerPage({
                 priceMapByCircuit={priceMapByCircuit}
                 editingDocumentId={doc.id}
                 defaultValues={headerDefaults}
+                defaultLines={defaultLines}
               />
             </FormModal>
             <DeleteButton
@@ -231,10 +242,9 @@ export default async function AccountLedgerPage({
   }
 
   for (const payment of payments) {
-    // El saldo de la cuenta (getAccountBalance) solo se reduce por la parte de un pago que
-    // efectivamente quedó imputada a algún comprobante — un pago sin imputar (o con sobrante sin
-    // imputar) no afecta el saldo hoy, así que el libro mayor tiene que reflejar lo mismo para
-    // no mostrar un saldo acumulado que no coincida con el de la tarjeta/ficha.
+    // El Haber es el monto total del pago (no solo la parte imputada a algún comprobante) — así
+    // el saldo acumulado coincide con getAccountBalance, que resta el sobrante sin imputar como
+    // crédito a favor del cliente en vez de "perderlo".
     const imputado = sumDecimals(payment.allocations.map((a) => a.amount));
     const sinImputar = payment.amount.minus(imputado);
     const subtitleParts = [
@@ -248,7 +258,7 @@ export default async function AccountLedgerPage({
       title: `Pago — ${PAYMENT_METHOD_LABELS[payment.method]}`,
       subtitle: subtitleParts.length > 0 ? subtitleParts.join(" · ") : null,
       debe: ZERO,
-      haber: imputado,
+      haber: payment.amount,
       actions: canEdit ? (
         <div className="flex items-center gap-2">
           <FormModal triggerLabel="Editar" iconName="edit" title="Editar pago" action={updatePayment}>

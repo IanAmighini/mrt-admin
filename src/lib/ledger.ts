@@ -71,9 +71,24 @@ export async function getAccountDocuments(accountId: string) {
   });
 }
 
+/**
+ * Saldo = lo pendiente de cobrar por documentos, menos lo que un cliente ya pagó y todavía no se
+ * imputó a ningún comprobante (pagó de más, o pagó antes de que existiera el documento). Ese
+ * sobrante es un crédito a favor del cliente — sin restarlo, la plata "desaparecía" y el saldo
+ * podía marcar $0 incluso debiéndole al cliente.
+ */
 export async function getAccountBalance(accountId: string): Promise<Prisma.Decimal> {
-  const documents = await getAccountDocuments(accountId);
-  return sumDecimals(documents.map((doc) => getDocumentPending(doc)));
+  const [documents, payments] = await Promise.all([
+    getAccountDocuments(accountId),
+    prisma.payment.findMany({ where: { accountId }, include: { allocations: true } }),
+  ]);
+
+  const pendingTotal = sumDecimals(documents.map((doc) => getDocumentPending(doc)));
+  const unallocatedTotal = sumDecimals(
+    payments.map((p) => p.amount.minus(sumDecimals(p.allocations.map((a) => a.amount))))
+  );
+
+  return pendingTotal.minus(unallocatedTotal);
 }
 
 export type PendingDocument = DocumentWithRelations & { pending: Prisma.Decimal };

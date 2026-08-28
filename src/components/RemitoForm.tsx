@@ -12,13 +12,14 @@ export function RemitoFormFields({
   priceMapByCircuit,
   editingDocumentId,
   defaultValues,
+  defaultLines,
   pedidosPendientes,
 }: {
   entityId: string;
   products: Product[];
   priceMapByCircuit: PriceMap;
-  /** Si viene, el formulario edita este remito en vez de crear uno nuevo — las líneas se cargan
-   * de nuevo desde cero (no se prellenan), pero el encabezado sí. */
+  /** Si viene, el formulario edita este remito en vez de crear uno nuevo — el encabezado y las
+   * líneas se prellenan con `defaultValues`/`defaultLines`. */
   editingDocumentId?: string;
   defaultValues?: {
     number?: string;
@@ -28,6 +29,7 @@ export function RemitoFormFields({
     exchangeRate?: string;
     reason?: string;
   };
+  defaultLines?: { productId: string; quantity: string; pricePerBottle: string; circuit: "BLANCO" | "NEGRO" }[];
   /** Pedidos pendientes (no entregados) de este cliente — al tildarlos se marcan como
    * "Entregado" automáticamente al crear el remito. No se muestra al editar un remito existente. */
   pedidosPendientes?: PedidoPendiente[];
@@ -71,6 +73,7 @@ export function RemitoFormFields({
           unitsPerBox: p.unitsPerBox,
         }))}
         priceMapByCircuit={priceMapByCircuit}
+        defaultRows={defaultLines}
       />
       {!editingDocumentId && <PedidoLinkChecklist pedidosPendientes={pedidosPendientes ?? []} />}
       <Field label="Notas (opcional)">
