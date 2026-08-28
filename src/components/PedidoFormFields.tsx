@@ -1,22 +1,28 @@
-import type { Entity, Product } from "@prisma/client";
+import type { Entity } from "@prisma/client";
 import { PedidoLinesFields } from "./PedidoLinesFields";
+
+type MarcaInfo = { id: string; name: string; oilType: string };
+type FormatoInfo = { id: string; presentation: string };
 
 export function PedidoFormFields({
   clientes,
-  products,
+  marcas,
+  formatos,
   editingPedidoId,
+  orderNumber,
   defaultValues,
 }: {
   clientes: Entity[];
-  products: Product[];
+  marcas: MarcaInfo[];
+  formatos: FormatoInfo[];
   /** Si viene, el formulario edita este pedido en vez de crear uno nuevo. */
   editingPedidoId?: string;
+  /** Solo para mostrar en modo edición — el número de pedido no se puede cambiar a mano. */
+  orderNumber?: string;
   defaultValues?: {
     entityId?: string;
     date?: string;
-    orderNumber?: string;
     comments?: string;
-    lines?: { productId: string; pallets: string }[];
   };
 }) {
   return (
@@ -53,23 +59,17 @@ export function PedidoFormFields({
           />
         </Field>
         <Field label="Número de pedido">
-          <input
-            name="orderNumber"
-            required
-            defaultValue={defaultValues?.orderNumber}
-            className={inputClass}
-          />
+          {editingPedidoId ? (
+            <p className="px-3 py-2 text-sm text-foreground/60">{orderNumber}</p>
+          ) : (
+            <p className="px-3 py-2 text-sm text-foreground/40">Se asigna automáticamente</p>
+          )}
         </Field>
         <Field label="Comentarios (opcional)">
           <input name="comments" defaultValue={defaultValues?.comments} className={inputClass} />
         </Field>
       </div>
-      <PedidoLinesFields products={products.map((p) => ({
-        id: p.id,
-        name: p.name,
-        oilType: p.oilType,
-        bottleCapacityMl: p.bottleCapacityMl ? p.bottleCapacityMl.toNumber() : null,
-      }))} defaultRows={defaultValues?.lines} />
+      <PedidoLinesFields marcas={marcas} formatos={formatos} />
       <button type="submit" className={submitClass}>
         {editingPedidoId ? "Guardar cambios" : "Crear pedido"}
       </button>

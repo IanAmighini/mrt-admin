@@ -152,6 +152,8 @@ model DocumentLine {
   unitPrice  Decimal  @db.Decimal(14, 2)
   subtotal   Decimal  @db.Decimal(14, 2)
 
+  productMovements ProductMovement[]
+
   @@index([documentId])
 }
 
@@ -318,6 +320,7 @@ enum ProductMovementType {
   CONSUMO_ARMADO_CAJA
   AJUSTE
   MERMA
+  ENTREGA
 }
 
 model ProductMovement {
@@ -330,12 +333,15 @@ model ProductMovement {
   reason           String
   productionLineId String?
   productionLine   ProductionLine?     @relation(fields: [productionLineId], references: [id], onDelete: Cascade)
+  documentLineId   String?
+  documentLine     DocumentLine?       @relation(fields: [documentLineId], references: [id], onDelete: Cascade)
   createdById      String
   createdBy        User                @relation(fields: [createdById], references: [id])
   createdAt        DateTime            @default(now())
 
   @@index([productId])
   @@index([productionLineId])
+  @@index([documentLineId])
 }
 
 model ProductionRun {

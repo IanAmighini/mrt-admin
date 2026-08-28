@@ -247,9 +247,23 @@ export async function createRemito(formData: FormData) {
         },
       });
 
-      await tx.documentLine.createMany({
-        data: lineData.map((l) => ({ ...l, documentId: document.id })),
-      });
+      for (const l of lineData) {
+        const documentLine = await tx.documentLine.create({
+          data: { ...l, documentId: document.id },
+        });
+
+        await tx.productMovement.create({
+          data: {
+            productId: l.productId,
+            date,
+            quantity: l.quantity.negated(),
+            type: "ENTREGA",
+            reason: `Entrega remito ${number}`,
+            documentLineId: documentLine.id,
+            createdById: user.id,
+          },
+        });
+      }
     }
 
     if (pedidoIds.length > 0) {

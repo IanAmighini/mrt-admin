@@ -49,6 +49,7 @@ export const PRODUCT_MOVEMENT_TYPE_LABELS: Record<ProductMovementType, string> =
   CONSUMO_ARMADO_CAJA: "Consumo por armado de cajas",
   AJUSTE: "Ajuste",
   MERMA: "Merma",
+  ENTREGA: "Entrega",
 };
 
 export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
@@ -64,7 +65,7 @@ export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
 
 export const PEDIDO_STATUS_LABELS: Record<PedidoStatus, string> = {
   EN_COLA: "En cola",
-  COMPLETADO: "Completado",
+  COMPLETADO: "Terminado",
   ENTREGADO: "Entregado",
 };
 

@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
 import { setSetting } from "@/lib/settings";
+import { resolveOrCreateProduct } from "@/lib/products";
+import { syncPedidoStatuses } from "@/lib/pedidos";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -58,28 +60,7 @@ export async function createProductionRun(formData: FormData) {
     });
 
     for (const line of lines) {
-      const marca = await tx.marca.findUnique({ where: { id: line.marcaId } });
-      if (!marca) throw new Error("Alguna de las marcas seleccionadas ya no existe.");
-      const formato = await tx.formato.findUnique({ where: { id: line.formatoId } });
-      if (!formato) throw new Error("Alguno de los formatos seleccionados ya no existe.");
-
-      let product = await tx.product.findFirst({
-        where: { name: marca.name, oilType: marca.oilType, presentation: formato.presentation },
-        include: { recipe: true },
-      });
-      if (!product) {
-        product = await tx.product.create({
-          data: {
-            name: marca.name,
-            oilType: marca.oilType,
-            presentation: formato.presentation,
-            boxesPerPallet: formato.boxesPerPallet,
-            unitsPerBox: formato.unitsPerBox,
-            bottleCapacityMl: formato.bottleCapacityMl,
-          },
-          include: { recipe: true },
-        });
-      }
+      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId);
 
       const productionLine = await tx.productionLine.create({
         data: { productionRunId: run.id, productId: product.id, quantity: line.quantity },
@@ -112,10 +93,13 @@ export async function createProductionRun(formData: FormData) {
         });
       }
     }
+
+    await syncPedidoStatuses(tx);
   });
 
   revalidatePath("/produccion");
   revalidatePath("/stock");
+  revalidatePath("/pedidos");
 }
 
 /**

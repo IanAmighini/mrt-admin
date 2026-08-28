@@ -1,44 +1,37 @@
 "use client";
 
 import { useState } from "react";
-import { formatProductLabel } from "@/lib/product-label";
+import { formatProductBrandLabel } from "@/lib/product-label";
 
-type ProductInfo = {
-  id: string;
-  name: string;
-  oilType: string;
-  bottleCapacityMl: number | null;
-};
+type MarcaInfo = { id: string; name: string; oilType: string };
+type FormatoInfo = { id: string; presentation: string };
 
 type Row = {
   key: number;
-  productId: string;
+  marcaId: string;
+  formatoId: string;
   pallets: string;
 };
 
-const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-2 text-sm";
-const selectClass = inputClass;
+const inputClass =
+  "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-2 text-sm";
 
 export function PedidoLinesFields({
-  products,
-  defaultRows,
+  marcas,
+  formatos,
 }: {
-  products: ProductInfo[];
-  defaultRows?: { productId: string; pallets: string }[];
+  marcas: MarcaInfo[];
+  formatos: FormatoInfo[];
 }) {
-  const [rows, setRows] = useState<Row[]>(
-    defaultRows && defaultRows.length > 0
-      ? defaultRows.map((r, i) => ({ key: i, ...r }))
-      : [{ key: 0, productId: "", pallets: "" }]
-  );
-  const [nextKey, setNextKey] = useState(rows.length);
+  const [rows, setRows] = useState<Row[]>([{ key: 0, marcaId: "", formatoId: "", pallets: "" }]);
+  const [nextKey, setNextKey] = useState(1);
 
   function updateRow(key: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
 
   function addRow() {
-    setRows((prev) => [...prev, { key: nextKey, productId: "", pallets: "" }]);
+    setRows((prev) => [...prev, { key: nextKey, marcaId: "", formatoId: "", pallets: "" }]);
     setNextKey((k) => k + 1);
   }
 
@@ -50,24 +43,43 @@ export function PedidoLinesFields({
     <div className="space-y-3">
       <p className="text-sm font-medium">Líneas del pedido</p>
       {rows.map((row) => (
-        <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
-          <div className="col-span-8">
-            <label className="text-xs text-foreground/60">Producto</label>
+        <div
+          key={row.key}
+          className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
+        >
+          <div className="col-span-5">
+            <label className="text-xs text-foreground/60">Marca</label>
             <select
-              name="lineProductId"
-              value={row.productId}
-              onChange={(e) => updateRow(row.key, { productId: e.target.value })}
-              className={selectClass}
+              name="lineMarcaId"
+              value={row.marcaId}
+              onChange={(e) => updateRow(row.key, { marcaId: e.target.value })}
+              className={inputClass}
             >
-              <option value="">— Producto —</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {formatProductLabel(p)}
+              <option value="">— Marca —</option>
+              {marcas.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {formatProductBrandLabel(m)}
                 </option>
               ))}
             </select>
           </div>
-          <div className="col-span-3">
+          <div className="col-span-4">
+            <label className="text-xs text-foreground/60">Formato</label>
+            <select
+              name="lineFormatoId"
+              value={row.formatoId}
+              onChange={(e) => updateRow(row.key, { formatoId: e.target.value })}
+              className={inputClass}
+            >
+              <option value="">— Formato —</option>
+              {formatos.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.presentation}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="col-span-2">
             <label className="text-xs text-foreground/60">Pallets</label>
             <input
               name="linePallets"

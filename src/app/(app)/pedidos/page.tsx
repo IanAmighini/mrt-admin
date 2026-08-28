@@ -19,7 +19,7 @@ function toDateInputValue(date: Date): string {
 const STATUS_FILTERS: { value: PedidoStatus | ""; label: string }[] = [
   { value: "", label: "Todos" },
   { value: "EN_COLA", label: "En cola" },
-  { value: "COMPLETADO", label: "Completados" },
+  { value: "COMPLETADO", label: "Terminados" },
   { value: "ENTREGADO", label: "Entregados" },
 ];
 
@@ -36,12 +36,16 @@ export default async function PedidosPage({
     ? (estado as PedidoStatus | "")
     : "";
 
-  const [clientes, products, pedidos] = await Promise.all([
+  const [clientes, marcas, formatos, pedidos] = await Promise.all([
     prisma.entity.findMany({
       where: { type: { in: ["CLIENTE", "AMBOS"] } },
       orderBy: { name: "asc" },
     }),
-    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.marca.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }] }),
+    prisma.formato.findMany({
+      orderBy: [{ bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
+      select: { id: true, presentation: true },
+    }),
     prisma.pedido.findMany({
       where: {
         ...(statusFilter ? { status: statusFilter } : {}),
@@ -57,14 +61,14 @@ export default async function PedidosPage({
       <div>
         <h1 className="text-xl font-semibold mb-1">Pedidos</h1>
         <p className="text-sm text-foreground/60">
-          Pedidos recibidos por WhatsApp — en cola de producción, completados (en stock, sin
-          retirar) y entregados.
+          Pedidos recibidos por WhatsApp. Pasan a &quot;Terminado&quot; solos cuando hay stock
+          (producción del día) y a &quot;Entregado&quot; al cargar el remito.
         </p>
       </div>
 
       {canEdit && (
         <FormModal triggerLabel="Nuevo pedido" title="Nuevo pedido" action={createPedido} maxWidthClass="max-w-2xl">
-          <PedidoFormFields clientes={clientes} products={products} />
+          <PedidoFormFields clientes={clientes} marcas={marcas} formatos={formatos} />
         </FormModal>
       )}
 
@@ -186,17 +190,14 @@ export default async function PedidosPage({
                               >
                                 <PedidoFormFields
                                   clientes={clientes}
-                                  products={products}
+                                  marcas={marcas}
+                                  formatos={formatos}
                                   editingPedidoId={pedido.id}
+                                  orderNumber={pedido.orderNumber}
                                   defaultValues={{
                                     entityId: pedido.entityId,
                                     date: toDateInputValue(pedido.date),
-                                    orderNumber: pedido.orderNumber,
                                     comments: pedido.comments ?? "",
-                                    lines: pedido.lines.map((l) => ({
-                                      productId: l.productId,
-                                      pallets: l.pallets.toString(),
-                                    })),
                                   }}
                                 />
                               </FormModal>
