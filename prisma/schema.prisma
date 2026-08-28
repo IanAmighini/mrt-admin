@@ -212,14 +212,15 @@ model PaymentAllocation {
 }
 
 model Item {
-  id           String   @id @default(cuid())
+  id           String           @id @default(cuid())
   name         String
   unit         String
-  isResellable Boolean  @default(false)
-  minStock     Decimal? @db.Decimal(14, 3)
-  unitCost     Decimal? @db.Decimal(14, 2)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  category     SupplierCategory @default(OTRO)
+  isResellable Boolean          @default(false)
+  minStock     Decimal?         @db.Decimal(14, 3)
+  unitCost     Decimal?         @db.Decimal(14, 2)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   movements     ItemMovement[]
   recipeLines   RecipeItem[]
