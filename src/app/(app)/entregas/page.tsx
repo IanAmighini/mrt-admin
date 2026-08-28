@@ -1,14 +1,24 @@
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
+import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentRemitos } from "@/lib/ledger";
-import { formatMoney, formatQuantity, sumDecimals } from "@/lib/money";
+import { getAllCurrentPrices } from "@/lib/pricing";
+import { formatMoney, formatQuantity } from "@/lib/money";
+import { FormModal } from "@/components/Modal";
+import { DeleteButton } from "@/components/DeleteButton";
+import { RemitoFormFields } from "@/components/RemitoForm";
+import { deleteRemito, updateRemito } from "../cuentas-corrientes/[entityId]/actions";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
   { value: "pagado", label: "Pagado" },
   { value: "sin_pagar", label: "Sin pagar" },
 ];
+
+function toDateInputValue(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
 export default async function EntregasPage({
   searchParams,
@@ -21,12 +31,37 @@ export default async function EntregasPage({
 
   const pagoFilter = PAGO_FILTERS.some((f) => f.value === pago) ? (pago as "" | "pagado" | "sin_pagar") : "";
 
-  const remitos = await getRecentRemitos(500, undefined, q);
+  const [remitos, products, allPrices] = await Promise.all([
+    getRecentRemitos(500, undefined, q),
+    prisma.product.findMany({
+      orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
+    }),
+    getAllCurrentPrices(),
+  ]);
+
+  const pricesByEntity: Record<
+    string,
+    Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>
+  > = {};
+  for (const price of allPrices.values()) {
+    const byCircuit = (pricesByEntity[price.entityId] ??= { BLANCO: {}, NEGRO: {} });
+    byCircuit[price.circuit][price.productId] = { amount: price.amount.toNumber(), currency: price.currency };
+  }
 
   const rows = remitos.map((doc) => {
     const pending = getDocumentPending(doc);
-    const pallets = sumDecimals(doc.lines.map((l) => l.quantity));
-    return { doc, pallets, pagado: pending.lessThanOrEqualTo(0) };
+    const pallets = doc.lines.reduce((acc, l) => acc + l.quantity.toNumber(), 0);
+    const defaultLines = doc.lines.map((l) => {
+      const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
+      const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
+      return {
+        productId: l.productId,
+        quantity: l.quantity.toString(),
+        pricePerBottle: pricePerBottle.toString(),
+        circuit: doc.account.circuit,
+      };
+    });
+    return { doc, pallets, pagado: pending.lessThanOrEqualTo(0), defaultLines };
   });
 
   const filteredRows = rows.filter((r) => {
@@ -97,10 +132,11 @@ export default async function EntregasPage({
               <th className="py-2 pr-4">Pallets</th>
               <th className="py-2 pr-4">Total</th>
               <th className="py-2 pr-4">Pago</th>
+              {canEdit && <th className="py-2 pr-4">Acciones</th>}
             </tr>
           </thead>
           <tbody>
-            {filteredRows.map(({ doc, pallets, pagado }) => (
+            {filteredRows.map(({ doc, pallets, pagado, defaultLines }) => (
               <tr key={doc.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4">#{doc.number}</td>
                 <td className="py-2 pr-4">
@@ -125,11 +161,45 @@ export default async function EntregasPage({
                     {pagado ? "Pagado" : "Sin pagar"}
                   </span>
                 </td>
+                {canEdit && (
+                  <td className="py-2 pr-4">
+                    <div className="flex items-center gap-2">
+                      <FormModal
+                        triggerLabel="Editar"
+                        iconName="edit"
+                        title="Editar remito"
+                        action={updateRemito}
+                        maxWidthClass="max-w-2xl"
+                      >
+                        <RemitoFormFields
+                          entityId={doc.account.entityId}
+                          products={products}
+                          priceMapByCircuit={pricesByEntity[doc.account.entityId] ?? { BLANCO: {}, NEGRO: {} }}
+                          editingDocumentId={doc.id}
+                          defaultValues={{
+                            number: doc.number,
+                            date: toDateInputValue(doc.date),
+                            dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
+                            currency: doc.currency,
+                            exchangeRate: doc.exchangeRate?.toString(),
+                          }}
+                          defaultLines={defaultLines}
+                        />
+                      </FormModal>
+                      <DeleteButton
+                        action={deleteRemito}
+                        hiddenName="documentId"
+                        hiddenValue={doc.id}
+                        confirmMessage="¿Borrar este remito? Esta acción no se puede deshacer."
+                      />
+                    </div>
+                  </td>
+                )}
               </tr>
             ))}
             {filteredRows.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-6 text-center text-foreground/40">
+                <td colSpan={canEdit ? 7 : 6} className="py-6 text-center text-foreground/40">
                   {q || pagoFilter ? "No hay entregas con este filtro." : "Todavía no hay entregas cargadas."}
                 </td>
               </tr>
