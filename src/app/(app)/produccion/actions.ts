@@ -66,22 +66,25 @@ export async function createProductionRun(formData: FormData) {
   const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
 
   const date = parseFormDate(formData.get("date"));
+  const notes = String(formData.get("notes") || "").trim() || null;
   const productIds = formData.getAll("productId").map(String);
   const quantities = formData.getAll("quantity").map(String);
 
   const lines = productIds
     .map((productId, i) => ({ productId, quantity: toDecimal(quantities[i]) }))
-    .filter((l) => l.productId && l.quantity.greaterThan(0));
+    .filter((l) => l.productId && !l.quantity.isZero());
 
   if (lines.length === 0) {
-    throw new Error("Cargá al menos un producto con cantidad.");
+    throw new Error(
+      "Cargá al menos un ítem con producto y pallets (puede ser negativo, para reformateo)."
+    );
   }
 
   const dateLabel = date.toLocaleDateString("es-AR");
 
   await prisma.$transaction(async (tx) => {
     const run = await tx.productionRun.create({
-      data: { date, createdById: user.id },
+      data: { date, notes, createdById: user.id },
     });
 
     for (const line of lines) {
@@ -91,7 +94,7 @@ export async function createProductionRun(formData: FormData) {
       });
       if (!product) throw new Error("Alguno de los productos seleccionados ya no existe.");
 
-      await tx.productionLine.create({
+      const productionLine = await tx.productionLine.create({
         data: { productionRunId: run.id, productId: product.id, quantity: line.quantity },
       });
 
@@ -102,6 +105,7 @@ export async function createProductionRun(formData: FormData) {
           quantity: line.quantity,
           type: "PRODUCCION",
           reason: `Producción del ${dateLabel}`,
+          productionLineId: productionLine.id,
           createdById: user.id,
         },
       });
@@ -115,12 +119,43 @@ export async function createProductionRun(formData: FormData) {
             quantity: consumed.negated(),
             type: "CONSUMO_PRODUCCION",
             reason: `Producción del ${dateLabel}`,
+            productionLineId: productionLine.id,
             createdById: user.id,
           },
         });
       }
     }
   });
+
+  revalidatePath("/produccion");
+  revalidatePath("/stock");
+}
+
+/**
+ * Editar una producción = borrar la carga existente (las líneas y los movimientos de
+ * producto/insumo vinculados se van en cascada) y volver a correr createProductionRun con los
+ * datos nuevos — mismo patrón que remitos y pedidos.
+ */
+export async function updateProductionRun(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const runId = String(formData.get("runId") || "");
+  const run = await prisma.productionRun.findUnique({ where: { id: runId } });
+  if (!run) throw new Error("La carga de producción ya no existe.");
+
+  await prisma.productionRun.delete({ where: { id: runId } });
+
+  await createProductionRun(formData);
+}
+
+export async function deleteProductionRun(formData: FormData) {
+  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+
+  const runId = String(formData.get("runId") || "");
+  const run = await prisma.productionRun.findUnique({ where: { id: runId } });
+  if (!run) throw new Error("La carga de producción ya no existe.");
+
+  await prisma.productionRun.delete({ where: { id: runId } });
 
   revalidatePath("/produccion");
   revalidatePath("/stock");

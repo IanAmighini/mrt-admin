@@ -1,570 +1,220 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getAllBoxStocks, getAllProductStocks } from "@/lib/stock";
+import { getAllProductStocks } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
-import { formatProductLabel } from "@/lib/product-label";
-import { PALLET_STATUS_LABELS } from "@/lib/labels";
-import { createProduct, createProductionRun, updateOilEfficiency } from "./actions";
-import { createBoxType, createBoxMovement, createPallet } from "./pallet-actions";
-import { ProductionLinesFields } from "./ProductionLinesFields";
-import { NewProductFields } from "@/components/NewProductFields";
+import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
 import { getSetting } from "@/lib/settings";
+import { FormModal } from "@/components/Modal";
+import { DeleteButton } from "@/components/DeleteButton";
+import { NewProductFields } from "@/components/NewProductFields";
+import { ProductionRunFormFields } from "@/components/ProductionRunFormFields";
+import { OilEfficiencyFields } from "@/components/OilEfficiencyFields";
+import { createProduct, createProductionRun, deleteProductionRun, updateProductionRun, updateOilEfficiency } from "./actions";
 
-const PALLET_BOX_ROWS = 4;
+function toDateInputValue(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
 export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
-  const [products, stocks, runs, oilFillEfficiencyPercent, items, boxTypes, boxStocks, pallets] =
-    await Promise.all([
-      prisma.product.findMany({
-        orderBy: { name: "asc" },
-        include: { recipe: true },
-      }),
-      getAllProductStocks(),
-      prisma.productionRun.findMany({
-        orderBy: { date: "desc" },
-        include: { lines: { include: { product: true } }, createdBy: true },
-        take: 30,
-      }),
-      getSetting("oilFillEfficiencyPercent", "100"),
-      prisma.item.findMany({ orderBy: { name: "asc" } }),
-      prisma.boxType.findMany({ orderBy: { label: "asc" }, include: { product: true } }),
-      getAllBoxStocks(),
-      prisma.pallet.findMany({
-        orderBy: { date: "desc" },
-        include: {
-          woodItem: true,
-          filmItem: true,
-          boxes: { include: { boxType: true } },
-        },
-        take: 30,
-      }),
-    ]);
+  const [products, stocks, runs, oilFillEfficiencyPercent] = await Promise.all([
+    prisma.product.findMany({
+      orderBy: { name: "asc" },
+      include: { recipe: true },
+    }),
+    getAllProductStocks(),
+    prisma.productionRun.findMany({
+      orderBy: { date: "desc" },
+      include: {
+        lines: { include: { product: { include: { recipe: { include: { item: true } } } } } },
+        createdBy: true,
+      },
+      take: 30,
+    }),
+    getSetting("oilFillEfficiencyPercent", "100"),
+  ]);
+
+  const productFields = products.map((p) => ({
+    id: p.id,
+    name: p.name,
+    oilType: p.oilType,
+    presentation: p.presentation,
+  }));
+
+  const runTotals = runs.map((run) => {
+    let pallets = 0;
+    let litros = 0;
+    let botellas = 0;
+    for (const line of run.lines) {
+      const qty = line.quantity.toNumber();
+      pallets += qty;
+      botellas += qty * (line.product.boxesPerPallet ?? 0) * (line.product.unitsPerBox ?? 0);
+      const oilRecipe = line.product.recipe.find((r) => r.item.unit === "L");
+      if (oilRecipe) litros += qty * oilRecipe.quantityPerUnit.toNumber();
+    }
+    return { run, pallets, litros, botellas };
+  });
 
   return (
-    <div className="space-y-10">
-      <div>
-        <h1 className="text-xl font-semibold mb-1">Producción</h1>
-        <p className="text-sm text-foreground/60">
-          Productos, receta (BOM) y carga de producción diaria.
-        </p>
-      </div>
-
-      {canEdit && (
-        <form
-          action={createProduct}
-          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
-        >
-          <h2 className="text-sm font-semibold">Nuevo producto</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <NewProductFields />
-          </div>
-          <button
-            type="submit"
-            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Crear
-          </button>
-        </form>
-      )}
-
-      <div className="max-w-xs rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-        <h2 className="text-sm font-semibold mb-2">Eficiencia de llenado de aceite</h2>
-        <p className="text-xs text-foreground/50 mb-3">
-          Porcentaje del volumen nominal de la botella que realmente se consume en aceite, usado
-          al generar la receta de un producto.
-        </p>
-        {canEdit ? (
-          <form action={updateOilEfficiency} className="flex items-center gap-2">
-            <input
-              name="oilFillEfficiencyPercent"
-              defaultValue={oilFillEfficiencyPercent}
-              inputMode="decimal"
-              className="w-24 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-            />
-            <span className="text-sm">%</span>
-            <button
-              type="submit"
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+    <div className="space-y-8">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold mb-1">Producción</h1>
+          <p className="text-sm text-foreground/60">Historial de producción diaria.</p>
+        </div>
+        {canEdit && (
+          <div className="flex flex-wrap gap-2">
+            <FormModal triggerLabel="Nuevo producto" title="Nuevo producto" action={createProduct}>
+              <NewProductFields />
+            </FormModal>
+            <FormModal
+              triggerLabel="Nueva producción"
+              title="Cargar producción"
+              action={createProductionRun}
+              maxWidthClass="max-w-xl"
             >
-              Guardar
-            </button>
-          </form>
-        ) : (
-          <p className="text-lg font-semibold">{oilFillEfficiencyPercent}%</p>
+              <ProductionRunFormFields products={productFields} />
+            </FormModal>
+            <FormModal
+              triggerLabel="Rendimiento de aceite"
+              title="Rendimiento de aceite"
+              action={updateOilEfficiency}
+              iconName="edit"
+            >
+              <OilEfficiencyFields currentPercent={oilFillEfficiencyPercent} />
+            </FormModal>
+          </div>
         )}
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-foreground/10 text-left text-foreground/60">
-              <th className="py-2 pr-4">Producto</th>
-              <th className="py-2 pr-4">Tipo de aceite</th>
-              <th className="py-2 pr-4">Presentación</th>
-              <th className="py-2 pr-4">Insumos en receta</th>
-              <th className="py-2 pr-4">Stock actual</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products
-              .filter((product) => {
-                const stock = stocks.get(product.id);
-                return stock !== undefined && !stock.isZero();
-              })
-              .map((product) => (
-                <tr key={product.id} className="border-b border-foreground/5">
-                  <td className="py-2 pr-4">
+      <div className="space-y-3">
+        {runTotals.map(({ run, pallets, litros, botellas }) => (
+          <div key={run.id} className="rounded-xl border border-foreground/10 bg-background shadow-sm overflow-hidden">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 bg-foreground/[0.02] px-4 py-3">
+              <div className="flex items-center gap-3">
+                <p className="font-semibold">{run.date.toLocaleDateString("es-AR")}</p>
+                <span className="text-xs text-foreground/40">
+                  {run.lines.length} {run.lines.length === 1 ? "item" : "items"}
+                </span>
+              </div>
+              <div className="flex items-center gap-5 text-sm">
+                <span>
+                  <span className="font-semibold">{formatQuantity(pallets)}</span>{" "}
+                  <span className="text-foreground/50">pallets</span>
+                </span>
+                <span className="text-orange-600 dark:text-orange-400">
+                  <span className="font-semibold">{formatQuantity(litros)}</span> L
+                </span>
+                <span className="text-blue-600 dark:text-blue-400">
+                  <span className="font-semibold">{formatQuantity(botellas)}</span> bot.
+                </span>
+                {canEdit && (
+                  <div className="flex items-center gap-2">
+                    <FormModal
+                      triggerLabel="Editar"
+                      title="Editar carga de producción"
+                      action={updateProductionRun}
+                      maxWidthClass="max-w-xl"
+                      iconName="edit"
+                    >
+                      <ProductionRunFormFields
+                        products={productFields}
+                        editingRunId={run.id}
+                        defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
+                      />
+                    </FormModal>
+                    <DeleteButton
+                      action={deleteProductionRun}
+                      hiddenName="runId"
+                      hiddenValue={run.id}
+                      confirmMessage="¿Borrar esta carga de producción? Revierte el stock de producto e insumos que generó."
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="divide-y divide-foreground/5">
+              {run.lines.map((line) => {
+                const qty = line.quantity.toNumber();
+                return (
+                  <div key={line.id} className="flex items-center justify-between px-4 py-2 text-sm">
+                    <div className="flex items-center gap-4">
+                      <span className="font-medium">{formatProductBrandLabel(line.product)}</span>
+                      <span className="text-foreground/50">{line.product.presentation}</span>
+                    </div>
+                    <span
+                      className={
+                        qty < 0
+                          ? "font-semibold text-red-600 dark:text-red-400"
+                          : "font-semibold text-green-600 dark:text-green-400"
+                      }
+                    >
+                      {qty > 0 ? "+" : ""}
+                      {formatQuantity(qty)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {run.notes && (
+              <p className="border-t border-foreground/5 px-4 py-2 text-xs text-foreground/50">{run.notes}</p>
+            )}
+          </div>
+        ))}
+        {runs.length === 0 && (
+          <p className="rounded-xl border border-foreground/10 bg-background shadow-sm px-4 py-8 text-center text-foreground/40">
+            Todavía no hay producción cargada.
+          </p>
+        )}
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Productos</h2>
+        <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
+                <th className="py-2 px-4">Producto</th>
+                <th className="py-2 px-4">Tipo de aceite</th>
+                <th className="py-2 px-4">Presentación</th>
+                <th className="py-2 px-4">Insumos en receta</th>
+                <th className="py-2 px-4">Stock actual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((product) => (
+                <tr key={product.id} className="border-b border-foreground/5 last:border-0">
+                  <td className="py-2 px-4">
                     <Link href={`/produccion/${product.id}`} className="underline underline-offset-2">
-                      {product.name}
+                      {formatProductLabel(product)}
                     </Link>
                   </td>
-                  <td className="py-2 pr-4">{product.oilType}</td>
-                  <td className="py-2 pr-4">{product.presentation}</td>
-                  <td className="py-2 pr-4">
+                  <td className="py-2 px-4">{product.oilType}</td>
+                  <td className="py-2 px-4">{product.presentation}</td>
+                  <td className="py-2 px-4">
                     {product.recipe.length === 0 ? (
                       <span className="text-foreground/40">Sin receta</span>
                     ) : (
                       product.recipe.length
                     )}
                   </td>
-                  <td className="py-2 pr-4">{formatQuantity(stocks.get(product.id) ?? 0)}</td>
+                  <td className="py-2 px-4">
+                    {formatQuantity(stocks.get(product.id) ?? 0, "pallets")}
+                  </td>
                 </tr>
               ))}
-            {products.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-6 text-center text-foreground/40">
-                  Todavía no hay productos cargados.
-                </td>
-              </tr>
-            )}
-            {products.length > 0 &&
-              products.every((product) => {
-                const stock = stocks.get(product.id);
-                return stock === undefined || stock.isZero();
-              }) && (
+              {products.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-6 text-center text-foreground/40">
-                    No hay stock cargado — todos los productos están en 0.
-                  </td>
-                </tr>
-              )}
-          </tbody>
-        </table>
-      </div>
-
-      {canEdit && (
-        <form
-          action={createProductionRun}
-          className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
-        >
-          <h2 className="text-sm font-semibold">Parte de producción diaria</h2>
-          <div className="space-y-1 max-w-xs">
-            <label className="text-sm" htmlFor="date">
-              Fecha
-            </label>
-            <input
-              id="date"
-              type="date"
-              name="date"
-              required
-              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-            />
-          </div>
-          <ProductionLinesFields
-            products={products.map((p) => ({
-              id: p.id,
-              name: p.name,
-              oilType: p.oilType,
-              bottleCapacityMl: p.bottleCapacityMl ? p.bottleCapacityMl.toNumber() : null,
-            }))}
-          />
-          <button
-            type="submit"
-            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Registrar parte
-          </button>
-        </form>
-      )}
-
-      <div>
-        <h2 className="text-sm font-semibold mb-2">Historial de partes</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                <th className="py-2 pr-4">Fecha</th>
-                <th className="py-2 pr-4">Producción</th>
-                <th className="py-2 pr-4">Cargado por</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((run) => (
-                <tr key={run.id} className="border-b border-foreground/5">
-                  <td className="py-2 pr-4">{run.date.toLocaleDateString("es-AR")}</td>
-                  <td className="py-2 pr-4">
-                    {run.lines
-                      .map((line) => `${formatProductLabel(line.product)}: ${formatQuantity(line.quantity)}`)
-                      .join(" · ")}
-                  </td>
-                  <td className="py-2 pr-4">{run.createdBy.name}</td>
-                </tr>
-              ))}
-              {runs.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="py-4 text-center text-foreground/40">
-                    Sin partes de producción todavía.
+                    Todavía no hay productos cargados.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <section className="space-y-6 border-t border-foreground/10 pt-10">
-        <div>
-          <h2 className="text-lg font-semibold mb-1">Armado de cajas y pallets</h2>
-          <p className="text-sm text-foreground/60">
-            Producto suelto → caja armada → pallet armado.
-          </p>
-        </div>
-
-        {canEdit && (
-          <form
-            action={createBoxType}
-            className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
-          >
-            <h3 className="text-sm font-semibold">Nuevo tipo de caja</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="boxProductId">
-                  Producto
-                </label>
-                <select
-                  id="boxProductId"
-                  name="productId"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                >
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {formatProductLabel(product)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="boxLabel">
-                  Etiqueta
-                </label>
-                <input
-                  id="boxLabel"
-                  name="label"
-                  required
-                  placeholder="Caja x12"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="boxUnitsPerBox">
-                  Unidades por caja
-                </label>
-                <input
-                  id="boxUnitsPerBox"
-                  name="unitsPerBox"
-                  required
-                  inputMode="decimal"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <button
-              type="submit"
-              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-            >
-              Crear
-            </button>
-          </form>
-        )}
-
-        {canEdit && boxTypes.length > 0 && (
-          <form
-            action={createBoxMovement}
-            className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
-          >
-            <h3 className="text-sm font-semibold">Armar cajas</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="boxTypeId">
-                  Tipo de caja
-                </label>
-                <select
-                  id="boxTypeId"
-                  name="boxTypeId"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                >
-                  {boxTypes.map((boxType) => (
-                    <option key={boxType.id} value={boxType.id}>
-                      {boxType.label} — {formatProductLabel(boxType.product)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="boxQuantity">
-                  Cantidad de cajas
-                </label>
-                <input
-                  id="boxQuantity"
-                  name="quantity"
-                  required
-                  inputMode="decimal"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="boxDate">
-                  Fecha
-                </label>
-                <input
-                  id="boxDate"
-                  type="date"
-                  name="date"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="boxReason">
-                Motivo
-              </label>
-              <input
-                id="boxReason"
-                name="reason"
-                required
-                placeholder="Armado de cajas para pedido X"
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              />
-            </div>
-            <button
-              type="submit"
-              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-            >
-              Registrar armado
-            </button>
-          </form>
-        )}
-
-        <div>
-          <h3 className="text-sm font-semibold mb-2">Stock de cajas armadas</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Tipo de caja</th>
-                  <th className="py-2 pr-4">Producto</th>
-                  <th className="py-2 pr-4">Unidades por caja</th>
-                  <th className="py-2 pr-4">Stock actual</th>
-                </tr>
-              </thead>
-              <tbody>
-                {boxTypes.map((boxType) => (
-                  <tr key={boxType.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">{boxType.label}</td>
-                    <td className="py-2 pr-4">{formatProductLabel(boxType.product)}</td>
-                    <td className="py-2 pr-4">{formatQuantity(boxType.unitsPerBox)}</td>
-                    <td className="py-2 pr-4">
-                      {formatQuantity(boxStocks.get(boxType.id) ?? 0, "cajas")}
-                    </td>
-                  </tr>
-                ))}
-                {boxTypes.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-6 text-center text-foreground/40">
-                      Todavía no hay tipos de caja cargados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {canEdit && boxTypes.length > 0 && (
-          <form action={createPallet} className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-            <h3 className="text-sm font-semibold">Armar pallet</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="palletDate">
-                  Fecha
-                </label>
-                <input
-                  id="palletDate"
-                  type="date"
-                  name="date"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="palletCount">
-                  Cantidad de pallets iguales
-                </label>
-                <input
-                  id="palletCount"
-                  name="palletCount"
-                  type="number"
-                  min={1}
-                  defaultValue={1}
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1 col-span-2">
-                <label className="text-sm" htmlFor="palletLabel">
-                  Etiqueta (opcional)
-                </label>
-                <input
-                  id="palletLabel"
-                  name="label"
-                  placeholder="Pallet marca X"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="woodItemId">
-                  Insumo: pallet de madera
-                </label>
-                <select
-                  id="woodItemId"
-                  name="woodItemId"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                >
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="filmItemId">
-                  Insumo: film
-                </label>
-                <select
-                  id="filmItemId"
-                  name="filmItemId"
-                  required
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                >
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm" htmlFor="filmQuantity">
-                  Cantidad de film usada (por pallet)
-                </label>
-                <input
-                  id="filmQuantity"
-                  name="filmQuantity"
-                  required
-                  inputMode="decimal"
-                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm">Cajas incluidas</p>
-              {Array.from({ length: PALLET_BOX_ROWS }).map((_, i) => (
-                <div key={i} className="flex gap-2">
-                  <select
-                    name="boxTypeId"
-                    defaultValue=""
-                    className="flex-1 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                  >
-                    <option value="">— Tipo de caja —</option>
-                    {boxTypes.map((boxType) => (
-                      <option key={boxType.id} value={boxType.id}>
-                        {boxType.label} — {formatProductLabel(boxType.product)}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    name="boxQuantity"
-                    placeholder="Cantidad"
-                    inputMode="decimal"
-                    className="w-32 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-                  />
-                </div>
-              ))}
-            </div>
-            <button
-              type="submit"
-              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-            >
-              Armar pallet
-            </button>
-          </form>
-        )}
-
-        <div>
-          <h3 className="text-sm font-semibold mb-2">Pallets</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Fecha</th>
-                  <th className="py-2 pr-4">Etiqueta</th>
-                  <th className="py-2 pr-4">Cajas</th>
-                  <th className="py-2 pr-4">Madera / Film</th>
-                  <th className="py-2 pr-4">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pallets.map((pallet) => (
-                  <tr key={pallet.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">{pallet.date.toLocaleDateString("es-AR")}</td>
-                    <td className="py-2 pr-4">
-                      <Link
-                        href={`/produccion/pallets/${pallet.id}`}
-                        className="underline underline-offset-2"
-                      >
-                        {pallet.label || pallet.id.slice(0, 8)}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">
-                      {pallet.boxes
-                        .map((b) => `${b.boxType.label} × ${formatQuantity(b.quantity)}`)
-                        .join(" · ")}
-                    </td>
-                    <td className="py-2 pr-4">
-                      {pallet.woodItem.name} · {formatQuantity(pallet.filmQuantity)}{" "}
-                      {pallet.filmItem.name}
-                    </td>
-                    <td className="py-2 pr-4">{PALLET_STATUS_LABELS[pallet.status]}</td>
-                  </tr>
-                ))}
-                {pallets.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="py-6 text-center text-foreground/40">
-                      Todavía no hay pallets armados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
         </div>
       </section>
     </div>

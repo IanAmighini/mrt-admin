@@ -26,10 +26,12 @@ export async function getLitrosEnvasados(referenceDate: Date = new Date()) {
   const monthStart = startOfMonth(referenceDate);
   const monthEnd = startOfNextMonth(referenceDate);
 
-  const total = sumDecimals(movements.map((m) => m.quantity)).negated();
+  const total = sumDecimals(movements.map((m) => m.quantity)).negated().plus(ZERO);
   const esteMes = sumDecimals(
     movements.filter((m) => m.date >= monthStart && m.date < monthEnd).map((m) => m.quantity)
-  ).negated();
+  )
+    .negated()
+    .plus(ZERO);
 
   return { esteMes, total };
 }

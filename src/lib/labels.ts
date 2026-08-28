@@ -1,10 +1,8 @@
 import type {
-  BoxMovementType,
   Circuit,
   Currency,
   DocumentType,
   ItemMovementType,
-  PalletStatus,
   PaymentMethod,
   PedidoStatus,
   ProductMovementType,
@@ -51,19 +49,6 @@ export const PRODUCT_MOVEMENT_TYPE_LABELS: Record<ProductMovementType, string> =
   CONSUMO_ARMADO_CAJA: "Consumo por armado de cajas",
   AJUSTE: "Ajuste",
   MERMA: "Merma",
-};
-
-export const BOX_MOVEMENT_TYPE_LABELS: Record<BoxMovementType, string> = {
-  ARMADO: "Armado",
-  CONSUMO_PALLET: "Consumo por armado de pallet",
-  DEVUELTO_PALLET: "Devuelto por desarmado de pallet",
-  AJUSTE: "Ajuste",
-  MERMA: "Merma",
-};
-
-export const PALLET_STATUS_LABELS: Record<PalletStatus, string> = {
-  ARMADO: "Armado",
-  DESARMADO: "Desarmado",
 };
 
 export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
