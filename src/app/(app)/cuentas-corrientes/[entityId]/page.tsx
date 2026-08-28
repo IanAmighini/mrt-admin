@@ -70,7 +70,9 @@ export default async function EntityLedgerPage({
     recentCompras,
     pedidosPendientes,
   ] = await Promise.all([
-    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.product.findMany({
+      orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
+    }),
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getAccountBalance(blancoAccount.id),
     getAccountBalance(negroAccount.id),

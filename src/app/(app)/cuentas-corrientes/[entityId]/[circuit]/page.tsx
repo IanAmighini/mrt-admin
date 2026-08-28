@@ -7,7 +7,7 @@ import { getAccountDocuments, getDocumentEffect } from "@/lib/ledger";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
-import { formatProductLabel } from "@/lib/product-label";
+import { formatProductBrandLabel } from "@/lib/product-label";
 import {
   deleteCompra,
   deleteDocument,
@@ -72,7 +72,9 @@ export default async function AccountLedgerPage({
       include: { allocations: true },
       orderBy: { date: "asc" },
     }),
-    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.product.findMany({
+      orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
+    }),
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getCurrentPricesForAccount(entityId, "BLANCO"),
     getCurrentPricesForAccount(entityId, "NEGRO"),
@@ -95,7 +97,14 @@ export default async function AccountLedgerPage({
     const effect = getDocumentEffect(doc);
     const lineSummary =
       doc.lines.length > 0
-        ? doc.lines.map((l) => `${formatProductLabel(l.product)} × ${formatQuantity(l.quantity)}`).join(" · ")
+        ? doc.lines.map((l) => {
+            const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
+            const priceLabel =
+              perPallet > 0
+                ? `${formatMoney(l.unitPrice.dividedBy(perPallet), doc.currency)}/bot.`
+                : `${formatMoney(l.unitPrice, doc.currency)}/pallet`;
+            return `${formatProductBrandLabel(l.product)} — ${l.product.presentation} — ${formatQuantity(l.quantity, "pallets")} — ${priceLabel}`;
+          }).join(" · ")
         : doc.purchaseLines.length > 0
           ? doc.purchaseLines.map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`).join(" · ")
           : doc.reason;

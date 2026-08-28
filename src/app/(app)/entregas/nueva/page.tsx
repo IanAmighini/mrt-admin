@@ -23,7 +23,9 @@ export default async function NuevaEntregaPage() {
       where: { type: { in: ["CLIENTE", "AMBOS"] } },
       orderBy: { name: "asc" },
     }),
-    prisma.product.findMany({ orderBy: { name: "asc" } }),
+    prisma.product.findMany({
+      orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
+    }),
     getAllCurrentPrices(),
     getAllPedidosPendientes(),
   ]);
