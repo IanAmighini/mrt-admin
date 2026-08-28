@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Search } from "lucide-react";
 import type { SupplierCategory } from "@prisma/client";
 import { Archive, Droplet, HelpCircle, Layers, PackageOpen, Scissors, Tag, type LucideIcon } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -6,7 +7,6 @@ import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
 import { getLitrosEnvasados } from "@/lib/reports";
 import { formatQuantity } from "@/lib/money";
-import { formatProductBrandLabel } from "@/lib/product-label";
 import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { FormModal } from "@/components/Modal";
 import { ItemMovementFields } from "@/components/ItemMovementFields";
@@ -42,7 +42,12 @@ function extractMl(name: string): number | null {
   return match ? parseInt(match[1], 10) : null;
 }
 
-export default async function StockPage() {
+export default async function StockPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
 
@@ -56,13 +61,17 @@ export default async function StockPage() {
     getLitrosEnvasados(),
   ]);
 
-  const marcaGroups = new Map<string, { name: string; oilType: string; products: typeof products }>();
-  for (const product of products) {
-    const key = `${product.name}|${product.oilType}`;
-    const group = marcaGroups.get(key) ?? { name: product.name, oilType: product.oilType, products: [] };
-    group.products.push(product);
-    marcaGroups.set(key, group);
-  }
+  const searchTerm = q?.trim().toLowerCase();
+  const stockRows = products
+    .map((product) => ({ product, stock: productStocks.get(product.id) ?? 0 }))
+    .filter(({ stock }) => Number(stock) !== 0)
+    .filter(
+      ({ product }) =>
+        !searchTerm ||
+        product.name.toLowerCase().includes(searchTerm) ||
+        product.oilType.toLowerCase().includes(searchTerm) ||
+        product.presentation.toLowerCase().includes(searchTerm)
+    );
 
   const itemsByCategory = new Map<SupplierCategory, typeof items>();
   for (const item of items) {
@@ -97,38 +106,64 @@ export default async function StockPage() {
       </div>
 
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Producto terminado</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from(marcaGroups.values()).map((marca) => (
-            <div
-              key={`${marca.name}|${marca.oilType}`}
-              className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Producto terminado</h2>
+          <form className="flex min-w-[240px] gap-2">
+            <div className="relative flex-1">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
+              <input
+                type="text"
+                name="q"
+                defaultValue={q}
+                placeholder="Buscar por marca, aceite o formato…"
+                className="w-full rounded-lg border border-foreground/20 bg-background py-2 pl-9 pr-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+              />
+            </div>
+            <button
+              type="submit"
+              className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5"
             >
-              <p className="mb-2 text-sm font-semibold">{formatProductBrandLabel(marca)}</p>
-              <div className="space-y-1">
-                {marca.products.map((product) => {
-                  const stock = productStocks.get(product.id) ?? 0;
-                  const negative = Number(stock) < 0;
-                  return (
-                    <div key={product.id} className="flex items-center justify-between text-sm">
-                      <Link
-                        href={`/produccion/${product.id}`}
-                        className="text-foreground/60 underline underline-offset-2"
-                      >
+              Buscar
+            </button>
+          </form>
+        </div>
+        <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
+                <th className="py-2 px-4">Marca</th>
+                <th className="py-2 px-4">Tipo de aceite</th>
+                <th className="py-2 px-4">Formato</th>
+                <th className="py-2 px-4">Stock (pallets)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stockRows.map(({ product, stock }) => {
+                const negative = Number(stock) < 0;
+                return (
+                  <tr key={product.id} className="border-b border-foreground/5 last:border-0">
+                    <td className="py-2 px-4">{product.name}</td>
+                    <td className="py-2 px-4">{product.oilType}</td>
+                    <td className="py-2 px-4">
+                      <Link href={`/produccion/${product.id}`} className="underline underline-offset-2">
                         {product.presentation}
                       </Link>
-                      <span className={negative ? "font-medium text-red-600 dark:text-red-400" : "font-medium"}>
-                        {formatQuantity(stock, "pallets")}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-          {marcaGroups.size === 0 && (
-            <p className="text-sm text-foreground/40">Todavía no hay productos cargados.</p>
-          )}
+                    </td>
+                    <td className={`py-2 px-4 font-medium ${negative ? "text-red-600 dark:text-red-400" : ""}`}>
+                      {formatQuantity(stock, "pallets")}
+                    </td>
+                  </tr>
+                );
+              })}
+              {stockRows.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center text-foreground/40">
+                    {searchTerm ? "No hay resultados con este filtro." : "No hay stock de producto terminado ahora mismo."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 
