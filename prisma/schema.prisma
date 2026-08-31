@@ -155,6 +155,7 @@ model DocumentLine {
   productMovements ProductMovement[]
 
   @@index([documentId])
+  @@index([productId])
 }
 
 model PurchaseLine {
@@ -168,6 +169,7 @@ model PurchaseLine {
   subtotal   Decimal  @db.Decimal(14, 2)
 
   @@index([documentId])
+  @@index([itemId])
 }
 
 model DocumentLink {
@@ -179,6 +181,7 @@ model DocumentLink {
   amount    Decimal  @db.Decimal(14, 2)
 
   @@unique([remitoId, facturaId])
+  @@index([facturaId])
 }
 
 model Payment {
@@ -209,6 +212,7 @@ model PaymentAllocation {
   createdAt  DateTime @default(now())
 
   @@unique([paymentId, documentId])
+  @@index([documentId])
 }
 
 model Item {
@@ -366,6 +370,9 @@ model ProductionLine {
 
   itemMovements    ItemMovement[]
   productMovements ProductMovement[]
+
+  @@index([productionRunId])
+  @@index([productId])
 }
 
 model Price {
@@ -420,4 +427,5 @@ model PedidoLine {
   pallets   Decimal @db.Decimal(14, 3)
 
   @@index([pedidoId])
+  @@index([productId])
 }

@@ -24,11 +24,6 @@ export function getAllPedidosPendientes() {
 
 type Tx = Prisma.TransactionClient;
 
-async function getProductStockTx(tx: Tx, productId: string) {
-  const movements = await tx.productMovement.findMany({ where: { productId } });
-  return sumDecimals(movements.map((m) => m.quantity));
-}
-
 /**
  * Pasa a "Terminado" los pedidos "En cola" que ya tienen stock suficiente para todas sus líneas.
  * Se llama después de cada producción (que es lo único que puede hacer que un pedido pase a estar
@@ -47,29 +42,28 @@ export async function syncPedidoStatuses(tx: Tx) {
   });
   if (pending.length === 0) return;
 
+  const productIds = Array.from(new Set(pending.flatMap((p) => p.lines.map((l) => l.productId))));
+  const movements = await tx.productMovement.findMany({ where: { productId: { in: productIds } } });
   const remaining = new Map<string, Prisma.Decimal>();
-  async function getRemaining(productId: string) {
-    if (!remaining.has(productId)) {
-      remaining.set(productId, await getProductStockTx(tx, productId));
-    }
-    return remaining.get(productId)!;
+  for (const productId of productIds) {
+    remaining.set(
+      productId,
+      sumDecimals(movements.filter((m) => m.productId === productId).map((m) => m.quantity))
+    );
   }
 
+  const completedIds: string[] = [];
   for (const pedido of pending) {
-    let allSatisfied = true;
-    for (const line of pedido.lines) {
-      const stock = await getRemaining(line.productId);
-      if (stock.lessThan(line.pallets)) {
-        allSatisfied = false;
-        break;
-      }
-    }
+    const allSatisfied = pedido.lines.every((line) => !remaining.get(line.productId)!.lessThan(line.pallets));
     if (!allSatisfied) continue;
 
     for (const line of pedido.lines) {
-      const stock = await getRemaining(line.productId);
-      remaining.set(line.productId, stock.minus(line.pallets));
+      remaining.set(line.productId, remaining.get(line.productId)!.minus(line.pallets));
     }
-    await tx.pedido.update({ where: { id: pedido.id }, data: { status: "COMPLETADO" } });
+    completedIds.push(pedido.id);
+  }
+
+  if (completedIds.length > 0) {
+    await tx.pedido.updateMany({ where: { id: { in: completedIds } }, data: { status: "COMPLETADO" } });
   }
 }

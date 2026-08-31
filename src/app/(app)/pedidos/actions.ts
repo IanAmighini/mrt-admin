@@ -60,12 +60,12 @@ export async function createPedido(formData: FormData) {
       data: { date, entityId, orderNumber, comments, createdById: user.id },
     });
 
+    const lineData = [];
     for (const line of lines) {
       const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId);
-      await tx.pedidoLine.create({
-        data: { pedidoId: pedido.id, productId: product.id, pallets: line.pallets },
-      });
+      lineData.push({ pedidoId: pedido.id, productId: product.id, pallets: line.pallets });
     }
+    await tx.pedidoLine.createMany({ data: lineData });
 
     await syncPedidoStatuses(tx);
   }, { timeout: 20000 });
@@ -107,12 +107,12 @@ export async function updatePedido(formData: FormData) {
       data: { entityId, date, comments },
     });
 
+    const lineData = [];
     for (const line of lines) {
       const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId);
-      await tx.pedidoLine.create({
-        data: { pedidoId, productId: product.id, pallets: line.pallets },
-      });
+      lineData.push({ pedidoId, productId: product.id, pallets: line.pallets });
     }
+    await tx.pedidoLine.createMany({ data: lineData });
 
     if (existing.status === "EN_COLA") {
       await syncPedidoStatuses(tx);

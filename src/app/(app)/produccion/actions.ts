@@ -78,18 +78,20 @@ export async function createProductionRun(formData: FormData) {
         },
       });
 
-      for (const recipeItem of product.recipe) {
-        const consumed = new Prisma.Decimal(recipeItem.quantityPerUnit).times(line.quantity);
-        await tx.itemMovement.create({
-          data: {
-            itemId: recipeItem.itemId,
-            date,
-            quantity: consumed.negated(),
-            type: "CONSUMO_PRODUCCION",
-            reason: `Producción del ${dateLabel}`,
-            productionLineId: productionLine.id,
-            createdById: user.id,
-          },
+      if (product.recipe.length > 0) {
+        await tx.itemMovement.createMany({
+          data: product.recipe.map((recipeItem) => {
+            const consumed = new Prisma.Decimal(recipeItem.quantityPerUnit).times(line.quantity);
+            return {
+              itemId: recipeItem.itemId,
+              date,
+              quantity: consumed.negated(),
+              type: "CONSUMO_PRODUCCION" as const,
+              reason: `Producción del ${dateLabel}`,
+              productionLineId: productionLine.id,
+              createdById: user.id,
+            };
+          }),
         });
       }
     }
