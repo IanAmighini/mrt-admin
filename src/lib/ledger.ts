@@ -185,12 +185,21 @@ export async function getRecentRemitos(limit = 30, entityId?: string, search?: s
 }
 
 /** Compras de insumos a proveedores más recientes, entre todas las entidades o de una sola. */
-export async function getRecentCompras(limit = 30, entityId?: string) {
+export async function getRecentCompras(limit = 30, entityId?: string, search?: string) {
+  const trimmedSearch = search?.trim();
   return prisma.document.findMany({
     where: {
       type: "REMITO",
       purchaseLines: { some: {} },
       ...(entityId ? { account: { entityId } } : {}),
+      ...(trimmedSearch
+        ? {
+            OR: [
+              { number: { contains: trimmedSearch, mode: "insensitive" } },
+              { account: { entity: { name: { contains: trimmedSearch, mode: "insensitive" } } } },
+            ],
+          }
+        : {}),
     },
     include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
     orderBy: { date: "desc" },
