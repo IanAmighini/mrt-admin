@@ -42,16 +42,32 @@ export async function createUser(formData: FormData) {
   revalidatePath("/usuarios");
 }
 
-export async function updateUserRole(formData: FormData) {
+export async function updateUser(formData: FormData) {
   await requireRole(["ADMIN"]);
 
   const id = String(formData.get("id") || "");
+  const name = String(formData.get("name") || "").trim();
+  const email = String(formData.get("email") || "")
+    .trim()
+    .toLowerCase();
   const role = String(formData.get("role") || "") as UserRole;
-  if (!id || !ROLES.includes(role)) {
-    throw new Error("Datos inválidos.");
+
+  if (!id || !name || !email) {
+    throw new Error("Faltan datos obligatorios.");
+  }
+  if (!ROLES.includes(role)) {
+    throw new Error("Rol inválido.");
   }
 
-  await prisma.user.update({ where: { id }, data: { role } });
+  try {
+    await prisma.user.update({ where: { id }, data: { name, email, role } });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw new Error("Ya existe un usuario con ese email.");
+    }
+    throw error;
+  }
+
   revalidatePath("/usuarios");
 }
 
