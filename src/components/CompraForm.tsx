@@ -1,17 +1,13 @@
-import type { Entity, Item } from "@prisma/client";
+import type { Item } from "@prisma/client";
 import { CompraLinesFields } from "./CompraLinesFields";
 
 export function CompraFormFields({
   entityId,
-  entities,
   items,
   editingDocumentId,
   defaultValues,
 }: {
-  /** Fijo (ficha de un proveedor puntual, o edición). Si no viene, se muestra un selector. */
-  entityId?: string;
-  /** Proveedores para el selector, cuando entityId no viene fijo. */
-  entities?: Entity[];
+  entityId: string;
   items: Item[];
   editingDocumentId?: string;
   defaultValues?: { number?: string; date?: string; dueDate?: string; currency?: string; exchangeRate?: string };
@@ -23,22 +19,7 @@ export function CompraFormFields({
           ? "Al guardar se reemplazan las líneas de esta compra por las que cargues acá, y el stock se recalcula."
           : "Al cargar la compra se suma el stock de cada insumo automáticamente y se imputa a la cuenta corriente del proveedor — una misma compra puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)."}
       </p>
-      {entityId ? (
-        <input type="hidden" name="entityId" value={entityId} />
-      ) : (
-        <Field label="Proveedor *">
-          <select name="entityId" required defaultValue="" className={selectClass}>
-            <option value="" disabled>
-              Seleccionar proveedor...
-            </option>
-            {entities?.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        </Field>
-      )}
+      <input type="hidden" name="entityId" value={entityId} />
       {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Número">

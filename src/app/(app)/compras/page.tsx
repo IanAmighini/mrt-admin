@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentCompras } from "@/lib/ledger";
@@ -7,7 +7,7 @@ import { formatMoney, formatQuantity } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CompraFormFields } from "@/components/CompraForm";
-import { createCompra, deleteCompra, updateCompra } from "../cuentas-corrientes/[entityId]/actions";
+import { deleteCompra, updateCompra } from "../cuentas-corrientes/[entityId]/actions";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -30,11 +30,7 @@ export default async function ComprasPage({
 
   const pagoFilter = PAGO_FILTERS.some((f) => f.value === pago) ? (pago as "" | "pagado" | "sin_pagar") : "";
 
-  const [proveedores, items, compras] = await Promise.all([
-    prisma.entity.findMany({
-      where: { type: { in: ["PROVEEDOR", "AMBOS"] } },
-      orderBy: { name: "asc" },
-    }),
+  const [items, compras] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getRecentCompras(500, undefined, q),
   ]);
@@ -58,9 +54,13 @@ export default async function ComprasPage({
           <p className="text-sm text-foreground/60">{filteredRows.length} compras registradas</p>
         </div>
         {canEdit && (
-          <FormModal triggerLabel="Nueva compra" title="Nueva compra de insumos" action={createCompra} maxWidthClass="max-w-2xl">
-            <CompraFormFields entities={proveedores} items={items} />
-          </FormModal>
+          <Link
+            href="/compras/nueva"
+            className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+          >
+            <Plus size={16} />
+            Nueva compra
+          </Link>
         )}
       </div>
 
