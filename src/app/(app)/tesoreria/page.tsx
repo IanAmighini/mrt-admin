@@ -5,7 +5,7 @@ import { formatMoney } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 
 export default async function TesoreriaPage() {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"]);
+  await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const treasuries = await getTreasuries();
 
   const cards = await Promise.all(

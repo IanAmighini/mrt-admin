@@ -19,7 +19,7 @@ export async function PagosPageContent({
   entityNoun: string;
 }) {
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
   const isCobro = entityNoun === "Cliente";
 
   const [entities, pagos, treasuries, proveedores] = await Promise.all([

@@ -12,7 +12,7 @@ import { formatProductLabel } from "@/lib/product-label";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 
 export default async function DashboardClientesPage() {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"]);
+  const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
   const today = new Date();
 

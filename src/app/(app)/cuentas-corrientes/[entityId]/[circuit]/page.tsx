@@ -60,7 +60,7 @@ export default async function AccountLedgerPage({
 }) {
   const { entityId, circuit: circuitSlug } = await params;
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const circuit = CIRCUIT_BY_SLUG[circuitSlug];
   if (!circuit) notFound();

@@ -16,7 +16,7 @@ function parseFormDate(value: FormDataEntryValue | null): Date {
 }
 
 export async function updateOilEfficiency(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const value = String(formData.get("oilFillEfficiencyPercent") || "").trim();
   const num = toDecimal(value);
@@ -30,7 +30,7 @@ export async function updateOilEfficiency(formData: FormData) {
 }
 
 export async function createProductionRun(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const date = parseFormDate(formData.get("date"));
   const notes = String(formData.get("notes") || "").trim() || null;
@@ -110,7 +110,7 @@ export async function createProductionRun(formData: FormData) {
  * datos nuevos — mismo patrón que remitos y pedidos.
  */
 export async function updateProductionRun(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const runId = String(formData.get("runId") || "");
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
@@ -122,7 +122,7 @@ export async function updateProductionRun(formData: FormData) {
 }
 
 export async function deleteProductionRun(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const runId = String(formData.get("runId") || "");
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });

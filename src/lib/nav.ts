@@ -6,10 +6,10 @@ export type NavItem = {
   roles: UserRole[];
 };
 
-const ALL_ROLES: UserRole[] = ["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA", "SECRETARIA"];
+const ALL_ROLES: UserRole[] = ["ADMIN", "SOLO_LECTURA", "SECRETARIA"];
 /** Dashboards y Tesorería quedan afuera del rol Secretaria — son vistas gerenciales/financieras,
  * no operativas del día a día. */
-const ROLES_SIN_SECRETARIA: UserRole[] = ["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"];
+const ROLES_SIN_SECRETARIA: UserRole[] = ["ADMIN", "SOLO_LECTURA"];
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Inicio", roles: ALL_ROLES },
@@ -30,7 +30,6 @@ export const NAV_ITEMS: NavItem[] = [
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   ADMIN: "Admin",
-  CARGA_DIARIA: "Carga diaria",
   SOLO_LECTURA: "Solo lectura",
   SECRETARIA: "Secretaria",
 };

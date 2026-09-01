@@ -16,7 +16,7 @@ async function submitRemito(formData: FormData) {
 
 export default async function NuevaEntregaPage() {
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const [clientes, products, allPrices, allPedidos] = await Promise.all([
     prisma.entity.findMany({

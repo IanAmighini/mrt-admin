@@ -6,7 +6,7 @@ import { formatMoney, formatQuantity } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 
 export default async function DashboardProveedoresPage() {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"]);
+  const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
 
   const [compras, pagos, saldos] = await Promise.all([

@@ -14,7 +14,7 @@ function parseOptionalInt(value: FormDataEntryValue | null): number | null {
 }
 
 export async function updateProduct(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const productId = String(formData.get("productId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -46,7 +46,7 @@ export async function updateProduct(formData: FormData) {
 }
 
 export async function generateRecipeFromPresentation(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const productId = String(formData.get("productId") || "");
   if (!productId) throw new Error("Falta el producto.");
@@ -115,7 +115,7 @@ export async function generateRecipeFromPresentation(formData: FormData) {
 }
 
 export async function upsertRecipeLine(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const productId = String(formData.get("productId") || "");
   const itemId = String(formData.get("itemId") || "");
@@ -140,7 +140,7 @@ export async function upsertRecipeLine(formData: FormData) {
 }
 
 export async function deleteRecipeLine(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const recipeItemId = String(formData.get("recipeItemId") || "");
   const productId = String(formData.get("productId") || "");

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { hashPassword } from "@/lib/password";
 
-const ROLES: UserRole[] = ["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA", "SECRETARIA"];
+const ROLES: UserRole[] = ["ADMIN", "SOLO_LECTURA", "SECRETARIA"];
 
 export async function createUser(formData: FormData) {
   await requireRole(["ADMIN"]);

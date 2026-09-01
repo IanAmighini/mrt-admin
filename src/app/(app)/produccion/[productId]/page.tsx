@@ -18,7 +18,7 @@ export default async function ProductDetailPage({
 }) {
   const { productId } = await params;
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const product = await prisma.product.findUnique({
     where: { id: productId },

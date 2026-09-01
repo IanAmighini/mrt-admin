@@ -70,7 +70,7 @@ async function getAccountOrThrow(accountId: string) {
 /** Edita una nota/ajuste ya cargado — campos simples, el pendiente se recalcula solo desde
  * totalAmount (no hay nada desnormalizado que tocar). */
 export async function updateDocument(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({ where: { id: documentId } });
@@ -124,7 +124,7 @@ export async function updateDocument(formData: FormData) {
 }
 
 export async function deleteDocument(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
@@ -150,7 +150,7 @@ export async function deleteDocument(formData: FormData) {
  * resuelve acá — mismo patrón que createPaymentForEntity.
  */
 export async function createDocumentForEntity(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta el cliente o proveedor.");
@@ -207,7 +207,7 @@ export async function createDocumentForEntity(formData: FormData) {
 }
 
 export async function createRemito(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta la entidad.");
@@ -339,7 +339,7 @@ async function getRemitoOrThrow(documentId: string) {
 }
 
 export async function deleteRemito(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getRemitoOrThrow(documentId);
@@ -360,7 +360,7 @@ export async function deleteRemito(formData: FormData) {
  * documentos, a costa de generar un id de Document nuevo (el número puede quedar igual).
  */
 export async function updateRemito(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   await getRemitoOrThrow(documentId);
@@ -374,7 +374,7 @@ export async function updateRemito(formData: FormData) {
 }
 
 export async function createCompra(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta la entidad.");
@@ -487,7 +487,7 @@ async function getCompraOrThrow(documentId: string) {
 }
 
 export async function deleteCompra(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getCompraOrThrow(documentId);
@@ -507,7 +507,7 @@ export async function deleteCompra(formData: FormData) {
 /** Igual patrón que updateRemito: borra el comprobante (revirtiendo el stock que había sumado)
  * y vuelve a correr createCompra con los datos nuevos del formulario. */
 export async function updateCompra(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   await getCompraOrThrow(documentId);
@@ -522,7 +522,7 @@ export async function updateCompra(formData: FormData) {
 }
 
 export async function createFactura(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const accountId = String(formData.get("accountId") || "");
   const account = await getAccountOrThrow(accountId);
@@ -608,7 +608,7 @@ export async function createFactura(formData: FormData) {
  * cambiar eso hay que borrarla y volver a facturar. El saldo pendiente se recalcula solo porque
  * sale de totalAmount, no hay nada desnormalizado que actualizar. */
 export async function updateFactura(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const factura = await prisma.document.findUnique({ where: { id: documentId } });
@@ -655,7 +655,7 @@ export async function updateFactura(formData: FormData) {
 
 /** Borrar una factura "desfactura" los remitos que tenía vinculados (vuelven a pendiente). */
 export async function deleteFactura(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const factura = await prisma.document.findUnique({
@@ -675,7 +675,7 @@ export async function deleteFactura(formData: FormData) {
 }
 
 export async function createPayment(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const accountId = String(formData.get("accountId") || "");
   const account = await getAccountOrThrow(accountId);
@@ -831,7 +831,7 @@ async function applyPaymentDestino(params: {
 }
 
 export async function createPaymentForEntity(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta el cliente o proveedor.");
@@ -898,7 +898,7 @@ export async function createPaymentForEntity(formData: FormData) {
 }
 
 export async function deletePayment(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -935,7 +935,7 @@ export async function deletePayment(formData: FormData) {
  * y se vuelve a generar desde cero con los datos nuevos — más simple y seguro que tratar de
  * adivinar la transición entre los distintos casos. */
 export async function updatePayment(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -1014,7 +1014,7 @@ export async function updatePayment(formData: FormData) {
 }
 
 export async function moveRemitoToBlanco(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
@@ -1044,7 +1044,7 @@ export async function moveRemitoToBlanco(formData: FormData) {
 }
 
 export async function createPrice(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   const circuit = String(formData.get("circuit") || "") as "BLANCO" | "NEGRO";

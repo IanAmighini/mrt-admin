@@ -15,7 +15,7 @@ export default async function ItemDetailPage({
 }) {
   const { itemId } = await params;
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const item = await prisma.item.findUnique({ where: { id: itemId } });
   if (!item) notFound();

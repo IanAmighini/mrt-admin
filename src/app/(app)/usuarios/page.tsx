@@ -12,7 +12,7 @@ export default async function UsuariosPage() {
       <div>
         <h1 className="text-xl font-semibold mb-1">Usuarios</h1>
         <p className="text-sm text-foreground/60">
-          Alta de usuarios y asignación de rol (Admin, Carga diaria, Solo lectura).
+          Alta de usuarios y asignación de rol (Admin, Solo lectura, Secretaria).
         </p>
       </div>
 
@@ -66,11 +66,10 @@ export default async function UsuariosPage() {
               id="role"
               name="role"
               required
-              defaultValue="CARGA_DIARIA"
+              defaultValue="SECRETARIA"
               className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             >
               <option value="ADMIN">Admin</option>
-              <option value="CARGA_DIARIA">Carga diaria</option>
               <option value="SOLO_LECTURA">Solo lectura</option>
               <option value="SECRETARIA">Secretaria</option>
             </select>
@@ -109,7 +108,6 @@ export default async function UsuariosPage() {
                       className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-1 text-xs"
                     >
                       <option value="ADMIN">Admin</option>
-                      <option value="CARGA_DIARIA">Carga diaria</option>
                       <option value="SOLO_LECTURA">Solo lectura</option>
                       <option value="SECRETARIA">Secretaria</option>
                     </select>
