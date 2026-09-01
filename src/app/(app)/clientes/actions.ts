@@ -19,7 +19,7 @@ const SUPPLIER_CATEGORIES: SupplierCategory[] = [
 ];
 
 export async function createEntity(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const name = String(formData.get("name") || "").trim();
   const type = String(formData.get("type") || "") as EntityType;
@@ -81,7 +81,7 @@ export async function createEntity(formData: FormData) {
 }
 
 export async function updateEntity(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta la entidad.");

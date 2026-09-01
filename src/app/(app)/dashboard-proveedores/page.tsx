@@ -1,12 +1,12 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireRole } from "@/lib/auth-helpers";
 import { getEntitySaldos, getRecentCompras, getRecentPayments } from "@/lib/ledger";
 import { getCostoInsumosDelMes, getValuacionInsumos } from "@/lib/reports";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 
 export default async function DashboardProveedoresPage() {
-  const user = await requireUser();
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
 
   const [compras, pagos, saldos] = await Promise.all([

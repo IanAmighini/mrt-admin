@@ -45,7 +45,7 @@ async function nextOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
 }
 
 export async function createPedido(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Elegí un cliente.");
@@ -80,7 +80,7 @@ async function getPedidoOrThrow(pedidoId: string) {
 }
 
 export async function deletePedido(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
   await getPedidoOrThrow(pedidoId);
 
@@ -89,7 +89,7 @@ export async function deletePedido(formData: FormData) {
 }
 
 export async function updatePedido(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
   const existing = await getPedidoOrThrow(pedidoId);
 
@@ -123,7 +123,7 @@ export async function updatePedido(formData: FormData) {
 }
 
 export async function updatePedidoStatus(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
   const status = String(formData.get("status") || "") as PedidoStatus;
   if (!PEDIDO_STATUSES.includes(status)) throw new Error("Estado inválido.");

@@ -16,7 +16,7 @@ function parseFormDate(value: FormDataEntryValue | null): Date {
 }
 
 export async function createItemMovement(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const itemId = String(formData.get("itemId") || "");
   const item = await prisma.item.findUnique({ where: { id: itemId } });

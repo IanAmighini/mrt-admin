@@ -16,7 +16,7 @@ function revalidateCatalogo() {
 }
 
 export async function createMarca(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const name = String(formData.get("name") || "").trim();
   const oilType = String(formData.get("oilType") || "").trim();
@@ -31,7 +31,7 @@ export async function createMarca(formData: FormData) {
 }
 
 export async function updateMarca(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const marcaId = String(formData.get("marcaId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -50,7 +50,7 @@ export async function updateMarca(formData: FormData) {
 }
 
 export async function deleteMarca(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const marcaId = String(formData.get("marcaId") || "");
   if (!marcaId) throw new Error("Falta la marca.");
@@ -60,7 +60,7 @@ export async function deleteMarca(formData: FormData) {
 }
 
 export async function createFormato(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const presentation = String(formData.get("presentation") || "").trim();
   const boxesPerPallet = parseRequiredInt(formData.get("boxesPerPallet"), "Cajas por pallet");
@@ -79,7 +79,7 @@ export async function createFormato(formData: FormData) {
 }
 
 export async function updateFormato(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const formatoId = String(formData.get("formatoId") || "");
   const presentation = String(formData.get("presentation") || "").trim();
@@ -103,7 +103,7 @@ export async function updateFormato(formData: FormData) {
 }
 
 export async function deleteFormato(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const formatoId = String(formData.get("formatoId") || "");
   if (!formatoId) throw new Error("Falta el formato.");

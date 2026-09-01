@@ -18,7 +18,7 @@ const inputClass =
 
 export default async function CatalogoPage() {
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
 
   const [marcas, formatos] = await Promise.all([
     prisma.marca.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }] }),

@@ -30,7 +30,7 @@ export default async function PedidosPage({
 }) {
   const { estado, entityId } = await searchParams;
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
 
   const statusFilter = STATUS_FILTERS.some((s) => s.value === estado)
     ? (estado as PedidoStatus | "")

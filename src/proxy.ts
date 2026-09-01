@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-
-const ADMIN_ONLY_PREFIXES = ["/usuarios"];
+import { NAV_ITEMS } from "@/lib/nav";
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -20,8 +19,12 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
 
-  const isAdminOnly = ADMIN_ONLY_PREFIXES.some((prefix) => pathname.startsWith(prefix));
-  if (isAdminOnly && req.auth?.user.role !== "ADMIN") {
+  // El item de nav más específico que matchea esta ruta manda qué roles pueden entrar — mismo
+  // NAV_ITEMS que decide qué se muestra en el menú, así no hay que mantener una lista aparte acá.
+  const matchedItem = NAV_ITEMS.filter(
+    (item) => item.href !== "/" && pathname.startsWith(item.href)
+  ).sort((a, b) => b.href.length - a.href.length)[0];
+  if (matchedItem && !matchedItem.roles.includes(req.auth!.user.role)) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 

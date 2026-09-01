@@ -35,7 +35,7 @@ export default async function EntityLedgerPage({
 }) {
   const { entityId } = await params;
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
 
   const entity = await prisma.entity.findUnique({
     where: { id: entityId },

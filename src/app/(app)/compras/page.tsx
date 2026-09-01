@@ -12,7 +12,7 @@ export default async function ComprasPage({
 }) {
   const { entityId } = await searchParams;
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
 
   const [proveedores, items, compras] = await Promise.all([
     prisma.entity.findMany({

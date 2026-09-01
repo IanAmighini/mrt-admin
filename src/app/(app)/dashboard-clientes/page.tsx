@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireRole } from "@/lib/auth-helpers";
 import {
   getEntitySaldos,
   getRecentPayments,
@@ -12,7 +12,7 @@ import { formatProductLabel } from "@/lib/product-label";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 
 export default async function DashboardClientesPage() {
-  const user = await requireUser();
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
   const today = new Date();
 

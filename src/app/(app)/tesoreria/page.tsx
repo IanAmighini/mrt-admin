@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireRole } from "@/lib/auth-helpers";
 import { getAccountBalance, getTreasuries } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 
 export default async function TesoreriaPage() {
-  await requireUser();
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SOLO_LECTURA"]);
   const treasuries = await getTreasuries();
 
   const cards = await Promise.all(

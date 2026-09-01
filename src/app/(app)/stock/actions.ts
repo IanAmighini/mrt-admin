@@ -17,7 +17,7 @@ const CATEGORIES: SupplierCategory[] = [
 ];
 
 export async function createItem(formData: FormData) {
-  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const name = String(formData.get("name") || "").trim();
   const unit = String(formData.get("unit") || "").trim();
@@ -61,7 +61,7 @@ export async function createItem(formData: FormData) {
 }
 
 export async function updateItemCost(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  await requireRole(["ADMIN", "CARGA_DIARIA", "SECRETARIA"]);
 
   const itemId = String(formData.get("itemId") || "");
   const unitCostRaw = String(formData.get("unitCost") || "").trim();

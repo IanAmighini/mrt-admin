@@ -49,7 +49,7 @@ export default async function StockPage({
 }) {
   const { q } = await searchParams;
   const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA";
+  const canEdit = user.role === "ADMIN" || user.role === "CARGA_DIARIA" || user.role === "SECRETARIA";
 
   const [items, stocks, products, productStocks, litros] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),

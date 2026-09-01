@@ -1,8 +1,10 @@
 import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/auth-helpers";
 import { ROLE_LABELS } from "@/lib/nav";
 import { createUser, toggleUserActive, updateUserRole } from "./actions";
 
 export default async function UsuariosPage() {
+  await requireRole(["ADMIN"]);
   const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } });
 
   return (
@@ -70,6 +72,7 @@ export default async function UsuariosPage() {
               <option value="ADMIN">Admin</option>
               <option value="CARGA_DIARIA">Carga diaria</option>
               <option value="SOLO_LECTURA">Solo lectura</option>
+              <option value="SECRETARIA">Secretaria</option>
             </select>
           </div>
         </div>
@@ -108,6 +111,7 @@ export default async function UsuariosPage() {
                       <option value="ADMIN">Admin</option>
                       <option value="CARGA_DIARIA">Carga diaria</option>
                       <option value="SOLO_LECTURA">Solo lectura</option>
+                      <option value="SECRETARIA">Secretaria</option>
                     </select>
                     <button type="submit" className="text-xs underline underline-offset-2">
                       Guardar
