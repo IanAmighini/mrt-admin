@@ -1,3 +1,4 @@
+import type { Entity } from "@prisma/client";
 import type { getInvoiceableRemitos, RecentMovement } from "@/lib/ledger";
 import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -14,11 +15,15 @@ import { FacturaFormFields } from "./FacturaFormFields";
 
 export function CuentaCorrientePanel({
   entityId,
+  entityType,
   movements,
   canEdit,
   factura,
+  treasuries,
+  proveedores,
 }: {
   entityId: string;
+  entityType: Entity["type"];
   movements: RecentMovement[];
   canEdit: boolean;
   /** Si viene, se muestra el botón "+ Factura" (solo aplica a clientes, cuenta Blanco). */
@@ -27,18 +32,31 @@ export function CuentaCorrientePanel({
     isWithholdingAgent: boolean;
     invoiceableRemitos: Awaited<ReturnType<typeof getInvoiceableRemitos>>;
   };
+  treasuries: Entity[];
+  /** Solo si esta ficha es de un cliente: lista de proveedores, para "directo a un proveedor". */
+  proveedores?: Entity[];
 }) {
+  const isTreasury = entityType === "TESORERIA";
+  const isCliente = entityType !== "PROVEEDOR";
+
   return (
     <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Cuenta corriente</h2>
         {canEdit && (
           <div className="flex flex-wrap gap-3">
-            <FormModal triggerLabel="Registrar pago" title="Registrar pago" action={createPaymentForEntity}>
-              <PaymentFormFields fixedEntityId={entityId} />
-            </FormModal>
+            {!isTreasury && (
+              <FormModal triggerLabel="Registrar pago" title="Registrar pago" action={createPaymentForEntity}>
+                <PaymentFormFields
+                  fixedEntityId={entityId}
+                  entityNoun={isCliente ? "Cliente" : "Proveedor"}
+                  treasuries={treasuries}
+                  proveedores={isCliente ? proveedores : undefined}
+                />
+              </FormModal>
+            )}
             <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
-              <DocumentFormFields fixedEntityId={entityId} />
+              <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
             </FormModal>
             {factura && (
               <FormModal triggerLabel="Factura" title="Nueva factura" action={createFactura}>

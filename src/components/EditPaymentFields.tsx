@@ -1,5 +1,6 @@
-import type { PaymentMethod } from "@prisma/client";
+import type { Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { PROVEEDOR_DIRECTO_VALUE } from "./PaymentFormFields";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
@@ -12,6 +13,8 @@ const PAYMENT_METHODS: PaymentMethod[] = ["EFECTIVO", "TRANSFERENCIA", "CHEQUE",
 export function EditPaymentFields({
   paymentId,
   defaultValues,
+  treasuries,
+  proveedores,
 }: {
   paymentId: string;
   defaultValues: {
@@ -20,11 +23,19 @@ export function EditPaymentFields({
     date: string;
     amount: string;
     reference?: string;
+    /** Id de tesorería, PROVEEDOR_DIRECTO_VALUE, o "" si no tiene destino asignado. */
+    destino?: string;
+    proveedorId?: string;
   };
+  treasuries: Entity[];
+  /** Solo si esta cuenta es de un cliente: lista de proveedores, para "directo a un proveedor". */
+  proveedores?: Entity[];
 }) {
+  const isCobro = proveedores !== undefined;
   return (
     <>
       <input type="hidden" name="paymentId" value={paymentId} />
+      <input type="hidden" name="isCobro" value={isCobro ? "1" : "0"} />
 
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>
@@ -91,6 +102,46 @@ export function EditPaymentFields({
           />
         </div>
       </div>
+
+      <div className="space-y-1">
+        <label className="text-sm" htmlFor="destino">
+          {isCobro ? "Destino" : "Origen"}
+        </label>
+        <select id="destino" name="destino" defaultValue={defaultValues.destino ?? ""} className={inputClass}>
+          <option value="">Sin asignar</option>
+          {treasuries.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+          {isCobro && proveedores && proveedores.length > 0 && (
+            <option value={PROVEEDOR_DIRECTO_VALUE}>Directo a un proveedor</option>
+          )}
+        </select>
+      </div>
+
+      {isCobro && proveedores && proveedores.length > 0 && (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="proveedorId">
+            Proveedor (si el destino es &quot;Directo a un proveedor&quot;)
+          </label>
+          <select
+            id="proveedorId"
+            name="proveedorId"
+            defaultValue={defaultValues.proveedorId ?? ""}
+            className={inputClass}
+          >
+            <option value="" disabled>
+              Seleccionar proveedor...
+            </option>
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="space-y-1">
         <label className="text-sm" htmlFor="reference">

@@ -9,17 +9,29 @@ const toggleClass =
 
 const PAYMENT_METHODS: PaymentMethod[] = ["EFECTIVO", "TRANSFERENCIA", "CHEQUE", "ECHEQ", "OTRO"];
 
+export const PROVEEDOR_DIRECTO_VALUE = "PROVEEDOR_DIRECTO";
+
 export function PaymentFormFields({
   entities,
   entityNoun,
   fixedEntityId,
+  treasuries,
+  proveedores,
 }: {
   entities?: Entity[];
   entityNoun?: string;
   fixedEntityId?: string;
+  /** Las 2 entidades TESORERIA (Banco Galicia, Caja Bufano) — para el selector de destino/origen. */
+  treasuries: Entity[];
+  /** Solo para cobros de clientes: lista de proveedores, para la opción "directo a un proveedor". */
+  proveedores?: Entity[];
 }) {
+  const isCobro = entityNoun === "Cliente";
+  const defaultTreasuryId = treasuries.find((t) => t.name === "Banco Galicia")?.id ?? treasuries[0]?.id ?? "";
+
   return (
     <>
+      <input type="hidden" name="isCobro" value={isCobro ? "1" : "0"} />
       {fixedEntityId ? (
         <input type="hidden" name="entityId" value={fixedEntityId} />
       ) : (
@@ -93,6 +105,41 @@ export function PaymentFormFields({
           />
         </div>
       </div>
+
+      <div className="space-y-1">
+        <label className="text-sm" htmlFor="destino">
+          {isCobro ? "Destino" : "Origen"}
+        </label>
+        <select id="destino" name="destino" defaultValue={defaultTreasuryId} className={inputClass}>
+          <option value="">Sin asignar</option>
+          {treasuries.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+          {isCobro && proveedores && proveedores.length > 0 && (
+            <option value={PROVEEDOR_DIRECTO_VALUE}>Directo a un proveedor</option>
+          )}
+        </select>
+      </div>
+
+      {isCobro && proveedores && proveedores.length > 0 && (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="proveedorId">
+            Proveedor (si el destino es &quot;Directo a un proveedor&quot;)
+          </label>
+          <select id="proveedorId" name="proveedorId" defaultValue="" className={inputClass}>
+            <option value="" disabled>
+              Seleccionar proveedor...
+            </option>
+            {proveedores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="space-y-1">
         <label className="text-sm" htmlFor="reference">

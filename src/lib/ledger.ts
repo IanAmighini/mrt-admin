@@ -326,3 +326,13 @@ export async function getEntitySaldos(typeFilter?: EntityType[]) {
 
   return rows.sort((a, b) => b.total - a.total);
 }
+
+/** Las entidades TESORERIA (Banco Galicia, Caja Bufano), con sus dos cuentas — para el selector
+ * de destino/origen de pagos y para la página /tesoreria. */
+export async function getTreasuries() {
+  return prisma.entity.findMany({
+    where: { type: "TESORERIA" },
+    orderBy: { name: "asc" },
+    include: { accounts: true },
+  });
+}

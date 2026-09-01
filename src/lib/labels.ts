@@ -7,6 +7,7 @@ import type {
   PedidoStatus,
   ProductMovementType,
   SupplierCategory,
+  TreasuryMovementCategory,
 } from "@prisma/client";
 
 export const CIRCUIT_LABELS: Record<Circuit, string> = {
@@ -67,6 +68,17 @@ export const PEDIDO_STATUS_LABELS: Record<PedidoStatus, string> = {
   EN_COLA: "En cola",
   COMPLETADO: "Terminado",
   ENTREGADO: "Entregado",
+};
+
+export const TREASURY_MOVEMENT_CATEGORY_LABELS: Record<TreasuryMovementCategory, string> = {
+  COBRO: "Cobro",
+  PAGO_PROVEEDOR: "Pago a proveedor",
+  GASTO_BANCARIO: "Gasto bancario",
+  IMPUESTO: "Impuesto",
+  RETIRO: "Retiro",
+  DEPOSITO: "Depósito",
+  AJUSTE_ARQUEO: "Ajuste por arqueo",
+  OTRO: "Otro",
 };
 
 export const PEDIDO_STATUS_COLORS: Record<PedidoStatus, string> = {

@@ -10,6 +10,7 @@ import {
   Contact,
   Factory,
   Home,
+  Landmark,
   Menu,
   Package,
   Send,
@@ -35,6 +36,7 @@ const ICONS_BY_HREF: Record<string, LucideIcon> = {
   "/compras": ShoppingCart,
   "/pagos-clientes": Wallet,
   "/pagos-proveedores": Banknote,
+  "/tesoreria": Landmark,
   "/produccion": Factory,
   "/usuarios": UserCog,
 };

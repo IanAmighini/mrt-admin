@@ -12,6 +12,7 @@ import {
   getRecentCompras,
   getRecentMovementsForEntity,
   getRecentRemitos,
+  getTreasuries,
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { getPedidosPendientesByEntity } from "@/lib/pedidos";
@@ -69,6 +70,8 @@ export default async function EntityLedgerPage({
     recentRemitos,
     recentCompras,
     pedidosPendientes,
+    treasuries,
+    proveedores,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
@@ -88,6 +91,10 @@ export default async function EntityLedgerPage({
     isCliente ? getRecentRemitos(5, entity.id) : Promise.resolve([]),
     isProveedor ? getRecentCompras(5, entity.id) : Promise.resolve([]),
     isCliente ? getPedidosPendientesByEntity(entity.id) : Promise.resolve([]),
+    getTreasuries(),
+    isCliente
+      ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
+      : Promise.resolve([]),
   ]);
 
   const priceMapByCircuit: Record<
@@ -178,8 +185,11 @@ export default async function EntityLedgerPage({
         </div>
         <CuentaCorrientePanel
           entityId={entity.id}
+          entityType={entity.type}
           movements={recentMovements}
           canEdit={canEdit}
+          treasuries={treasuries}
+          proveedores={proveedores}
           factura={
             isCliente
               ? {

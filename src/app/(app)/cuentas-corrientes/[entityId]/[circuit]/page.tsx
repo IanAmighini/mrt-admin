@@ -3,12 +3,18 @@ import { notFound } from "next/navigation";
 import type { Circuit, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getAccountDocuments, getDocumentEffect } from "@/lib/ledger";
+import { getAccountDocuments, getDocumentEffect, getTreasuries } from "@/lib/ledger";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
-import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import {
+  CIRCUIT_LABELS,
+  DOCUMENT_TYPE_LABELS,
+  PAYMENT_METHOD_LABELS,
+  TREASURY_MOVEMENT_CATEGORY_LABELS,
+} from "@/lib/labels";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import {
+  createDocumentForEntity,
   deleteCompra,
   deleteDocument,
   deleteFactura,
@@ -28,6 +34,8 @@ import { CompraFormFields } from "@/components/CompraForm";
 import { EditFacturaFields } from "@/components/EditFacturaFields";
 import { EditDocumentFields } from "@/components/EditDocumentFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
+import { DocumentFormFields } from "@/components/DocumentFormFields";
+import { PROVEEDOR_DIRECTO_VALUE } from "@/components/PaymentFormFields";
 
 const CIRCUIT_BY_SLUG: Record<string, Circuit> = { blanco: "BLANCO", negro: "NEGRO" };
 
@@ -65,20 +73,38 @@ export default async function AccountLedgerPage({
   });
   if (!account) notFound();
 
-  const [documents, payments, products, items, blancoPrices, negroPrices] = await Promise.all([
-    getAccountDocuments(account.id),
-    prisma.payment.findMany({
-      where: { accountId: account.id },
-      include: { allocations: true },
-      orderBy: { date: "asc" },
-    }),
-    prisma.product.findMany({
-      orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
-    }),
-    prisma.item.findMany({ orderBy: { name: "asc" } }),
-    getCurrentPricesForAccount(entityId, "BLANCO"),
-    getCurrentPricesForAccount(entityId, "NEGRO"),
-  ]);
+  const isTreasuryEntity = entity.type === "TESORERIA";
+  const isClienteEntity = entity.type !== "PROVEEDOR" && entity.type !== "TESORERIA";
+
+  const [documents, payments, products, items, blancoPrices, negroPrices, treasuries, proveedores] =
+    await Promise.all([
+      getAccountDocuments(account.id),
+      prisma.payment.findMany({
+        where: { accountId: account.id },
+        include: { allocations: true },
+        orderBy: { date: "asc" },
+      }),
+      prisma.product.findMany({
+        orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
+      }),
+      prisma.item.findMany({ orderBy: { name: "asc" } }),
+      getCurrentPricesForAccount(entityId, "BLANCO"),
+      getCurrentPricesForAccount(entityId, "NEGRO"),
+      isTreasuryEntity ? Promise.resolve([]) : getTreasuries(),
+      isClienteEntity
+        ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
+        : Promise.resolve([]),
+    ]);
+
+  const linkedPaymentIds = payments.map((p) => p.linkedPaymentId).filter((id): id is string => !!id);
+  const linkedPayments = linkedPaymentIds.length
+    ? await prisma.payment.findMany({
+        where: { id: { in: linkedPaymentIds } },
+        include: { account: { include: { entity: true } } },
+      })
+    : [];
+  const linkedPaymentById = new Map(linkedPayments.map((p) => [p.id, p]));
+  const treasuryById = new Map(treasuries.map((t) => [t.id, t]));
 
   const priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> = {
     BLANCO: {},
@@ -108,6 +134,10 @@ export default async function AccountLedgerPage({
         : doc.purchaseLines.length > 0
           ? doc.purchaseLines.map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`).join(" · ")
           : doc.reason;
+    const docSubtitle =
+      doc.treasuryCategory && doc.treasuryCategory !== "COBRO" && doc.treasuryCategory !== "PAGO_PROVEEDOR"
+        ? [TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory], lineSummary].filter(Boolean).join(" · ")
+        : lineSummary;
 
     let actions: React.ReactNode = null;
     if (canEdit) {
@@ -234,7 +264,7 @@ export default async function AccountLedgerPage({
       key: `doc-${doc.id}`,
       date: doc.date,
       title: `${DOCUMENT_TYPE_LABELS[doc.type]} #${doc.number}`,
-      subtitle: lineSummary,
+      subtitle: docSubtitle,
       debe: effect.greaterThan(0) ? effect : ZERO,
       haber: effect.lessThan(0) ? effect.negated() : ZERO,
       actions,
@@ -247,10 +277,19 @@ export default async function AccountLedgerPage({
     // crédito a favor del cliente en vez de "perderlo".
     const imputado = sumDecimals(payment.allocations.map((a) => a.amount));
     const sinImputar = payment.amount.minus(imputado);
+    const linkedPayment = payment.linkedPaymentId ? linkedPaymentById.get(payment.linkedPaymentId) : undefined;
+    const destinoLabel = payment.treasuryId
+      ? `→ ${treasuryById.get(payment.treasuryId)?.name ?? "tesorería"}`
+      : linkedPayment
+        ? `→ directo a ${linkedPayment.account.entity.name}`
+        : null;
     const subtitleParts = [
       payment.reference,
+      destinoLabel,
       sinImputar.greaterThan(0) ? `${formatMoney(sinImputar, payment.currency)} sin imputar` : null,
     ].filter(Boolean);
+
+    const defaultDestino = payment.treasuryId ?? (linkedPayment ? PROVEEDOR_DIRECTO_VALUE : "");
 
     rows.push({
       key: `pay-${payment.id}`,
@@ -264,12 +303,16 @@ export default async function AccountLedgerPage({
           <FormModal triggerLabel="Editar" iconName="edit" title="Editar pago" action={updatePayment}>
             <EditPaymentFields
               paymentId={payment.id}
+              treasuries={treasuries}
+              proveedores={isClienteEntity ? proveedores : undefined}
               defaultValues={{
                 circuit,
                 method: payment.method,
                 date: toDateInputValue(payment.date),
                 amount: payment.amount.toString(),
                 reference: payment.reference ?? undefined,
+                destino: defaultDestino,
+                proveedorId: linkedPayment?.account.entityId,
               }}
             />
           </FormModal>
@@ -297,16 +340,23 @@ export default async function AccountLedgerPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link
-          href={`/cuentas-corrientes/${entityId}`}
-          className="text-sm underline underline-offset-2"
-        >
-          ← Volver a {entity.name}
-        </Link>
-        <h1 className="text-xl font-semibold mt-2">
-          {entity.name} — Cuenta {CIRCUIT_LABELS[circuit]}
-        </h1>
+      <div className="flex items-start justify-between">
+        <div>
+          <Link
+            href={isTreasuryEntity ? "/tesoreria" : `/cuentas-corrientes/${entityId}`}
+            className="text-sm underline underline-offset-2"
+          >
+            ← Volver a {isTreasuryEntity ? "Tesorería" : entity.name}
+          </Link>
+          <h1 className="text-xl font-semibold mt-2">
+            {entity.name} — Cuenta {CIRCUIT_LABELS[circuit]}
+          </h1>
+        </div>
+        {isTreasuryEntity && canEdit && (
+          <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
+            <DocumentFormFields fixedEntityId={entityId} isTreasury />
+          </FormModal>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3 max-w-xl">

@@ -38,6 +38,23 @@ enum EntityType {
   CLIENTE
   PROVEEDOR
   AMBOS
+  TESORERIA
+}
+
+/**
+ * Categoría de un movimiento de tesorería (Document tipo AJUSTE en la cuenta de una Entity
+ * TESORERIA). COBRO/PAGO_PROVEEDOR se generan solos desde un Payment; el resto se carga a mano
+ * desde "+ Movimiento".
+ */
+enum TreasuryMovementCategory {
+  COBRO
+  PAGO_PROVEEDOR
+  GASTO_BANCARIO
+  IMPUESTO
+  RETIRO
+  DEPOSITO
+  AJUSTE_ARQUEO
+  OTRO
 }
 
 enum SupplierCategory {
@@ -67,6 +84,7 @@ model Entity {
   accounts           Account[]
   prices             Price[]
   pedidos            Pedido[]
+  treasuryPayments   Payment[]
 }
 
 enum Circuit {
@@ -132,8 +150,19 @@ model Document {
   createdBy        User         @relation(fields: [createdById], references: [id])
   createdAt        DateTime     @default(now())
 
-  remitoLinks   DocumentLink[] @relation("RemitoLinks")
-  facturaLinks  DocumentLink[] @relation("FacturaLinks")
+  /**
+   * Solo para AJUSTE en la cuenta de una Entity TESORERIA: qué tipo de movimiento es.
+   */
+  treasuryCategory TreasuryMovementCategory?
+  /**
+   * Si este AJUSTE se generó solo a partir de un cobro/pago (no cargado a mano), el Payment que
+   * lo originó — con cascade, al borrar ese Payment este Document se borra solo.
+   */
+  sourcePaymentId  String?                   @unique
+  sourcePayment    Payment?                  @relation("PaymentTreasuryDocument", fields: [sourcePaymentId], references: [id], onDelete: Cascade)
+
+  remitoLinks   DocumentLink[]      @relation("RemitoLinks")
+  facturaLinks  DocumentLink[]      @relation("FacturaLinks")
   allocations   PaymentAllocation[]
   lines         DocumentLine[]
   purchaseLines PurchaseLine[]
@@ -197,9 +226,23 @@ model Payment {
   createdBy   User          @relation(fields: [createdById], references: [id])
   createdAt   DateTime      @default(now())
 
-  allocations PaymentAllocation[]
+  /**
+   * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.
+   */
+  treasuryId      String?
+  treasury        Entity? @relation(fields: [treasuryId], references: [id])
+  /**
+   * Cuando un cobro se asignó "directo a un proveedor", conecta el Payment del cobro con el
+   * Payment del pago generado en la cuenta del proveedor (y viceversa). Sin relation formal a
+   * propósito — el borrado en cascada de la pareja se maneja a mano en la acción.
+   */
+  linkedPaymentId String?
+
+  allocations      PaymentAllocation[]
+  treasuryDocument Document?           @relation("PaymentTreasuryDocument")
 
   @@index([accountId])
+  @@index([treasuryId])
 }
 
 model PaymentAllocation {
@@ -241,22 +284,22 @@ enum ItemMovementType {
 }
 
 model ItemMovement {
-  id               String            @id @default(cuid())
+  id               String           @id @default(cuid())
   itemId           String
-  item             Item              @relation(fields: [itemId], references: [id])
+  item             Item             @relation(fields: [itemId], references: [id])
   date             DateTime
-  quantity         Decimal           @db.Decimal(14, 3)
+  quantity         Decimal          @db.Decimal(14, 3)
   type             ItemMovementType
   reason           String
-  sourceKg         Decimal?          @db.Decimal(14, 3)
-  conversionFactor Decimal?          @db.Decimal(10, 4)
+  sourceKg         Decimal?         @db.Decimal(14, 3)
+  conversionFactor Decimal?         @db.Decimal(10, 4)
   documentId       String?
-  document         Document?         @relation(fields: [documentId], references: [id])
+  document         Document?        @relation(fields: [documentId], references: [id])
   productionLineId String?
-  productionLine   ProductionLine?   @relation(fields: [productionLineId], references: [id], onDelete: Cascade)
+  productionLine   ProductionLine?  @relation(fields: [productionLineId], references: [id], onDelete: Cascade)
   createdById      String
-  createdBy        User              @relation(fields: [createdById], references: [id])
-  createdAt        DateTime          @default(now())
+  createdBy        User             @relation(fields: [createdById], references: [id])
+  createdAt        DateTime         @default(now())
 
   @@index([itemId])
   @@index([documentId])
@@ -283,7 +326,9 @@ model Product {
   pedidoLines     PedidoLine[]
 }
 
-/** Marca (nombre + tipo de aceite), sin formato — catálogo reutilizable al crear productos. */
+/**
+ * Marca (nombre + tipo de aceite), sin formato — catálogo reutilizable al crear productos.
+ */
 model Marca {
   id        String   @id @default(cuid())
   name      String
@@ -293,8 +338,10 @@ model Marca {
   @@unique([name, oilType])
 }
 
-/** Formato de pallet (cajas x botellas por caja x ml), universal — se define una vez y
- * cualquier marca lo puede reusar al crear un producto, sin volver a tipear los números. */
+/**
+ * Formato de pallet (cajas x botellas por caja x ml), universal — se define una vez y
+ * cualquier marca lo puede reusar al crear un producto, sin volver a tipear los números.
+ */
 model Formato {
   id               String   @id @default(cuid())
   presentation     String   @unique

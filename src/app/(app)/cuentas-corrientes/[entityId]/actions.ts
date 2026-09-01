@@ -2,13 +2,42 @@
 
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
-import { Prisma, type Currency, type DocumentType, type PaymentMethod } from "@prisma/client";
+import {
+  Prisma,
+  type Circuit,
+  type Currency,
+  type DocumentType,
+  type PaymentMethod,
+  type TreasuryMovementCategory,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, toDecimal } from "@/lib/money";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
+import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { PROVEEDOR_DIRECTO_VALUE } from "@/components/PaymentFormFields";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
+
+const MANUAL_TREASURY_CATEGORIES: TreasuryMovementCategory[] = [
+  "GASTO_BANCARIO",
+  "IMPUESTO",
+  "RETIRO",
+  "DEPOSITO",
+  "AJUSTE_ARQUEO",
+  "OTRO",
+];
+
+/** undefined = el form no tiene el campo (no tocar el valor existente al editar); null = limpiar. */
+function parseManualTreasuryCategory(
+  value: FormDataEntryValue | null
+): TreasuryMovementCategory | null | undefined {
+  if (value === null) return undefined;
+  const raw = String(value);
+  return MANUAL_TREASURY_CATEGORIES.includes(raw as TreasuryMovementCategory)
+    ? (raw as TreasuryMovementCategory)
+    : null;
+}
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -71,12 +100,24 @@ export async function updateDocument(formData: FormData) {
 
   const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
   const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
+  const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory"));
 
   const account = await getAccountOrThrow(document.accountId);
 
   await prisma.document.update({
     where: { id: documentId },
-    data: { type, number, date, dueDate, currency, exchangeRate, netAmount: amount, totalAmount, reason },
+    data: {
+      type,
+      number,
+      date,
+      dueDate,
+      currency,
+      exchangeRate,
+      netAmount: amount,
+      totalAmount,
+      reason,
+      ...(treasuryCategory !== undefined ? { treasuryCategory } : {}),
+    },
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
@@ -143,6 +184,7 @@ export async function createDocumentForEntity(formData: FormData) {
 
   const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
   const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
+  const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory")) || null;
 
   await prisma.document.create({
     data: {
@@ -156,6 +198,7 @@ export async function createDocumentForEntity(formData: FormData) {
       netAmount: amount,
       totalAmount,
       reason,
+      treasuryCategory,
       createdById: user.id,
     },
   });
@@ -698,6 +741,95 @@ export async function createPayment(formData: FormData) {
  * cuenta en el mismo formulario), así que se resuelve acá. Siempre imputa por FIFO — la
  * imputación manual sigue disponible desde la ficha individual de la entidad.
  */
+/**
+ * Aplica el destino/origen elegido para un cobro/pago recién creado (o recreado al editar):
+ * - Tesorería (Banco Galicia / Caja Bufano): genera el Document AJUSTE que suma/resta su saldo,
+ *   vinculado al Payment por sourcePaymentId (se borra solo si se borra el Payment).
+ * - "Directo a un proveedor" (solo cobros): crea un segundo Payment en la cuenta del proveedor
+ *   elegido, imputado por FIFO, y vincula ambos pagos por linkedPaymentId. No pasa por ninguna
+ *   tesorería porque la plata nunca llegó a la empresa.
+ * - Sin destino (""): no hace nada — el pago queda sin asignar, como cualquier pago histórico.
+ */
+async function applyPaymentDestino(params: {
+  userId: string;
+  payment: { id: string; date: Date; amount: Prisma.Decimal; method: PaymentMethod; circuit: Circuit };
+  entity: { id: string; name: string };
+  /** Si este pago es un cobro (entra plata, ej. desde la página/ficha de clientes) o un pago a
+   * proveedor (sale plata) — viene explícito del form en vez de derivarse de entity.type porque
+   * una entidad AMBOS puede recibir cobros y pagos según desde qué página se cargue. */
+  isCobro: boolean;
+  destino: string;
+  proveedorId: string;
+}) {
+  const { userId, payment, entity, isCobro, destino, proveedorId } = params;
+  if (!destino) return;
+
+  if (destino === PROVEEDOR_DIRECTO_VALUE) {
+    if (!isCobro) throw new Error('"Directo a un proveedor" solo aplica a cobros de clientes.');
+    if (!proveedorId) throw new Error("Elegí a qué proveedor fue directo el pago.");
+
+    const proveedorAccount = await prisma.account.findUnique({
+      where: { entityId_circuit: { entityId: proveedorId, circuit: payment.circuit } },
+    });
+    if (!proveedorAccount) throw new Error("No se encontró la cuenta del proveedor elegido.");
+
+    const proveedorAllocations = await allocateFifo(proveedorAccount.id, payment.amount, "ARS");
+    const linkedPayment = await prisma.payment.create({
+      data: {
+        accountId: proveedorAccount.id,
+        date: payment.date,
+        amount: payment.amount,
+        currency: "ARS",
+        method: payment.method,
+        reference: `Cobro directo de ${entity.name}`,
+        linkedPaymentId: payment.id,
+        createdById: userId,
+      },
+    });
+    if (proveedorAllocations.length > 0) {
+      await prisma.paymentAllocation.createMany({
+        data: proveedorAllocations.map((a) => ({
+          paymentId: linkedPayment.id,
+          documentId: a.documentId,
+          amount: a.amount,
+        })),
+      });
+    }
+    await prisma.payment.update({
+      where: { id: payment.id },
+      data: { linkedPaymentId: linkedPayment.id },
+    });
+    return;
+  }
+
+  const treasuryAccount = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId: destino, circuit: payment.circuit } },
+    include: { entity: true },
+  });
+  if (!treasuryAccount || treasuryAccount.entity.type !== "TESORERIA") {
+    throw new Error("Destino inválido.");
+  }
+
+  const category: TreasuryMovementCategory = isCobro ? "COBRO" : "PAGO_PROVEEDOR";
+  const signedAmount = isCobro ? payment.amount : payment.amount.negated();
+  await prisma.document.create({
+    data: {
+      accountId: treasuryAccount.id,
+      type: "AJUSTE",
+      number: `P-${payment.id.slice(-8)}`,
+      date: payment.date,
+      currency: "ARS",
+      netAmount: payment.amount,
+      totalAmount: signedAmount,
+      reason: `${isCobro ? "Cobro de" : "Pago a"} ${entity.name} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
+      treasuryCategory: category,
+      sourcePaymentId: payment.id,
+      createdById: userId,
+    },
+  });
+  await prisma.payment.update({ where: { id: payment.id }, data: { treasuryId: destino } });
+}
+
 export async function createPaymentForEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
 
@@ -709,6 +841,7 @@ export async function createPaymentForEntity(formData: FormData) {
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
+    include: { entity: true },
   });
   if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
 
@@ -716,10 +849,12 @@ export async function createPaymentForEntity(formData: FormData) {
   const amount = parseAmount(formData.get("amount"), "monto del pago");
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
+  const destino = String(formData.get("destino") || "");
+  const proveedorId = String(formData.get("proveedorId") || "");
 
   const allocations = await allocateFifo(account.id, amount, "ARS");
 
-  await prisma.$transaction(async (tx) => {
+  const payment = await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.create({
       data: {
         accountId: account.id,
@@ -741,6 +876,17 @@ export async function createPaymentForEntity(formData: FormData) {
         })),
       });
     }
+
+    return payment;
+  });
+
+  await applyPaymentDestino({
+    userId: user.id,
+    payment: { id: payment.id, date, amount, method, circuit },
+    entity: account.entity,
+    isCobro: formData.get("isCobro") === "1",
+    destino,
+    proveedorId,
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
@@ -748,6 +894,7 @@ export async function createPaymentForEntity(formData: FormData) {
   revalidatePath("/pagos-proveedores");
   revalidatePath("/dashboard-clientes");
   revalidatePath("/dashboard-proveedores");
+  revalidatePath("/tesoreria");
 }
 
 export async function deletePayment(formData: FormData) {
@@ -760,22 +907,35 @@ export async function deletePayment(formData: FormData) {
   });
   if (!payment) throw new Error("El pago ya no existe.");
 
+  const linkedPayment = payment.linkedPaymentId
+    ? await prisma.payment.findUnique({ where: { id: payment.linkedPaymentId }, include: { account: true } })
+    : null;
+
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { paymentId } });
     await tx.payment.delete({ where: { id: paymentId } });
+    if (linkedPayment) {
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: linkedPayment.id } });
+      await tx.payment.delete({ where: { id: linkedPayment.id } });
+    }
   });
 
   revalidatePath(`/cuentas-corrientes/${payment.account.entityId}`);
+  if (linkedPayment) revalidatePath(`/cuentas-corrientes/${linkedPayment.account.entityId}`);
   revalidatePath("/pagos-clientes");
   revalidatePath("/pagos-proveedores");
   revalidatePath("/dashboard-clientes");
   revalidatePath("/dashboard-proveedores");
+  revalidatePath("/tesoreria");
 }
 
 /** Edita un pago — si cambia el monto o la cuenta (circuito), se borran las imputaciones viejas
- * y se vuelve a correr allocateFifo con los datos nuevos, mismo camino que crear un pago. */
+ * y se vuelve a correr allocateFifo con los datos nuevos, mismo camino que crear un pago. El
+ * destino/origen (Document de tesorería o pago vinculado a un proveedor) se deshace por completo
+ * y se vuelve a generar desde cero con los datos nuevos — más simple y seguro que tratar de
+ * adivinar la transición entre los distintos casos. */
 export async function updatePayment(formData: FormData) {
-  await requireRole(["ADMIN", "CARGA_DIARIA"]);
+  const user = await requireRole(["ADMIN", "CARGA_DIARIA"]);
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -790,6 +950,7 @@ export async function updatePayment(formData: FormData) {
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
+    include: { entity: true },
   });
   if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
 
@@ -797,12 +958,33 @@ export async function updatePayment(formData: FormData) {
   const amount = parseAmount(formData.get("amount"), "monto del pago");
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
+  const destino = String(formData.get("destino") || "");
+  const proveedorId = String(formData.get("proveedorId") || "");
+
+  const oldLinkedPaymentId = payment.linkedPaymentId;
+  const oldLinkedPayment = oldLinkedPaymentId
+    ? await prisma.payment.findUnique({ where: { id: oldLinkedPaymentId }, include: { account: true } })
+    : null;
 
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { paymentId } });
+    await tx.document.deleteMany({ where: { sourcePaymentId: paymentId } });
+    if (oldLinkedPayment) {
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: oldLinkedPayment.id } });
+      await tx.payment.delete({ where: { id: oldLinkedPayment.id } });
+    }
+
     await tx.payment.update({
       where: { id: paymentId },
-      data: { accountId: account.id, date, amount, method, reference },
+      data: {
+        accountId: account.id,
+        date,
+        amount,
+        method,
+        reference,
+        treasuryId: null,
+        linkedPaymentId: null,
+      },
     });
   });
 
@@ -813,11 +995,22 @@ export async function updatePayment(formData: FormData) {
     });
   }
 
+  await applyPaymentDestino({
+    userId: user.id,
+    payment: { id: paymentId, date, amount, method, circuit },
+    entity: account.entity,
+    isCobro: formData.get("isCobro") === "1",
+    destino,
+    proveedorId,
+  });
+
   revalidatePath(`/cuentas-corrientes/${entityId}`);
+  if (oldLinkedPayment) revalidatePath(`/cuentas-corrientes/${oldLinkedPayment.account.entityId}`);
   revalidatePath("/pagos-clientes");
   revalidatePath("/pagos-proveedores");
   revalidatePath("/dashboard-clientes");
   revalidatePath("/dashboard-proveedores");
+  revalidatePath("/tesoreria");
 }
 
 export async function moveRemitoToBlanco(formData: FormData) {
