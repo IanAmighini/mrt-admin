@@ -15,7 +15,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, formatMoney, toDecimal } from "@/lib/money";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
-import { PROVEEDOR_DIRECTO_VALUE } from "@/components/PaymentFormFields";
+import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { logAudit } from "@/lib/audit";
 import type { AuditAction } from "@prisma/client";
 
@@ -1017,6 +1017,7 @@ export async function updatePayment(formData: FormData) {
   const reference = String(formData.get("reference") || "").trim() || null;
   const destino = String(formData.get("destino") || "");
   const proveedorId = String(formData.get("proveedorId") || "");
+  const isCobro = formData.get("isCobro") === "1";
 
   const oldLinkedPaymentId = payment.linkedPaymentId;
   const oldLinkedPayment = oldLinkedPaymentId
@@ -1026,7 +1027,11 @@ export async function updatePayment(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { paymentId } });
     await tx.document.deleteMany({ where: { sourcePaymentId: paymentId } });
-    if (oldLinkedPayment) {
+    // Solo el lado "cobro" (con el selector de Proveedor) puede rearmar el vínculo desde cero —
+    // si se edita el lado receptor (el pago generado en la cuenta del proveedor), no hay forma de
+    // volver a elegir destino, así que borrar el vínculo acá borraría el cobro original sin poder
+    // recrearlo.
+    if (oldLinkedPayment && isCobro) {
       await tx.paymentAllocation.deleteMany({ where: { paymentId: oldLinkedPayment.id } });
       await tx.payment.delete({ where: { id: oldLinkedPayment.id } });
     }
@@ -1040,7 +1045,7 @@ export async function updatePayment(formData: FormData) {
         method,
         reference,
         treasuryId: null,
-        linkedPaymentId: null,
+        linkedPaymentId: isCobro ? null : payment.linkedPaymentId,
       },
     });
   });
@@ -1051,8 +1056,6 @@ export async function updatePayment(formData: FormData) {
       data: allocations.map((a) => ({ paymentId, documentId: a.documentId, amount: a.amount })),
     });
   }
-
-  const isCobro = formData.get("isCobro") === "1";
 
   await applyPaymentDestino({
     userId: user.id,

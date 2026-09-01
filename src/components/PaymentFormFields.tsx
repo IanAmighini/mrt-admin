@@ -10,8 +10,6 @@ const toggleClass =
 
 const PAYMENT_METHODS: PaymentMethod[] = ["EFECTIVO", "TRANSFERENCIA", "CHEQUE", "ECHEQ", "OTRO"];
 
-export { PROVEEDOR_DIRECTO_VALUE } from "./PaymentDestinoField";
-
 export function PaymentFormFields({
   entities,
   entityNoun,

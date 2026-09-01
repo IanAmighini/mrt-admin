@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import type { Entity } from "@prisma/client";
+import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
-
-export const PROVEEDOR_DIRECTO_VALUE = "PROVEEDOR_DIRECTO";
 
 /** Selector de Destino/Origen de un cobro o pago. Si se elige "Proveedor" (solo disponible para
  * cobros, con la opción "directo a un proveedor"), despliega el selector de a qué proveedor fue. */

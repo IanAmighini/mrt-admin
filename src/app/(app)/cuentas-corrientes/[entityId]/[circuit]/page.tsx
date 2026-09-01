@@ -35,7 +35,7 @@ import { EditFacturaFields } from "@/components/EditFacturaFields";
 import { EditDocumentFields } from "@/components/EditDocumentFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
-import { PROVEEDOR_DIRECTO_VALUE } from "@/components/PaymentFormFields";
+import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 
 const CIRCUIT_BY_SLUG: Record<string, Circuit> = { blanco: "BLANCO", negro: "NEGRO" };
 

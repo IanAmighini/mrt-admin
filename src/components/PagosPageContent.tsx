@@ -7,7 +7,8 @@ import { formatMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
 import { DeleteButton } from "./DeleteButton";
-import { PaymentFormFields, PROVEEDOR_DIRECTO_VALUE } from "./PaymentFormFields";
+import { PaymentFormFields } from "./PaymentFormFields";
+import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { EditPaymentFields } from "./EditPaymentFields";
 import {
   createPaymentForEntity,
