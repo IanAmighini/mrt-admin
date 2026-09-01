@@ -36,14 +36,12 @@ export default async function DashboardClientesPage() {
     getLitrosEnvasados(),
   ]);
 
-  const remitosVencidos = vencimientos
-    .filter(
-      (doc) =>
-        doc.type === "REMITO" &&
-        ["CLIENTE", "AMBOS"].includes(doc.account.entity.type) &&
-        doc.dueDate! < today
-    )
-    .slice(0, 5);
+  const remitosVencidos = vencimientos.filter(
+    (doc) =>
+      doc.type === "REMITO" &&
+      ["CLIENTE", "AMBOS"].includes(doc.account.entity.type) &&
+      doc.dueDate! < today
+  );
 
   const deudaTotal = sumDecimals(saldos.map((s) => s.total));
   const ingresosArs = ingresosDelMes.get("ARS") ?? ZERO;
@@ -76,6 +74,48 @@ export default async function DashboardClientesPage() {
           color="amber"
         />
       </div>
+
+      <section>
+        <h2 className="text-sm font-semibold mb-2">Remitos vencidos</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
+                <th className="py-2 pr-4">Cliente</th>
+                <th className="py-2 pr-4">Remito</th>
+                <th className="py-2 pr-4">Vencimiento</th>
+                <th className="py-2 pr-4">Pendiente</th>
+              </tr>
+            </thead>
+            <tbody>
+              {remitosVencidos.map((doc) => (
+                <tr key={doc.id} className="border-b border-foreground/5">
+                  <td className="py-2 pr-4">
+                    <Link
+                      href={`/cuentas-corrientes/${doc.account.entityId}`}
+                      className="underline underline-offset-2"
+                    >
+                      {doc.account.entity.name}
+                    </Link>
+                  </td>
+                  <td className="py-2 pr-4">#{doc.number}</td>
+                  <td className="py-2 pr-4 text-red-600 dark:text-red-400 font-medium">
+                    {doc.dueDate?.toLocaleDateString("es-AR")}
+                  </td>
+                  <td className="py-2 pr-4">{formatMoney(doc.pending, doc.currency)}</td>
+                </tr>
+              ))}
+              {remitosVencidos.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-4 text-center text-foreground/40">
+                    No hay remitos vencidos.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <div className="grid gap-8 lg:grid-cols-2">
         <section>
@@ -110,48 +150,6 @@ export default async function DashboardClientesPage() {
                   <tr>
                     <td colSpan={4} className="py-4 text-center text-foreground/40">
                       Todavía no hay entregas cargadas.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section>
-          <h2 className="text-sm font-semibold mb-2">Remitos vencidos</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Cliente</th>
-                  <th className="py-2 pr-4">Remito</th>
-                  <th className="py-2 pr-4">Vencimiento</th>
-                  <th className="py-2 pr-4">Pendiente</th>
-                </tr>
-              </thead>
-              <tbody>
-                {remitosVencidos.map((doc) => (
-                  <tr key={doc.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">
-                      <Link
-                        href={`/cuentas-corrientes/${doc.account.entityId}`}
-                        className="underline underline-offset-2"
-                      >
-                        {doc.account.entity.name}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">#{doc.number}</td>
-                    <td className="py-2 pr-4 text-red-600 dark:text-red-400 font-medium">
-                      {doc.dueDate?.toLocaleDateString("es-AR")}
-                    </td>
-                    <td className="py-2 pr-4">{formatMoney(doc.pending, doc.currency)}</td>
-                  </tr>
-                ))}
-                {remitosVencidos.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center text-foreground/40">
-                      No hay remitos vencidos.
                     </td>
                   </tr>
                 )}
@@ -199,7 +197,9 @@ export default async function DashboardClientesPage() {
             </table>
           </div>
         </section>
+      </div>
 
+      <div className="grid gap-8 lg:grid-cols-2">
         <TopDeudaSection
           title="Clientes con más deuda — Cuenta Blanco"
           rows={topBlanco}
