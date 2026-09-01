@@ -1,5 +1,5 @@
 import "server-only";
-import { Prisma, type Currency } from "@prisma/client";
+import { Prisma, type Currency, type EntityType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getDocumentEffect } from "@/lib/ledger";
@@ -60,6 +60,54 @@ export async function getIngresosDelMes(referenceDate: Date = new Date()) {
     const effect = getDocumentEffect(doc);
     const current = byCurrency.get(doc.currency) ?? sumDecimals([]);
     byCurrency.set(doc.currency, current.plus(effect));
+  }
+
+  return byCurrency;
+}
+
+/**
+ * Compras del mes actual (efecto de los documentos de proveedores con fecha en el mes, por
+ * moneda) — mismo criterio que getIngresosDelMes pero para el lado PROVEEDOR/AMBOS: cuánta deuda
+ * nueva generaron los comprobantes cargados este mes.
+ */
+export async function getComprasDelMes(referenceDate: Date = new Date()) {
+  const monthStart = startOfMonth(referenceDate);
+  const monthEnd = startOfNextMonth(referenceDate);
+
+  const documents = await prisma.document.findMany({
+    where: {
+      date: { gte: monthStart, lt: monthEnd },
+      account: { entity: { type: { in: ["PROVEEDOR", "AMBOS"] } } },
+    },
+    include: { remitoLinks: true, allocations: true, lines: { include: { product: true } }, purchaseLines: { include: { item: true } } },
+  });
+
+  const byCurrency = new Map<Currency, Prisma.Decimal>();
+  for (const doc of documents) {
+    const effect = getDocumentEffect(doc);
+    const current = byCurrency.get(doc.currency) ?? sumDecimals([]);
+    byCurrency.set(doc.currency, current.plus(effect));
+  }
+
+  return byCurrency;
+}
+
+/** Pagos del mes actual, por moneda — filtrado por tipo de entidad (clientes o proveedores). */
+export async function getPagosDelMes(typeFilter: EntityType[], referenceDate: Date = new Date()) {
+  const monthStart = startOfMonth(referenceDate);
+  const monthEnd = startOfNextMonth(referenceDate);
+
+  const payments = await prisma.payment.findMany({
+    where: {
+      date: { gte: monthStart, lt: monthEnd },
+      account: { entity: { type: { in: typeFilter } } },
+    },
+  });
+
+  const byCurrency = new Map<Currency, Prisma.Decimal>();
+  for (const p of payments) {
+    const current = byCurrency.get(p.currency) ?? ZERO;
+    byCurrency.set(p.currency, current.plus(p.amount));
   }
 
   return byCurrency;
