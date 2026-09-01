@@ -32,6 +32,33 @@ model User {
   productionRuns   ProductionRun[]
   prices           Price[]
   pedidos          Pedido[]
+  auditLogs        AuditLog[]
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+/**
+ * Registro de actividad: quién hizo qué. El resumen se arma y se guarda en el momento, para que
+ * el log siga siendo legible aunque el registro original (Document, Payment, etc.) cambie o se
+ * borre después.
+ */
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String
+  user       User        @relation(fields: [userId], references: [id])
+  action     AuditAction
+  entityType String
+  entityId   String?
+  summary    String
+  createdAt  DateTime    @default(now())
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([createdAt])
 }
 
 enum EntityType {

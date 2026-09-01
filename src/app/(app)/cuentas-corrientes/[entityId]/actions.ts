@@ -12,10 +12,12 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { DEFAULT_IVA_RATE, toDecimal } from "@/lib/money";
+import { DEFAULT_IVA_RATE, formatMoney, toDecimal } from "@/lib/money";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/components/PaymentFormFields";
+import { logAudit } from "@/lib/audit";
+import type { AuditAction } from "@prisma/client";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
 
@@ -70,7 +72,7 @@ async function getAccountOrThrow(accountId: string) {
 /** Edita una nota/ajuste ya cargado — campos simples, el pendiente se recalcula solo desde
  * totalAmount (no hay nada desnormalizado que tocar). */
 export async function updateDocument(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({ where: { id: documentId } });
@@ -120,16 +122,24 @@ export async function updateDocument(formData: FormData) {
     },
   });
 
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Movimiento de cuenta",
+    entityId: documentId,
+    summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+  });
+
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
 }
 
 export async function deleteDocument(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { account: true },
+    include: { account: { include: { entity: true } } },
   });
   if (!document) throw new Error("El comprobante ya no existe.");
   if (!NON_FACTURA_TYPES.includes(document.type)) {
@@ -139,6 +149,14 @@ export async function deleteDocument(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Movimiento de cuenta",
+      entityId: documentId,
+      summary: `#${document.number} — ${document.account.entity.name} — ${formatMoney(document.totalAmount, document.currency)}`,
+    });
   });
 
   revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
@@ -160,6 +178,7 @@ export async function createDocumentForEntity(formData: FormData) {
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
+    include: { entity: true },
   });
   if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
 
@@ -186,7 +205,7 @@ export async function createDocumentForEntity(formData: FormData) {
   const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory")) || null;
 
-  await prisma.document.create({
+  const document = await prisma.document.create({
     data: {
       accountId: account.id,
       type,
@@ -203,14 +222,25 @@ export async function createDocumentForEntity(formData: FormData) {
     },
   });
 
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Movimiento de cuenta",
+    entityId: document.id,
+    summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+  });
+
   revalidatePath(`/cuentas-corrientes/${entityId}`);
 }
 
-export async function createRemito(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
-
+/** Núcleo compartido por createRemito y updateRemito (que borra y vuelve a llamar a este núcleo)
+ * — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
+async function createRemitoCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta la entidad.");
+
+  const entity = await prisma.entity.findUnique({ where: { id: entityId } });
+  if (!entity) throw new Error("Entidad inexistente.");
 
   const number = String(formData.get("number") || "").trim();
   if (!number) throw new Error("El número es obligatorio.");
@@ -255,6 +285,8 @@ export async function createRemito(formData: FormData) {
     linesByCircuit.set(line.circuit, group);
   }
 
+  let combinedTotal = toDecimal(0);
+
   await prisma.$transaction(async (tx) => {
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
@@ -271,6 +303,7 @@ export async function createRemito(formData: FormData) {
       const ivaRate = circuit === "BLANCO" ? toDecimal(DEFAULT_IVA_RATE) : null;
       const ivaAmount = ivaRate ? netAmount.times(ivaRate).dividedBy(100) : null;
       const totalAmount = ivaAmount ? netAmount.plus(ivaAmount) : netAmount;
+      combinedTotal = combinedTotal.plus(totalAmount);
 
       const document = await tx.document.create({
         data: {
@@ -315,6 +348,14 @@ export async function createRemito(formData: FormData) {
         data: { status: "ENTREGADO", deliveryDate: date },
       });
     }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: auditAction,
+      entityType: "Remito",
+      entityId,
+      summary: `#${number} — ${entity.name} — ${formatMoney(combinedTotal, currency)}`,
+    });
   }, { timeout: 20000 });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
@@ -323,10 +364,15 @@ export async function createRemito(formData: FormData) {
   if (pedidoIds.length > 0) revalidatePath("/pedidos");
 }
 
+export async function createRemito(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await createRemitoCore(user, formData, "CREATE");
+}
+
 async function getRemitoOrThrow(documentId: string) {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { remitoLinks: true, lines: true, account: true },
+    include: { remitoLinks: true, lines: true, account: { include: { entity: true } } },
   });
   if (!document) throw new Error("El remito ya no existe.");
   if (document.type !== "REMITO" || document.lines.length === 0) {
@@ -339,7 +385,7 @@ async function getRemitoOrThrow(documentId: string) {
 }
 
 export async function deleteRemito(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getRemitoOrThrow(documentId);
@@ -347,6 +393,14 @@ export async function deleteRemito(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Remito",
+      entityId: document.account.entityId,
+      summary: `#${document.number} — ${document.account.entity.name} — ${formatMoney(document.totalAmount, document.currency)}`,
+    });
   });
 
   revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
@@ -355,12 +409,13 @@ export async function deleteRemito(formData: FormData) {
 }
 
 /**
- * Editar una entrega = borrar el comprobante existente y volver a correr createRemito con los
+ * Editar una entrega = borrar el comprobante existente y volver a correr el mismo núcleo con los
  * datos nuevos del formulario — evita duplicar la lógica de agrupar líneas por circuito y crear
- * documentos, a costa de generar un id de Document nuevo (el número puede quedar igual).
+ * documentos, a costa de generar un id de Document nuevo (el número puede quedar igual). Queda
+ * como un solo UPDATE en el log, no un DELETE + CREATE.
  */
 export async function updateRemito(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   await getRemitoOrThrow(documentId);
@@ -370,12 +425,12 @@ export async function updateRemito(formData: FormData) {
     await tx.document.delete({ where: { id: documentId } });
   });
 
-  await createRemito(formData);
+  await createRemitoCore(user, formData, "UPDATE");
 }
 
-export async function createCompra(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
-
+/** Núcleo compartido por createCompra y updateCompra (que borra y vuelve a llamar a este núcleo)
+ * — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
+async function createCompraCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta la entidad.");
 
@@ -422,6 +477,8 @@ export async function createCompra(formData: FormData) {
   const entity = await prisma.entity.findUnique({ where: { id: entityId } });
   if (!entity) throw new Error("Entidad inexistente.");
 
+  let combinedTotal = toDecimal(0);
+
   await prisma.$transaction(async (tx) => {
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
@@ -434,6 +491,7 @@ export async function createCompra(formData: FormData) {
         subtotal: l.quantity.times(l.unitPrice),
       }));
       const totalAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
+      combinedTotal = combinedTotal.plus(totalAmount);
 
       const document = await tx.document.create({
         data: {
@@ -466,6 +524,14 @@ export async function createCompra(formData: FormData) {
         })),
       });
     }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: auditAction,
+      entityType: "Compra",
+      entityId,
+      summary: `#${number} — ${entity.name} — ${formatMoney(combinedTotal, currency)}`,
+    });
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
@@ -474,10 +540,15 @@ export async function createCompra(formData: FormData) {
   revalidatePath("/dashboard-proveedores");
 }
 
+export async function createCompra(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await createCompraCore(user, formData, "CREATE");
+}
+
 async function getCompraOrThrow(documentId: string) {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { purchaseLines: true, account: true },
+    include: { purchaseLines: true, account: { include: { entity: true } } },
   });
   if (!document) throw new Error("La compra ya no existe.");
   if (document.type !== "REMITO" || document.purchaseLines.length === 0) {
@@ -487,7 +558,7 @@ async function getCompraOrThrow(documentId: string) {
 }
 
 export async function deleteCompra(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getCompraOrThrow(documentId);
@@ -496,6 +567,14 @@ export async function deleteCompra(formData: FormData) {
     await tx.itemMovement.deleteMany({ where: { documentId } });
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Compra",
+      entityId: document.account.entityId,
+      summary: `#${document.number} — ${document.account.entity.name} — ${formatMoney(document.totalAmount, document.currency)}`,
+    });
   });
 
   revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
@@ -505,9 +584,10 @@ export async function deleteCompra(formData: FormData) {
 }
 
 /** Igual patrón que updateRemito: borra el comprobante (revirtiendo el stock que había sumado)
- * y vuelve a correr createCompra con los datos nuevos del formulario. */
+ * y vuelve a correr el mismo núcleo con los datos nuevos del formulario, logueando un solo
+ * UPDATE. */
 export async function updateCompra(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   await getCompraOrThrow(documentId);
@@ -518,7 +598,7 @@ export async function updateCompra(formData: FormData) {
     await tx.document.delete({ where: { id: documentId } });
   });
 
-  await createCompra(formData);
+  await createCompraCore(user, formData, "UPDATE");
 }
 
 export async function createFactura(formData: FormData) {
@@ -599,6 +679,14 @@ export async function createFactura(formData: FormData) {
 
       await tx.documentLink.createMany({ data: linkData });
     }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Factura",
+      entityId: account.entityId,
+      summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+    });
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entityId}`);
@@ -608,10 +696,13 @@ export async function createFactura(formData: FormData) {
  * cambiar eso hay que borrarla y volver a facturar. El saldo pendiente se recalcula solo porque
  * sale de totalAmount, no hay nada desnormalizado que actualizar. */
 export async function updateFactura(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
-  const factura = await prisma.document.findUnique({ where: { id: documentId } });
+  const factura = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { account: { include: { entity: true } } },
+  });
   if (!factura) throw new Error("La factura ya no existe.");
   if (factura.type !== "FACTURA") throw new Error("Este comprobante no es una factura.");
 
@@ -649,18 +740,25 @@ export async function updateFactura(formData: FormData) {
     },
   });
 
-  const account = await prisma.account.findUnique({ where: { id: factura.accountId } });
-  revalidatePath(`/cuentas-corrientes/${account?.entityId}`);
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Factura",
+    entityId: factura.account.entityId,
+    summary: `#${number} — ${factura.account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+  });
+
+  revalidatePath(`/cuentas-corrientes/${factura.account.entityId}`);
 }
 
 /** Borrar una factura "desfactura" los remitos que tenía vinculados (vuelven a pendiente). */
 export async function deleteFactura(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const factura = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { account: true },
+    include: { account: { include: { entity: true } } },
   });
   if (!factura) throw new Error("La factura ya no existe.");
   if (factura.type !== "FACTURA") throw new Error("Este comprobante no es una factura.");
@@ -669,6 +767,14 @@ export async function deleteFactura(formData: FormData) {
     await tx.documentLink.deleteMany({ where: { facturaId: documentId } });
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Factura",
+      entityId: factura.account.entityId,
+      summary: `#${factura.number} — ${factura.account.entity.name} — ${formatMoney(factura.totalAmount, factura.currency)}`,
+    });
   });
 
   revalidatePath(`/cuentas-corrientes/${factura.account.entityId}`);
@@ -880,13 +986,23 @@ export async function createPaymentForEntity(formData: FormData) {
     return payment;
   });
 
+  const isCobro = formData.get("isCobro") === "1";
+
   await applyPaymentDestino({
     userId: user.id,
     payment: { id: payment.id, date, amount, method, circuit },
     entity: account.entity,
-    isCobro: formData.get("isCobro") === "1",
+    isCobro,
     destino,
     proveedorId,
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Pago",
+    entityId: entityId,
+    summary: `${isCobro ? "Cobro de" : "Pago a"} ${account.entity.name} — ${formatMoney(amount)} — ${PAYMENT_METHOD_LABELS[method]}`,
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
@@ -898,12 +1014,12 @@ export async function createPaymentForEntity(formData: FormData) {
 }
 
 export async function deletePayment(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    include: { account: true },
+    include: { account: { include: { entity: true } } },
   });
   if (!payment) throw new Error("El pago ya no existe.");
 
@@ -918,6 +1034,14 @@ export async function deletePayment(formData: FormData) {
       await tx.paymentAllocation.deleteMany({ where: { paymentId: linkedPayment.id } });
       await tx.payment.delete({ where: { id: linkedPayment.id } });
     }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Pago",
+      entityId: payment.account.entityId,
+      summary: `${payment.account.entity.name} — ${formatMoney(payment.amount, payment.currency)} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
+    });
   });
 
   revalidatePath(`/cuentas-corrientes/${payment.account.entityId}`);
@@ -995,13 +1119,23 @@ export async function updatePayment(formData: FormData) {
     });
   }
 
+  const isCobro = formData.get("isCobro") === "1";
+
   await applyPaymentDestino({
     userId: user.id,
     payment: { id: paymentId, date, amount, method, circuit },
     entity: account.entity,
-    isCobro: formData.get("isCobro") === "1",
+    isCobro,
     destino,
     proveedorId,
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Pago",
+    entityId,
+    summary: `${isCobro ? "Cobro de" : "Pago a"} ${account.entity.name} — ${formatMoney(amount)} — ${PAYMENT_METHOD_LABELS[method]}`,
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);
@@ -1014,12 +1148,12 @@ export async function updatePayment(formData: FormData) {
 }
 
 export async function moveRemitoToBlanco(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { account: true, remitoLinks: true },
+    include: { account: { include: { entity: true } }, remitoLinks: true },
   });
   if (!document) notFound();
   if (document.type !== "REMITO") throw new Error("Solo los remitos se pueden mover de cuenta.");
@@ -1040,6 +1174,14 @@ export async function moveRemitoToBlanco(formData: FormData) {
     data: { accountId: blancoAccount.id },
   });
 
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Remito",
+    entityId: document.account.entityId,
+    summary: `#${document.number} — ${document.account.entity.name} — movido a cuenta Blanco`,
+  });
+
   revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
 }
 
@@ -1057,8 +1199,21 @@ export async function createPrice(formData: FormData) {
   if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Circuito inválido.");
   if (!productId) throw new Error("Falta el producto.");
 
+  const [entity, product] = await Promise.all([
+    prisma.entity.findUnique({ where: { id: entityId } }),
+    prisma.product.findUnique({ where: { id: productId } }),
+  ]);
+
   await prisma.price.create({
     data: { entityId, circuit, productId, currency, validFrom, amount, createdById: user.id },
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Precio",
+    entityId,
+    summary: `${product?.name ?? "Producto"} para ${entity?.name ?? "entidad"} — ${formatMoney(amount, currency)}`,
   });
 
   revalidatePath(`/cuentas-corrientes/${entityId}`);

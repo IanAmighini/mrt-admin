@@ -1,13 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Prisma } from "@prisma/client";
+import { Prisma, type AuditAction } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
 import { setSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
+import { logAudit } from "@/lib/audit";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -16,7 +17,7 @@ function parseFormDate(value: FormDataEntryValue | null): Date {
 }
 
 export async function updateOilEfficiency(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const value = String(formData.get("oilFillEfficiencyPercent") || "").trim();
   const num = toDecimal(value);
@@ -26,12 +27,23 @@ export async function updateOilEfficiency(formData: FormData) {
 
   await setSetting("oilFillEfficiencyPercent", value);
 
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Configuración",
+    summary: `Eficiencia de llenado de aceite — ${value}%`,
+  });
+
   revalidatePath("/produccion");
 }
 
-export async function createProductionRun(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
-
+/** Núcleo compartido por createProductionRun y updateProductionRun (que borra y vuelve a llamar
+ * a este núcleo) — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
+async function createProductionRunCore(
+  user: { id: string },
+  formData: FormData,
+  auditAction: AuditAction
+) {
   const date = parseFormDate(formData.get("date"));
   const notes = String(formData.get("notes") || "").trim() || null;
   const marcaIds = formData.getAll("marcaId").map(String);
@@ -97,6 +109,14 @@ export async function createProductionRun(formData: FormData) {
     }
 
     await syncPedidoStatuses(tx);
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: auditAction,
+      entityType: "Producción",
+      entityId: run.id,
+      summary: `Producción del ${dateLabel} — ${lines.length} línea(s)`,
+    });
   }, { timeout: 20000 });
 
   revalidatePath("/produccion");
@@ -104,13 +124,18 @@ export async function createProductionRun(formData: FormData) {
   revalidatePath("/pedidos");
 }
 
+export async function createProductionRun(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await createProductionRunCore(user, formData, "CREATE");
+}
+
 /**
  * Editar una producción = borrar la carga existente (las líneas y los movimientos de
- * producto/insumo vinculados se van en cascada) y volver a correr createProductionRun con los
- * datos nuevos — mismo patrón que remitos y pedidos.
+ * producto/insumo vinculados se van en cascada) y volver a correr el mismo núcleo con los datos
+ * nuevos — mismo patrón que remitos y pedidos, pero logueando un solo UPDATE.
  */
 export async function updateProductionRun(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const runId = String(formData.get("runId") || "");
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
@@ -118,17 +143,25 @@ export async function updateProductionRun(formData: FormData) {
 
   await prisma.productionRun.delete({ where: { id: runId } });
 
-  await createProductionRun(formData);
+  await createProductionRunCore(user, formData, "UPDATE");
 }
 
 export async function deleteProductionRun(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const runId = String(formData.get("runId") || "");
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
   if (!run) throw new Error("La carga de producción ya no existe.");
 
   await prisma.productionRun.delete({ where: { id: runId } });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Producción",
+    entityId: runId,
+    summary: `Producción del ${run.date.toLocaleDateString("es-AR")}`,
+  });
 
   revalidatePath("/produccion");
   revalidatePath("/stock");

@@ -5,11 +5,12 @@ import { Prisma, type UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { hashPassword } from "@/lib/password";
+import { logAudit } from "@/lib/audit";
 
 const ROLES: UserRole[] = ["ADMIN", "SOLO_LECTURA", "SECRETARIA"];
 
 export async function createUser(formData: FormData) {
-  await requireRole(["ADMIN"]);
+  const admin = await requireRole(["ADMIN"]);
 
   const name = String(formData.get("name") || "").trim();
   const email = String(formData.get("email") || "")
@@ -30,8 +31,9 @@ export async function createUser(formData: FormData) {
 
   const passwordHash = await hashPassword(password);
 
+  let created;
   try {
-    await prisma.user.create({ data: { name, email, role, passwordHash } });
+    created = await prisma.user.create({ data: { name, email, role, passwordHash } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new Error("Ya existe un usuario con ese email.");
@@ -39,11 +41,19 @@ export async function createUser(formData: FormData) {
     throw error;
   }
 
+  await logAudit(prisma, {
+    userId: admin.id,
+    action: "CREATE",
+    entityType: "Usuario",
+    entityId: created.id,
+    summary: `${name} (${email})`,
+  });
+
   revalidatePath("/usuarios");
 }
 
 export async function updateUser(formData: FormData) {
-  await requireRole(["ADMIN"]);
+  const admin = await requireRole(["ADMIN"]);
 
   const id = String(formData.get("id") || "");
   const name = String(formData.get("name") || "").trim();
@@ -68,6 +78,14 @@ export async function updateUser(formData: FormData) {
     throw error;
   }
 
+  await logAudit(prisma, {
+    userId: admin.id,
+    action: "UPDATE",
+    entityType: "Usuario",
+    entityId: id,
+    summary: `${name} (${email})`,
+  });
+
   revalidatePath("/usuarios");
 }
 
@@ -83,6 +101,15 @@ export async function toggleUserActive(formData: FormData) {
     throw new Error("No podés desactivar tu propio usuario.");
   }
 
-  await prisma.user.update({ where: { id }, data: { active: !active } });
+  const target = await prisma.user.update({ where: { id }, data: { active: !active } });
+
+  await logAudit(prisma, {
+    userId: admin.id,
+    action: "UPDATE",
+    entityType: "Usuario",
+    entityId: id,
+    summary: `${target.name} — ${active ? "eliminado (desactivado)" : "reactivado"}`,
+  });
+
   revalidatePath("/usuarios");
 }

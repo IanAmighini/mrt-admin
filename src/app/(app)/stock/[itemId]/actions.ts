@@ -5,7 +5,9 @@ import { notFound } from "next/navigation";
 import { Prisma, type ItemMovementType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { toDecimal } from "@/lib/money";
+import { formatQuantity, toDecimal } from "@/lib/money";
+import { logAudit } from "@/lib/audit";
+import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 
 const MOVEMENT_TYPES: ItemMovementType[] = ["INGRESO", "AJUSTE", "MERMA", "VENTA"];
 
@@ -62,6 +64,14 @@ export async function createItemMovement(formData: FormData) {
       conversionFactor,
       createdById: user.id,
     },
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Movimiento de insumo",
+    entityId: item.id,
+    summary: `${ITEM_MOVEMENT_TYPE_LABELS[type]} — ${item.name} — ${formatQuantity(quantity, item.unit)}`,
   });
 
   revalidatePath(`/stock/${item.id}`);

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
 import { getSetting } from "@/lib/settings";
+import { logAudit } from "@/lib/audit";
 
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   const str = String(value || "").trim();
@@ -14,7 +15,7 @@ function parseOptionalInt(value: FormDataEntryValue | null): number | null {
 }
 
 export async function updateProduct(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const productId = String(formData.get("productId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -41,12 +42,20 @@ export async function updateProduct(formData: FormData) {
     },
   });
 
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Producto",
+    entityId: productId,
+    summary: `${name} ${oilType} — ${presentation}`,
+  });
+
   revalidatePath(`/produccion/${productId}`);
   revalidatePath("/produccion");
 }
 
 export async function generateRecipeFromPresentation(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const productId = String(formData.get("productId") || "");
   if (!productId) throw new Error("Falta el producto.");
@@ -110,12 +119,20 @@ export async function generateRecipeFromPresentation(formData: FormData) {
     )
   );
 
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Receta",
+    entityId: productId,
+    summary: `Receta de ${product.name} ${product.oilType} generada automáticamente — ${lines.length} insumo(s)`,
+  });
+
   revalidatePath(`/produccion/${productId}`);
   revalidatePath("/produccion");
 }
 
 export async function upsertRecipeLine(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const productId = String(formData.get("productId") || "");
   const itemId = String(formData.get("itemId") || "");
@@ -129,10 +146,20 @@ export async function upsertRecipeLine(formData: FormData) {
     throw new Error("La cantidad por unidad debe ser mayor a cero.");
   }
 
+  const item = await prisma.item.findUnique({ where: { id: itemId } });
+
   await prisma.recipeItem.upsert({
     where: { productId_itemId: { productId, itemId } },
     update: { quantityPerUnit },
     create: { productId, itemId, quantityPerUnit },
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Receta",
+    entityId: productId,
+    summary: `${item?.name ?? "Insumo"} — ${quantityPerUnitRaw} por unidad`,
   });
 
   revalidatePath(`/produccion/${productId}`);
@@ -140,13 +167,26 @@ export async function upsertRecipeLine(formData: FormData) {
 }
 
 export async function deleteRecipeLine(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const recipeItemId = String(formData.get("recipeItemId") || "");
   const productId = String(formData.get("productId") || "");
   if (!recipeItemId) throw new Error("Falta el ítem de receta.");
 
+  const recipeItem = await prisma.recipeItem.findUnique({
+    where: { id: recipeItemId },
+    include: { item: true },
+  });
+
   await prisma.recipeItem.delete({ where: { id: recipeItemId } });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Receta",
+    entityId: productId,
+    summary: recipeItem ? recipeItem.item.name : "Ítem de receta",
+  });
 
   revalidatePath(`/produccion/${productId}`);
   revalidatePath("/produccion");

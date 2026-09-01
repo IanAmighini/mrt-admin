@@ -9,6 +9,7 @@ import {
   ClipboardList,
   Contact,
   Factory,
+  History,
   Home,
   Landmark,
   Menu,
@@ -39,6 +40,7 @@ const ICONS_BY_HREF: Record<string, LucideIcon> = {
   "/tesoreria": Landmark,
   "/produccion": Factory,
   "/usuarios": UserCog,
+  "/actividad": History,
 };
 
 export function SidebarNav({ items }: { items: NavItem[] }) {

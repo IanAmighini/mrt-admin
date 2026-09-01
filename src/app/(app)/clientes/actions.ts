@@ -4,9 +4,16 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
+import { logAudit } from "@/lib/audit";
 import type { EntityType, SupplierCategory } from "@prisma/client";
 
 const ENTITY_TYPES: EntityType[] = ["CLIENTE", "PROVEEDOR", "AMBOS"];
+const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
+  CLIENTE: "Cliente",
+  PROVEEDOR: "Proveedor",
+  AMBOS: "Cliente/Proveedor",
+  TESORERIA: "Tesorería",
+};
 const SUPPLIER_CATEGORIES: SupplierCategory[] = [
   "ACEITE",
   "ENVASES",
@@ -74,6 +81,14 @@ export async function createEntity(formData: FormData) {
         },
       });
     }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "CREATE",
+      entityType: ENTITY_TYPE_LABELS[type],
+      entityId: entity.id,
+      summary: `${name}`,
+    });
   });
 
   revalidatePath("/clientes");
@@ -81,7 +96,7 @@ export async function createEntity(formData: FormData) {
 }
 
 export async function updateEntity(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new Error("Falta la entidad.");
@@ -109,6 +124,14 @@ export async function updateEntity(formData: FormData) {
   await prisma.entity.update({
     where: { id: entityId },
     data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: ENTITY_TYPE_LABELS[type],
+    entityId,
+    summary: `${name}`,
   });
 
   revalidatePath("/clientes");

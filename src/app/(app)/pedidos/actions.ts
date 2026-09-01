@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
+import { logAudit } from "@/lib/audit";
 
 const PEDIDO_STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
 
@@ -68,6 +69,14 @@ export async function createPedido(formData: FormData) {
     await tx.pedidoLine.createMany({ data: lineData });
 
     await syncPedidoStatuses(tx);
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Pedido",
+      entityId: pedido.id,
+      summary: `Pedido #${orderNumber}`,
+    });
   }, { timeout: 20000 });
 
   revalidatePath("/pedidos");
@@ -80,16 +89,23 @@ async function getPedidoOrThrow(pedidoId: string) {
 }
 
 export async function deletePedido(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
-  await getPedidoOrThrow(pedidoId);
+  const existing = await getPedidoOrThrow(pedidoId);
 
   await prisma.pedido.delete({ where: { id: pedidoId } });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Pedido",
+    entityId: pedidoId,
+    summary: `Pedido #${existing.orderNumber}`,
+  });
   revalidatePath("/pedidos");
 }
 
 export async function updatePedido(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
   const existing = await getPedidoOrThrow(pedidoId);
 
@@ -117,13 +133,21 @@ export async function updatePedido(formData: FormData) {
     if (existing.status === "EN_COLA") {
       await syncPedidoStatuses(tx);
     }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Pedido",
+      entityId: pedidoId,
+      summary: `Pedido #${existing.orderNumber}`,
+    });
   }, { timeout: 20000 });
 
   revalidatePath("/pedidos");
 }
 
 export async function updatePedidoStatus(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
   const status = String(formData.get("status") || "") as PedidoStatus;
   if (!PEDIDO_STATUSES.includes(status)) throw new Error("Estado inválido.");
@@ -137,6 +161,14 @@ export async function updatePedidoStatus(formData: FormData) {
       deliveryDate:
         status === "ENTREGADO" ? (pedido.deliveryDate ?? new Date()) : pedido.deliveryDate,
     },
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Pedido",
+    entityId: pedidoId,
+    summary: `Pedido #${pedido.orderNumber} — estado: ${status}`,
   });
 
   revalidatePath("/pedidos");

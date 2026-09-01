@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { logAudit } from "@/lib/audit";
 
 const CATEGORIES: SupplierCategory[] = [
   "ACEITE",
@@ -55,22 +56,38 @@ export async function createItem(formData: FormData) {
         },
       });
     }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Insumo",
+      entityId: item.id,
+      summary: name,
+    });
   });
 
   revalidatePath("/stock");
 }
 
 export async function updateItemCost(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const itemId = String(formData.get("itemId") || "");
   const unitCostRaw = String(formData.get("unitCost") || "").trim();
   if (!itemId) throw new Error("Falta el insumo.");
   if (!unitCostRaw) throw new Error("Falta el costo unitario.");
 
-  await prisma.item.update({
+  const item = await prisma.item.update({
     where: { id: itemId },
     data: { unitCost: unitCostRaw },
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Insumo",
+    entityId: itemId,
+    summary: `${item.name} — costo unitario: ${unitCostRaw}`,
   });
 
   revalidatePath(`/stock/${itemId}`);

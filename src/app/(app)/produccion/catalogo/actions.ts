@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { logAudit } from "@/lib/audit";
 
 function parseRequiredInt(value: FormDataEntryValue | null, label: string): number {
   const n = parseInt(String(value || "").trim(), 10);
@@ -16,7 +17,7 @@ function revalidateCatalogo() {
 }
 
 export async function createMarca(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const name = String(formData.get("name") || "").trim();
   const oilType = String(formData.get("oilType") || "").trim();
@@ -26,12 +27,19 @@ export async function createMarca(formData: FormData) {
   const existing = await prisma.marca.findUnique({ where: { name_oilType: { name, oilType } } });
   if (existing) throw new Error(`Ya existe la marca "${name} ${oilType}".`);
 
-  await prisma.marca.create({ data: { name, oilType } });
+  const marca = await prisma.marca.create({ data: { name, oilType } });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Marca",
+    entityId: marca.id,
+    summary: `${name} ${oilType}`,
+  });
   revalidateCatalogo();
 }
 
 export async function updateMarca(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const marcaId = String(formData.get("marcaId") || "");
   const name = String(formData.get("name") || "").trim();
@@ -46,21 +54,36 @@ export async function updateMarca(formData: FormData) {
   }
 
   await prisma.marca.update({ where: { id: marcaId }, data: { name, oilType } });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Marca",
+    entityId: marcaId,
+    summary: `${name} ${oilType}`,
+  });
   revalidateCatalogo();
 }
 
 export async function deleteMarca(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const marcaId = String(formData.get("marcaId") || "");
   if (!marcaId) throw new Error("Falta la marca.");
 
+  const marca = await prisma.marca.findUnique({ where: { id: marcaId } });
   await prisma.marca.delete({ where: { id: marcaId } });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Marca",
+    entityId: marcaId,
+    summary: marca ? `${marca.name} ${marca.oilType}` : "Marca",
+  });
   revalidateCatalogo();
 }
 
 export async function createFormato(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const presentation = String(formData.get("presentation") || "").trim();
   const boxesPerPallet = parseRequiredInt(formData.get("boxesPerPallet"), "Cajas por pallet");
@@ -72,14 +95,21 @@ export async function createFormato(formData: FormData) {
   const existing = await prisma.formato.findUnique({ where: { presentation } });
   if (existing) throw new Error(`Ya existe el formato "${presentation}".`);
 
-  await prisma.formato.create({
+  const formato = await prisma.formato.create({
     data: { presentation, boxesPerPallet, unitsPerBox, bottleCapacityMl },
+  });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Formato",
+    entityId: formato.id,
+    summary: presentation,
   });
   revalidateCatalogo();
 }
 
 export async function updateFormato(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const formatoId = String(formData.get("formatoId") || "");
   const presentation = String(formData.get("presentation") || "").trim();
@@ -99,15 +129,30 @@ export async function updateFormato(formData: FormData) {
     where: { id: formatoId },
     data: { presentation, boxesPerPallet, unitsPerBox, bottleCapacityMl },
   });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Formato",
+    entityId: formatoId,
+    summary: presentation,
+  });
   revalidateCatalogo();
 }
 
 export async function deleteFormato(formData: FormData) {
-  await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const formatoId = String(formData.get("formatoId") || "");
   if (!formatoId) throw new Error("Falta el formato.");
 
+  const formato = await prisma.formato.findUnique({ where: { id: formatoId } });
   await prisma.formato.delete({ where: { id: formatoId } });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "DELETE",
+    entityType: "Formato",
+    entityId: formatoId,
+    summary: formato ? formato.presentation : "Formato",
+  });
   revalidateCatalogo();
 }

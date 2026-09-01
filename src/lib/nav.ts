@@ -26,6 +26,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/tesoreria", label: "Tesorería", roles: ROLES_SIN_SECRETARIA },
   { href: "/produccion", label: "Producción", roles: ALL_ROLES },
   { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
+  { href: "/actividad", label: "Actividad", roles: ["ADMIN"] },
 ];
 
 export const ROLE_LABELS: Record<UserRole, string> = {
