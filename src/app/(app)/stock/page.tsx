@@ -5,7 +5,6 @@ import { Archive, Droplet, HelpCircle, Layers, PackageOpen, Scissors, Tag, type 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
-import { getLitrosEnvasados } from "@/lib/reports";
 import { formatQuantity } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { FormModal } from "@/components/Modal";
@@ -51,14 +50,13 @@ export default async function StockPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [items, stocks, products, productStocks, litros] = await Promise.all([
+  const [items, stocks, products, productStocks] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getAllItemStocks(),
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
     }),
     getAllProductStocks(),
-    getLitrosEnvasados(),
   ]);
 
   const searchTerm = q?.trim().toLowerCase();
@@ -95,14 +93,6 @@ export default async function StockPage({
       <div>
         <h1 className="text-xl font-semibold mb-1">Stock</h1>
         <p className="text-sm text-foreground/60">Producto terminado e insumos disponibles ahora mismo.</p>
-      </div>
-
-      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 max-w-xs">
-        <p className="text-sm font-semibold mb-1">Litros envasados</p>
-        <p className="text-2xl font-semibold">{formatQuantity(litros.esteMes, "L")}</p>
-        <p className="text-xs text-foreground/50 mt-1">
-          este mes — {formatQuantity(litros.total, "L")} total histórico
-        </p>
       </div>
 
       <section className="space-y-4">
