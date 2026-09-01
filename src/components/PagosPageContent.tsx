@@ -6,8 +6,18 @@ import { getRecentPayments, getTreasuries } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
-import { PaymentFormFields } from "./PaymentFormFields";
-import { createPaymentForEntity } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
+import { DeleteButton } from "./DeleteButton";
+import { PaymentFormFields, PROVEEDOR_DIRECTO_VALUE } from "./PaymentFormFields";
+import { EditPaymentFields } from "./EditPaymentFields";
+import {
+  createPaymentForEntity,
+  deletePayment,
+  updatePayment,
+} from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
+
+function toDateInputValue(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
 
 export async function PagosPageContent({
   typeFilter,
@@ -77,6 +87,7 @@ export async function PagosPageContent({
                 <th className="py-2 pr-4">{isCobro ? "Destino" : "Origen"}</th>
                 <th className="py-2 pr-4">Descripción</th>
                 <th className="py-2 pr-4">Fecha</th>
+                {canEdit && <th className="py-2 pr-4">Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -89,6 +100,7 @@ export async function PagosPageContent({
                   : linkedPayment
                     ? `Directo a ${linkedPayment.account.entity.name}`
                     : null;
+                const defaultDestino = payment.treasuryId ?? (linkedPayment ? PROVEEDOR_DIRECTO_VALUE : "");
                 return (
                   <tr key={payment.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">
@@ -104,12 +116,46 @@ export async function PagosPageContent({
                     <td className="py-2 pr-4">{destinoLabel ?? "—"}</td>
                     <td className="py-2 pr-4">{payment.reference ?? "—"}</td>
                     <td className="py-2 pr-4">{payment.date.toLocaleDateString("es-AR")}</td>
+                    {canEdit && (
+                      <td className="py-2 pr-4">
+                        <div className="flex items-center gap-2">
+                          <FormModal
+                            triggerLabel="Editar"
+                            iconName="edit"
+                            title="Editar pago"
+                            action={updatePayment}
+                            maxWidthClass="max-w-xl"
+                          >
+                            <EditPaymentFields
+                              paymentId={payment.id}
+                              treasuries={treasuries}
+                              proveedores={isCobro ? proveedores : undefined}
+                              defaultValues={{
+                                circuit: payment.account.circuit,
+                                method: payment.method,
+                                date: toDateInputValue(payment.date),
+                                amount: payment.amount.toString(),
+                                reference: payment.reference ?? undefined,
+                                destino: defaultDestino,
+                                proveedorId: linkedPayment?.account.entityId,
+                              }}
+                            />
+                          </FormModal>
+                          <DeleteButton
+                            action={deletePayment}
+                            hiddenName="paymentId"
+                            hiddenValue={payment.id}
+                            confirmMessage="¿Borrar este pago? Esta acción no se puede deshacer."
+                          />
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
               {pagos.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-6 text-center text-foreground/40">
+                  <td colSpan={canEdit ? 7 : 6} className="py-6 text-center text-foreground/40">
                     Todavía no hay pagos cargados.
                   </td>
                 </tr>
