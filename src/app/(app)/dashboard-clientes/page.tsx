@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { Droplets, Send, Users, Wallet } from "lucide-react";
+import type { Currency, Prisma } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import {
   getEntitySaldos,
@@ -6,29 +8,53 @@ import {
   getRecentRemitos,
   getVencimientos,
 } from "@/lib/ledger";
-import { getIngresosDelMes, getProductoEntregadoValorizado, getRentabilidadDelMes } from "@/lib/reports";
-import { formatMoney, formatQuantity } from "@/lib/money";
-import { formatProductLabel } from "@/lib/product-label";
+import {
+  getIngresosDelMes,
+  getLitrosEnvasados,
+  getPagosDelMes,
+  getProductoEntregadoValorizado,
+  getRentabilidadDelMes,
+} from "@/lib/reports";
+import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
+import { formatProductBrandLabel } from "@/lib/product-label";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { KpiCard } from "@/components/KpiCard";
+import { TopDeudaSection } from "@/components/TopDeudaSection";
 
 export default async function DashboardClientesPage() {
   const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
   const today = new Date();
 
-  const [entregas, pagos, saldos, vencimientos] = await Promise.all([
-    getRecentRemitos(8),
-    getRecentPayments(["CLIENTE", "AMBOS"], 8),
+  const [entregas, pagos, saldos, vencimientos, ingresosDelMes, pagosDelMes, litros] = await Promise.all([
+    getRecentRemitos(5),
+    getRecentPayments(["CLIENTE", "AMBOS"], 5),
     getEntitySaldos(["CLIENTE", "AMBOS"]),
     getVencimientos(),
+    getIngresosDelMes(),
+    getPagosDelMes(["CLIENTE", "AMBOS"]),
+    getLitrosEnvasados(),
   ]);
 
-  const remitosVencidos = vencimientos.filter(
-    (doc) =>
-      doc.type === "REMITO" &&
-      ["CLIENTE", "AMBOS"].includes(doc.account.entity.type) &&
-      doc.dueDate! < today
-  );
+  const remitosVencidos = vencimientos
+    .filter(
+      (doc) =>
+        doc.type === "REMITO" &&
+        ["CLIENTE", "AMBOS"].includes(doc.account.entity.type) &&
+        doc.dueDate! < today
+    )
+    .slice(0, 5);
+
+  const deudaTotal = sumDecimals(saldos.map((s) => s.total));
+  const ingresosArs = ingresosDelMes.get("ARS") ?? ZERO;
+  const cobrosArs = pagosDelMes.get("ARS") ?? ZERO;
+
+  const topBlanco = [...saldos]
+    .sort((a, b) => (b.blancoSaldo?.toNumber() ?? 0) - (a.blancoSaldo?.toNumber() ?? 0))
+    .slice(0, 5);
+  const topNegro = [...saldos]
+    .sort((a, b) => (b.negroSaldo?.toNumber() ?? 0) - (a.negroSaldo?.toNumber() ?? 0))
+    .slice(0, 5);
 
   return (
     <div className="space-y-10">
@@ -37,6 +63,18 @@ export default async function DashboardClientesPage() {
         <p className="text-sm text-foreground/60">
           Últimas entregas, remitos vencidos, últimos pagos y clientes con más deuda.
         </p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard label="Deuda total de clientes" value={formatMoney(deudaTotal)} icon={Users} color="red" />
+        <KpiCard label="Entregas del mes" value={formatMoney(ingresosArs)} icon={Send} color="blue" />
+        <KpiCard label="Cobros del mes" value={formatMoney(cobrosArs)} icon={Wallet} color="green" />
+        <KpiCard
+          label="Litros envasados (este mes)"
+          value={formatQuantity(litros.esteMes, "L")}
+          icon={Droplets}
+          color="amber"
+        />
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">
@@ -162,45 +200,20 @@ export default async function DashboardClientesPage() {
           </div>
         </section>
 
-        <section>
-          <h2 className="text-sm font-semibold mb-2">Clientes con más deuda</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Cliente</th>
-                  <th className="py-2 pr-4">Saldo Blanco</th>
-                  <th className="py-2 pr-4">Saldo Negro</th>
-                  <th className="py-2 pr-4">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {saldos.slice(0, 8).map(({ entity, blancoSaldo, negroSaldo, total }) => (
-                  <tr key={entity.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">
-                      <Link
-                        href={`/cuentas-corrientes/${entity.id}`}
-                        className="underline underline-offset-2"
-                      >
-                        {entity.name}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">{blancoSaldo ? formatMoney(blancoSaldo) : "—"}</td>
-                    <td className="py-2 pr-4">{negroSaldo ? formatMoney(negroSaldo) : "—"}</td>
-                    <td className="py-2 pr-4 font-medium">{formatMoney(total)}</td>
-                  </tr>
-                ))}
-                {saldos.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center text-foreground/40">
-                      Todavía no hay clientes cargados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <TopDeudaSection
+          title="Clientes con más deuda — Cuenta Blanco"
+          rows={topBlanco}
+          circuit="blanco"
+          entityNoun="Cliente"
+          emptyMessage="Todavía no hay clientes cargados."
+        />
+        <TopDeudaSection
+          title="Clientes con más deuda — Cuenta Negro"
+          rows={topNegro}
+          circuit="negro"
+          entityNoun="Cliente"
+          emptyMessage="Todavía no hay clientes cargados."
+        />
       </div>
 
       {isAdmin && <ReportesGerenciales />}
@@ -209,32 +222,28 @@ export default async function DashboardClientesPage() {
 }
 
 async function ReportesGerenciales() {
-  const [ingresos, rentabilidad, entregado] = await Promise.all([
-    getIngresosDelMes(),
-    getRentabilidadDelMes(),
-    getProductoEntregadoValorizado(),
-  ]);
+  const [rentabilidad, entregado] = await Promise.all([getRentabilidadDelMes(), getProductoEntregadoValorizado()]);
+
+  const porMarca = new Map<string, { quantity: Prisma.Decimal; byCurrency: Map<Currency, Prisma.Decimal> }>();
+  for (const { product, quantity, byCurrency } of entregado) {
+    const marca = formatProductBrandLabel(product);
+    const current = porMarca.get(marca) ?? { quantity: ZERO, byCurrency: new Map<Currency, Prisma.Decimal>() };
+    current.quantity = current.quantity.plus(quantity);
+    for (const [currency, amount] of byCurrency) {
+      const currentAmount = current.byCurrency.get(currency) ?? ZERO;
+      current.byCurrency.set(currency, currentAmount.plus(amount));
+    }
+    porMarca.set(marca, current);
+  }
+  const marcas = Array.from(porMarca.entries()).sort((a, b) =>
+    sumDecimals(Array.from(b[1].byCurrency.values())).comparedTo(sumDecimals(Array.from(a[1].byCurrency.values())))
+  );
 
   return (
     <section className="space-y-6">
       <h2 className="text-lg font-semibold">Reportes gerenciales</h2>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-          <p className="text-sm font-semibold mb-1">Ingresos del mes</p>
-          {ingresos.size === 0 ? (
-            <p className="text-2xl font-semibold">{formatMoney(0)}</p>
-          ) : (
-            Array.from(ingresos.entries()).map(([currency, amount]) => (
-              <p key={currency} className="text-2xl font-semibold">
-                {formatMoney(amount, currency)}
-              </p>
-            ))
-          )}
-          <p className="text-xs text-foreground/50 mt-1">
-            suma de comprobantes del mes (remitos, facturas, notas y ajustes), cifra bruta.
-          </p>
-        </div>
         <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Rentabilidad del mes</p>
           <p className="text-2xl font-semibold">{formatMoney(rentabilidad.rentabilidad)}</p>
@@ -245,38 +254,24 @@ async function ReportesGerenciales() {
               ` — ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) sin costo unitario cargado, no se descontaron.`}
           </p>
         </div>
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 sm:col-span-2">
-          <p className="text-sm font-semibold mb-1">Producto entregado valorizado (este mes)</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Producto</th>
-                  <th className="py-2 pr-4">Cantidad</th>
-                  <th className="py-2 pr-4">Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entregado.map(({ product, quantity, byCurrency }) => (
-                  <tr key={product.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">{formatProductLabel(product)}</td>
-                    <td className="py-2 pr-4">{formatQuantity(quantity)}</td>
-                    <td className="py-2 pr-4">
-                      {Array.from(byCurrency.entries())
-                        .map(([currency, amount]) => formatMoney(amount, currency))
-                        .join(" + ")}
-                    </td>
-                  </tr>
-                ))}
-                {entregado.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-4 text-center text-foreground/40">
-                      Sin remitos con producto y cantidad cargados este mes.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
+          <p className="text-sm font-semibold mb-1">Producto entregado valorizado (este mes), por marca</p>
+          <div className="mt-2 space-y-1">
+            {marcas.map(([marca, { quantity, byCurrency }]) => (
+              <div key={marca} className="flex items-center justify-between text-sm border-b border-foreground/5 py-1">
+                <span>
+                  {marca} <span className="text-foreground/50">— {formatQuantity(quantity)}</span>
+                </span>
+                <span className="font-medium">
+                  {Array.from(byCurrency.entries())
+                    .map(([currency, amount]) => formatMoney(amount, currency))
+                    .join(" + ")}
+                </span>
+              </div>
+            ))}
+            {marcas.length === 0 && (
+              <p className="py-2 text-sm text-foreground/40">Sin remitos con producto y cantidad cargados este mes.</p>
+            )}
           </div>
         </div>
       </div>

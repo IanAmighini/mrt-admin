@@ -12,6 +12,7 @@ import {
 import { formatMoney, sumDecimals, ZERO } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
+import { TopDeudaSection } from "@/components/TopDeudaSection";
 
 function primaryAndExtra(map: Map<Currency, Prisma.Decimal>) {
   const ars = map.get("ARS") ?? ZERO;
@@ -160,62 +161,24 @@ export default async function DashboardProveedoresPage() {
           </div>
         </section>
 
-        <TopDeudaSection title="Proveedores que más les debemos — Cuenta Blanco" rows={topBlanco} circuit="blanco" />
-        <TopDeudaSection title="Proveedores que más les debemos — Cuenta Negro" rows={topNegro} circuit="negro" />
+        <TopDeudaSection
+          title="Proveedores que más les debemos — Cuenta Blanco"
+          rows={topBlanco}
+          circuit="blanco"
+          entityNoun="Proveedor"
+          emptyMessage="Todavía no hay proveedores cargados."
+        />
+        <TopDeudaSection
+          title="Proveedores que más les debemos — Cuenta Negro"
+          rows={topNegro}
+          circuit="negro"
+          entityNoun="Proveedor"
+          emptyMessage="Todavía no hay proveedores cargados."
+        />
       </div>
 
       {isAdmin && <ReportesGerenciales valuacion={valuacion} />}
     </div>
-  );
-}
-
-type SaldoRow = Awaited<ReturnType<typeof getEntitySaldos>>[number];
-
-function TopDeudaSection({
-  title,
-  rows,
-  circuit,
-}: {
-  title: string;
-  rows: SaldoRow[];
-  circuit: "blanco" | "negro";
-}) {
-  return (
-    <section>
-      <h2 className="text-sm font-semibold mb-2">{title}</h2>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-foreground/10 text-left text-foreground/60">
-              <th className="py-2 pr-4">Proveedor</th>
-              <th className="py-2 pr-4">Saldo</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(({ entity, blancoSaldo, negroSaldo }) => {
-              const saldo = circuit === "blanco" ? blancoSaldo : negroSaldo;
-              return (
-                <tr key={entity.id} className="border-b border-foreground/5">
-                  <td className="py-2 pr-4">
-                    <Link href={`/cuentas-corrientes/${entity.id}/${circuit}`} className="underline underline-offset-2">
-                      {entity.name}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-4 font-medium">{saldo ? formatMoney(saldo) : "—"}</td>
-                </tr>
-              );
-            })}
-            {rows.length === 0 && (
-              <tr>
-                <td colSpan={2} className="py-4 text-center text-foreground/40">
-                  Todavía no hay proveedores cargados.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </section>
   );
 }
 
