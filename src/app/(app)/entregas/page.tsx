@@ -9,16 +9,13 @@ import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { RemitoFormFields } from "@/components/RemitoForm";
 import { deleteRemito, updateRemito } from "../cuentas-corrientes/[entityId]/actions";
+import { toDateInputValue } from "@/lib/period";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
   { value: "pagado", label: "Pagado" },
   { value: "sin_pagar", label: "Sin pagar" },
 ];
-
-function toDateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 export default async function EntregasPage({
   searchParams,

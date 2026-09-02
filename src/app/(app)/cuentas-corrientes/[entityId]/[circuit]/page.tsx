@@ -37,12 +37,9 @@ import { EditDocumentFields } from "@/components/EditDocumentFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
+import { toDateInputValue } from "@/lib/period";
 
 const CIRCUIT_BY_SLUG: Record<string, Circuit> = { blanco: "BLANCO", negro: "NEGRO" };
-
-function toDateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
 
 type LedgerRow = {
   key: string;

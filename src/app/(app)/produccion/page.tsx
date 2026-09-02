@@ -9,10 +9,7 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { ProductionRunFormFields } from "@/components/ProductionRunFormFields";
 import { OilEfficiencyFields } from "@/components/OilEfficiencyFields";
 import { createProductionRun, deleteProductionRun, updateProductionRun, updateOilEfficiency } from "./actions";
-
-function toDateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+import { toDateInputValue } from "@/lib/period";
 
 export default async function ProduccionPage() {
   const user = await requireUser();

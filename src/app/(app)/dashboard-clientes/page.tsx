@@ -9,12 +9,12 @@ import {
   getVencimientos,
 } from "@/lib/ledger";
 import {
-  getIngresosDelMes,
+  getIngresos,
   getLitrosEnvasados,
-  getPagosDelMes,
+  getPagos,
   getProductoEntregadoValorizado,
-  getRentabilidadDelMes,
-} from "@/lib/reports";
+  getRentabilidad,
+} from "@/lib/dashboard-kpis";
 import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
@@ -31,8 +31,8 @@ export default async function DashboardClientesPage() {
     getRecentPayments(["CLIENTE", "AMBOS"], 5),
     getEntitySaldos(["CLIENTE", "AMBOS"]),
     getVencimientos(),
-    getIngresosDelMes(),
-    getPagosDelMes(["CLIENTE", "AMBOS"]),
+    getIngresos(),
+    getPagos(["CLIENTE", "AMBOS"]),
     getLitrosEnvasados(),
   ]);
 
@@ -69,7 +69,7 @@ export default async function DashboardClientesPage() {
         <KpiCard label="Cobros del mes" value={formatMoney(cobrosArs)} icon={Wallet} color="green" />
         <KpiCard
           label="Litros envasados (este mes)"
-          value={formatQuantity(litros.esteMes, "L")}
+          value={formatQuantity(litros.enPeriodo, "L")}
           icon={Droplets}
           color="amber"
         />
@@ -222,7 +222,7 @@ export default async function DashboardClientesPage() {
 }
 
 async function ReportesGerenciales() {
-  const [rentabilidad, entregado] = await Promise.all([getRentabilidadDelMes(), getProductoEntregadoValorizado()]);
+  const [rentabilidad, entregado] = await Promise.all([getRentabilidad(), getProductoEntregadoValorizado()]);
 
   const porMarca = new Map<string, { quantity: Prisma.Decimal; byCurrency: Map<Currency, Prisma.Decimal> }>();
   for (const { product, quantity, byCurrency } of entregado) {

@@ -11,10 +11,7 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { PedidoFormFields } from "@/components/PedidoFormFields";
 import { PedidoStatusSelect } from "@/components/PedidoStatusSelect";
 import { createPedido, deletePedido, updatePedido } from "./actions";
-
-function toDateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+import { toDateInputValue } from "@/lib/period";
 
 const STATUS_FILTERS: { value: PedidoStatus | ""; label: string }[] = [
   { value: "", label: "Todos" },

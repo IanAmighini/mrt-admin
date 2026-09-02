@@ -15,10 +15,7 @@ import {
   deletePayment,
   updatePayment,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
-
-function toDateInputValue(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
+import { toDateInputValue } from "@/lib/period";
 
 export async function PagosPageContent({
   typeFilter,

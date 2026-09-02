@@ -4,11 +4,11 @@ import type { Prisma, Currency } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { getEntitySaldos, getRecentCompras, getRecentPayments } from "@/lib/ledger";
 import {
-  getComprasDelMes,
-  getCostoInsumosDelMes,
-  getPagosDelMes,
+  getCompras,
+  getCostoInsumos,
+  getPagos,
   getValuacionInsumos,
-} from "@/lib/reports";
+} from "@/lib/dashboard-kpis";
 import { formatMoney, sumDecimals, ZERO } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
@@ -31,8 +31,8 @@ export default async function DashboardProveedoresPage() {
     getRecentCompras(5),
     getRecentPayments(["PROVEEDOR", "AMBOS"], 5),
     getEntitySaldos(["PROVEEDOR", "AMBOS"]),
-    getComprasDelMes(),
-    getPagosDelMes(["PROVEEDOR", "AMBOS"]),
+    getCompras(),
+    getPagos(["PROVEEDOR", "AMBOS"]),
     getValuacionInsumos(),
   ]);
 
@@ -187,7 +187,7 @@ async function ReportesGerenciales({
 }: {
   valuacion: Awaited<ReturnType<typeof getValuacionInsumos>>;
 }) {
-  const costo = await getCostoInsumosDelMes();
+  const costo = await getCostoInsumos();
 
   const totalPorCategoria = new Map<string, Prisma.Decimal>();
   for (const { item, valuacion: v } of valuacion.rows) {
