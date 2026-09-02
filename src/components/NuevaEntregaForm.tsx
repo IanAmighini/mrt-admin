@@ -49,14 +49,17 @@ export function NuevaEntregaForm({
   products,
   pricesByEntity,
   pedidosByEntity,
+  fixedEntity,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   clientes: ClienteInfo[];
   products: ProductInfo[];
   pricesByEntity: PricesByEntity;
   pedidosByEntity: PedidosByEntity;
+  /** Si se llega desde la ficha de un cliente puntual, fija el cliente y oculta el selector. */
+  fixedEntity?: ClienteInfo;
 }) {
-  const [entityId, setEntityId] = useState("");
+  const [entityId, setEntityId] = useState(fixedEntity?.id ?? "");
   const [rows, setRows] = useState<Row[]>([
     { key: 0, marcaKey: "", productId: "", pallets: "", pricePerBottle: "", facturado: true },
   ]);
@@ -156,21 +159,28 @@ export function NuevaEntregaForm({
             <label className="text-sm" htmlFor="entityId">
               Cliente *
             </label>
-            <select
-              id="entityId"
-              name="entityId"
-              required
-              value={entityId}
-              onChange={(e) => setEntityId(e.target.value)}
-              className={inputClass}
-            >
-              <option value="">— Elegir cliente —</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+            {fixedEntity ? (
+              <>
+                <p className={`${inputClass} bg-foreground/5`}>{fixedEntity.name}</p>
+                <input type="hidden" name="entityId" value={fixedEntity.id} />
+              </>
+            ) : (
+              <select
+                id="entityId"
+                name="entityId"
+                required
+                value={entityId}
+                onChange={(e) => setEntityId(e.target.value)}
+                className={inputClass}
+              >
+                <option value="">— Elegir cliente —</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="number">

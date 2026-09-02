@@ -1,18 +1,14 @@
-import type { Item } from "@prisma/client";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import type { getRecentCompras } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
-import { createCompra } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
-import { FormModal } from "./Modal";
-import { CompraFormFields } from "./CompraForm";
 
 export function ComprasPanel({
   entityId,
-  items,
   compras,
   canEdit,
 }: {
   entityId: string;
-  items: Item[];
   compras: Awaited<ReturnType<typeof getRecentCompras>>;
   canEdit: boolean;
 }) {
@@ -21,14 +17,13 @@ export function ComprasPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Compras</h2>
         {canEdit && (
-          <FormModal
-            triggerLabel="Nueva compra"
-            title="Nueva compra de insumos"
-            action={createCompra}
-            maxWidthClass="max-w-2xl"
+          <Link
+            href={`/compras/nueva?entityId=${entityId}`}
+            className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
-            <CompraFormFields entityId={entityId} items={items} />
-          </FormModal>
+            <Plus size={16} />
+            Nueva compra
+          </Link>
         )}
       </div>
 

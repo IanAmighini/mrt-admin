@@ -1,45 +1,30 @@
-import type { Product } from "@prisma/client";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import type { getRecentRemitos } from "@/lib/ledger";
-import type { PedidoPendiente } from "@/lib/pedidos";
 import { formatMoney } from "@/lib/money";
 import { formatProductLabel } from "@/lib/product-label";
-import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
-import { FormModal } from "./Modal";
-import { RemitoFormFields } from "./RemitoForm";
 
 export function EntregasPanel({
   entityId,
-  products,
-  priceMapByCircuit,
   remitos,
   canEdit,
-  pedidosPendientes,
 }: {
   entityId: string;
-  products: Product[];
-  priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
   remitos: Awaited<ReturnType<typeof getRecentRemitos>>;
   canEdit: boolean;
-  pedidosPendientes?: PedidoPendiente[];
 }) {
   return (
     <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold">Entregas</h2>
         {canEdit && (
-          <FormModal
-            triggerLabel="Nueva entrega"
-            title="Nuevo remito"
-            action={createRemito}
-            maxWidthClass="max-w-2xl"
+          <Link
+            href={`/entregas/nueva?entityId=${entityId}`}
+            className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
-            <RemitoFormFields
-              entityId={entityId}
-              products={products}
-              priceMapByCircuit={priceMapByCircuit}
-              pedidosPendientes={pedidosPendientes}
-            />
-          </FormModal>
+            <Plus size={16} />
+            Nueva entrega
+          </Link>
         )}
       </div>
 

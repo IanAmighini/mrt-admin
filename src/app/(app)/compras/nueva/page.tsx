@@ -5,15 +5,20 @@ import { requireUser } from "@/lib/auth-helpers";
 import { createCompra } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { NuevaCompraForm } from "@/components/NuevaCompraForm";
 
-async function submitCompra(formData: FormData) {
-  "use server";
-  await createCompra(formData);
-  redirect("/compras");
-}
-
-export default async function NuevaCompraPage() {
+export default async function NuevaCompraPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ entityId?: string }>;
+}) {
+  const { entityId: fixedEntityId } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
+
+  async function submitCompra(formData: FormData) {
+    "use server";
+    await createCompra(formData);
+    redirect(fixedEntityId ? `/cuentas-corrientes/${fixedEntityId}` : "/compras");
+  }
 
   const [proveedores, items] = await Promise.all([
     prisma.entity.findMany({
@@ -23,11 +28,16 @@ export default async function NuevaCompraPage() {
     prisma.item.findMany({ orderBy: { name: "asc" } }),
   ]);
 
+  const fixedEntity = fixedEntityId ? proveedores.find((p) => p.id === fixedEntityId) : undefined;
+
   return (
     <div className="max-w-4xl space-y-6">
       <div>
-        <Link href="/compras" className="text-sm underline underline-offset-2">
-          ← Volver a compras
+        <Link
+          href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.id}` : "/compras"}
+          className="text-sm underline underline-offset-2"
+        >
+          ← {fixedEntity ? `Volver a ${fixedEntity.name}` : "Volver a compras"}
         </Link>
         <h1 className="text-xl font-semibold mt-2">Nueva compra</h1>
       </div>
@@ -39,6 +49,7 @@ export default async function NuevaCompraPage() {
           action={submitCompra}
           proveedores={proveedores.map((p) => ({ id: p.id, name: p.name }))}
           items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+          fixedEntity={fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name } : undefined}
         />
       )}
     </div>

@@ -15,7 +15,6 @@ import {
   getTreasuries,
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
-import { getPedidosPendientesByEntity } from "@/lib/pedidos";
 import { formatMoney, formatQuantity, toDecimal } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
@@ -55,7 +54,6 @@ export default async function EntityLedgerPage({
   // varias tandas de ida y vuelta a la base (cada tanda suma latencia de red completa).
   const [
     products,
-    items,
     blancoSaldo,
     negroSaldo,
     recentMovements,
@@ -69,14 +67,12 @@ export default async function EntityLedgerPage({
     compras,
     recentRemitos,
     recentCompras,
-    pedidosPendientes,
     treasuries,
     proveedores,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
     }),
-    prisma.item.findMany({ orderBy: { name: "asc" } }),
     getAccountBalance(blancoAccount.id),
     getAccountBalance(negroAccount.id),
     getRecentMovementsForEntity(entity.id, 8),
@@ -90,23 +86,11 @@ export default async function EntityLedgerPage({
     isProveedor ? getComprasSummary(entity.id) : Promise.resolve({ count: 0, totalByUnit: new Map() }),
     isCliente ? getRecentRemitos(5, entity.id) : Promise.resolve([]),
     isProveedor ? getRecentCompras(5, entity.id) : Promise.resolve([]),
-    isCliente ? getPedidosPendientesByEntity(entity.id) : Promise.resolve([]),
     getTreasuries(),
     isCliente
       ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
   ]);
-
-  const priceMapByCircuit: Record<
-    "BLANCO" | "NEGRO",
-    Record<string, { amount: number; currency: string }>
-  > = { BLANCO: {}, NEGRO: {} };
-  for (const [productId, price] of blancoPrices) {
-    priceMapByCircuit.BLANCO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
-  }
-  for (const [productId, price] of negroPrices) {
-    priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
-  }
 
   let card3Label = "Entregas";
   let card3Value = "0";
@@ -169,18 +153,9 @@ export default async function EntityLedgerPage({
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          {isCliente && (
-            <EntregasPanel
-              entityId={entity.id}
-              products={products}
-              priceMapByCircuit={priceMapByCircuit}
-              remitos={recentRemitos}
-              canEdit={canEdit}
-              pedidosPendientes={pedidosPendientes}
-            />
-          )}
+          {isCliente && <EntregasPanel entityId={entity.id} remitos={recentRemitos} canEdit={canEdit} />}
           {isProveedor && (
-            <ComprasPanel entityId={entity.id} items={items} compras={recentCompras} canEdit={canEdit} />
+            <ComprasPanel entityId={entity.id} compras={recentCompras} canEdit={canEdit} />
           )}
         </div>
         <CuentaCorrientePanel

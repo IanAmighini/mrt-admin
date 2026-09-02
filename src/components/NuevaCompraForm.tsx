@@ -20,10 +20,13 @@ export function NuevaCompraForm({
   action,
   proveedores,
   items,
+  fixedEntity,
 }: {
   action: (formData: FormData) => void | Promise<void>;
   proveedores: ProveedorInfo[];
   items: ItemInfo[];
+  /** Si se llega desde la ficha de un proveedor puntual, fija el proveedor y oculta el selector. */
+  fixedEntity?: ProveedorInfo;
 }) {
   const [rows, setRows] = useState<Row[]>([
     { key: 0, itemId: "", quantity: "", unitPrice: "", circuit: "BLANCO" },
@@ -67,16 +70,23 @@ export function NuevaCompraForm({
             <label className="text-sm" htmlFor="entityId">
               Proveedor *
             </label>
-            <select id="entityId" name="entityId" required defaultValue="" className={inputClass}>
-              <option value="" disabled>
-                — Elegir proveedor —
-              </option>
-              {proveedores.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
+            {fixedEntity ? (
+              <>
+                <p className={`${inputClass} bg-foreground/5`}>{fixedEntity.name}</p>
+                <input type="hidden" name="entityId" value={fixedEntity.id} />
+              </>
+            ) : (
+              <select id="entityId" name="entityId" required defaultValue="" className={inputClass}>
+                <option value="" disabled>
+                  — Elegir proveedor —
                 </option>
-              ))}
-            </select>
+                {proveedores.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="number">
