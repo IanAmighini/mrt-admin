@@ -1,19 +1,14 @@
 import Link from "next/link";
+import { Download } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
-import type { Circuit, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
-import { getAccountDocuments, getDocumentEffect, getTreasuries } from "@/lib/ledger";
+import { getTreasuries } from "@/lib/ledger";
+import { getAccountStatement, type StatementEntry } from "@/lib/account-statement";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
-import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
-import {
-  CIRCUIT_LABELS,
-  DOCUMENT_TYPE_LABELS,
-  PAYMENT_METHOD_LABELS,
-  TREASURY_MOVEMENT_CATEGORY_LABELS,
-} from "@/lib/labels";
-import { formatProductBrandLabel } from "@/lib/product-label";
+import { formatMoney } from "@/lib/money";
+import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
 import {
   createDocumentForEntity,
   deleteCompra,
@@ -37,26 +32,20 @@ import { EditDocumentFields } from "@/components/EditDocumentFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
-import { toDateInputValue } from "@/lib/period";
+import { addDays, toDateInputValue } from "@/lib/period";
 
-const CIRCUIT_BY_SLUG: Record<string, Circuit> = { blanco: "BLANCO", negro: "NEGRO" };
-
-type LedgerRow = {
-  key: string;
-  date: Date;
-  title: string;
-  subtitle: string | null;
-  debe: Prisma.Decimal;
-  haber: Prisma.Decimal;
-  actions: React.ReactNode;
-};
+const inputClass =
+  "rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
 
 export default async function AccountLedgerPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ entityId: string; circuit: string }>;
+  searchParams: Promise<{ from?: string; to?: string }>;
 }) {
   const { entityId: entityParam, circuit: circuitSlug } = await params;
+  const { from, to } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
@@ -80,14 +69,13 @@ export default async function AccountLedgerPage({
   const isTreasuryEntity = entity.type === "TESORERIA";
   const isClienteEntity = entity.type !== "PROVEEDOR" && entity.type !== "TESORERIA";
 
-  const [documents, payments, products, items, blancoPrices, negroPrices, treasuries, proveedores] =
+  // El "hasta" que elige el usuario es inclusivo; getAccountStatement lo espera exclusivo.
+  const fromDate = from ? new Date(`${from}T00:00:00`) : null;
+  const toDate = to ? addDays(new Date(`${to}T00:00:00`), 1) : null;
+
+  const [statement, products, items, blancoPrices, negroPrices, treasuries, proveedores] =
     await Promise.all([
-      getAccountDocuments(account.id),
-      prisma.payment.findMany({
-        where: { accountId: account.id },
-        include: { allocations: true },
-        orderBy: { date: "asc" },
-      }),
+      getAccountStatement({ accountId: account.id, from: fromDate, to: toDate }),
       prisma.product.findMany({
         orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
       }),
@@ -100,16 +88,6 @@ export default async function AccountLedgerPage({
         : Promise.resolve([]),
     ]);
 
-  const linkedPaymentIds = payments.map((p) => p.linkedPaymentId).filter((id): id is string => !!id);
-  const linkedPayments = linkedPaymentIds.length
-    ? await prisma.payment.findMany({
-        where: { id: { in: linkedPaymentIds } },
-        include: { account: { include: { entity: true } } },
-      })
-    : [];
-  const linkedPaymentById = new Map(linkedPayments.map((p) => [p.id, p]));
-  const treasuryById = new Map(treasuries.map((t) => [t.id, t]));
-
   const priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> = {
     BLANCO: {},
     NEGRO: {},
@@ -121,188 +99,13 @@ export default async function AccountLedgerPage({
     priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
   }
 
-  const rows: LedgerRow[] = [];
+  function renderActions(entry: StatementEntry): React.ReactNode {
+    if (!canEdit) return null;
 
-  for (const doc of documents) {
-    const effect = getDocumentEffect(doc);
-    const lineSummary =
-      doc.lines.length > 0
-        ? doc.lines.map((l) => {
-            const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
-            const priceLabel =
-              perPallet > 0
-                ? `${formatMoney(l.unitPrice.dividedBy(perPallet), doc.currency)}/bot.`
-                : `${formatMoney(l.unitPrice, doc.currency)}/pallet`;
-            return `${formatProductBrandLabel(l.product)} — ${l.product.presentation} — ${formatQuantity(l.quantity, "pallets")} — ${priceLabel}`;
-          }).join(" · ")
-        : doc.purchaseLines.length > 0
-          ? doc.purchaseLines.map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`).join(" · ")
-          : doc.reason;
-    const docSubtitle =
-      doc.treasuryCategory && doc.treasuryCategory !== "COBRO" && doc.treasuryCategory !== "PAGO_PROVEEDOR"
-        ? [TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory], lineSummary].filter(Boolean).join(" · ")
-        : lineSummary;
-
-    let actions: React.ReactNode = null;
-    if (canEdit) {
-      const headerDefaults = {
-        number: doc.number,
-        date: toDateInputValue(doc.date),
-        dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
-        currency: doc.currency,
-        exchangeRate: doc.exchangeRate?.toString(),
-      };
-
-      const moveToBlanco =
-        circuit === "NEGRO" && doc.remitoLinks.length === 0 ? (
-          <form action={moveRemitoToBlanco}>
-            <input type="hidden" name="documentId" value={doc.id} />
-            <button type="submit" className="text-xs underline underline-offset-2">
-              Mover a Blanco
-            </button>
-          </form>
-        ) : null;
-
-      if (doc.lines.length > 0) {
-        const defaultLines = doc.lines.map((l) => {
-          const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
-          const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
-          return {
-            productId: l.productId,
-            quantity: l.quantity.toString(),
-            pricePerBottle: pricePerBottle.toString(),
-            circuit,
-          };
-        });
-        actions = (
-          <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-2xl">
-              <RemitoFormFields
-                entityId={entityId}
-                products={products}
-                priceMapByCircuit={priceMapByCircuit}
-                editingDocumentId={doc.id}
-                defaultValues={headerDefaults}
-                defaultLines={defaultLines}
-              />
-            </FormModal>
-            <DeleteButton
-              action={deleteRemito}
-              hiddenName="documentId"
-              hiddenValue={doc.id}
-              confirmMessage="¿Borrar este remito? Esta acción no se puede deshacer."
-            />
-            {moveToBlanco}
-          </div>
-        );
-      } else if (doc.purchaseLines.length > 0) {
-        actions = (
-          <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" iconName="edit" title="Editar compra" action={updateCompra} maxWidthClass="max-w-2xl">
-              <CompraFormFields
-                entityId={entityId}
-                items={items}
-                editingDocumentId={doc.id}
-                defaultValues={headerDefaults}
-              />
-            </FormModal>
-            <DeleteButton
-              action={deleteCompra}
-              hiddenName="documentId"
-              hiddenValue={doc.id}
-              confirmMessage="¿Borrar esta compra? El stock que sumó se revierte. Esta acción no se puede deshacer."
-            />
-            {moveToBlanco}
-          </div>
-        );
-      } else if (doc.type === "FACTURA") {
-        actions = (
-          <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" iconName="edit" title="Editar factura" action={updateFactura}>
-              <EditFacturaFields
-                documentId={doc.id}
-                defaultValues={{
-                  ...headerDefaults,
-                  netAmount: doc.netAmount.toString(),
-                  ivaRate: doc.ivaRate?.toString(),
-                  retentionAmount: doc.retentionAmount?.toString(),
-                  perceptionAmount: doc.perceptionAmount?.toString(),
-                }}
-              />
-            </FormModal>
-            <DeleteButton
-              action={deleteFactura}
-              hiddenName="documentId"
-              hiddenValue={doc.id}
-              confirmMessage="¿Borrar esta factura? Los remitos vinculados vuelven a quedar pendientes de facturar."
-            />
-          </div>
-        );
-      } else {
-        actions = (
-          <div className="flex items-center gap-2">
-            <FormModal triggerLabel="Editar" iconName="edit" title="Editar movimiento" action={updateDocument}>
-              <EditDocumentFields
-                documentId={doc.id}
-                defaultValues={{
-                  ...headerDefaults,
-                  type: doc.type as "NOTA_CREDITO" | "NOTA_DEBITO" | "AJUSTE",
-                  amount: doc.netAmount.toString(),
-                  ajusteEffect: doc.totalAmount.lessThan(0) ? "RESTA" : "SUMA",
-                  reason: doc.reason ?? undefined,
-                }}
-              />
-            </FormModal>
-            <DeleteButton
-              action={deleteDocument}
-              hiddenName="documentId"
-              hiddenValue={doc.id}
-              confirmMessage="¿Borrar este movimiento? Esta acción no se puede deshacer."
-            />
-          </div>
-        );
-      }
-    }
-
-    rows.push({
-      key: `doc-${doc.id}`,
-      date: doc.date,
-      title: `${DOCUMENT_TYPE_LABELS[doc.type]} #${doc.number}`,
-      subtitle: docSubtitle,
-      debe: effect.greaterThan(0) ? effect : ZERO,
-      haber: effect.lessThan(0) ? effect.negated() : ZERO,
-      actions,
-    });
-  }
-
-  for (const payment of payments) {
-    // El Haber es el monto total del pago (no solo la parte imputada a algún comprobante) — así
-    // el saldo acumulado coincide con getAccountBalance, que resta el sobrante sin imputar como
-    // crédito a favor del cliente en vez de "perderlo".
-    const imputado = sumDecimals(payment.allocations.map((a) => a.amount));
-    const sinImputar = payment.amount.minus(imputado);
-    const linkedPayment = payment.linkedPaymentId ? linkedPaymentById.get(payment.linkedPaymentId) : undefined;
-    const destinoLabel = payment.treasuryId
-      ? `→ ${treasuryById.get(payment.treasuryId)?.name ?? "tesorería"}`
-      : linkedPayment
-        ? `→ directo a ${linkedPayment.account.entity.name}`
-        : null;
-    const subtitleParts = [
-      payment.reference,
-      destinoLabel,
-      sinImputar.greaterThan(0) ? `${formatMoney(sinImputar, payment.currency)} sin imputar` : null,
-    ].filter(Boolean);
-
-    const defaultDestino = payment.treasuryId ?? (linkedPayment ? PROVEEDOR_DIRECTO_VALUE : "");
-
-    rows.push({
-      key: `pay-${payment.id}`,
-      date: payment.date,
-      title: `Pago — ${PAYMENT_METHOD_LABELS[payment.method]}`,
-      subtitle: subtitleParts.length > 0 ? subtitleParts.join(" · ") : null,
-      debe: ZERO,
-      haber: payment.amount,
-      actions: canEdit ? (
+    if (entry.source.kind === "payment") {
+      const { payment, linkedPayment } = entry.source;
+      const defaultDestino = payment.treasuryId ?? (linkedPayment ? PROVEEDOR_DIRECTO_VALUE : "");
+      return (
         <div className="flex items-center gap-2">
           <FormModal triggerLabel="Editar" iconName="edit" title="Editar pago" action={updatePayment}>
             <EditPaymentFields
@@ -327,24 +130,140 @@ export default async function AccountLedgerPage({
             confirmMessage="¿Borrar este pago? Esta acción no se puede deshacer."
           />
         </div>
-      ) : null,
-    });
+      );
+    }
+
+    const doc = entry.source.document;
+    const headerDefaults = {
+      number: doc.number,
+      date: toDateInputValue(doc.date),
+      dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
+      currency: doc.currency,
+      exchangeRate: doc.exchangeRate?.toString(),
+    };
+
+    const moveToBlanco =
+      circuit === "NEGRO" && doc.remitoLinks.length === 0 ? (
+        <form action={moveRemitoToBlanco}>
+          <input type="hidden" name="documentId" value={doc.id} />
+          <button type="submit" className="text-xs underline underline-offset-2">
+            Mover a Blanco
+          </button>
+        </form>
+      ) : null;
+
+    if (doc.lines.length > 0) {
+      const defaultLines = doc.lines.map((l) => {
+        const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
+        const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
+        return {
+          productId: l.productId,
+          quantity: l.quantity.toString(),
+          pricePerBottle: pricePerBottle.toString(),
+          circuit,
+        };
+      });
+      return (
+        <div className="flex items-center gap-2">
+          <FormModal triggerLabel="Editar" iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-2xl">
+            <RemitoFormFields
+              entityId={entityId}
+              products={products}
+              priceMapByCircuit={priceMapByCircuit}
+              editingDocumentId={doc.id}
+              defaultValues={headerDefaults}
+              defaultLines={defaultLines}
+            />
+          </FormModal>
+          <DeleteButton
+            action={deleteRemito}
+            hiddenName="documentId"
+            hiddenValue={doc.id}
+            confirmMessage="¿Borrar este remito? Esta acción no se puede deshacer."
+          />
+          {moveToBlanco}
+        </div>
+      );
+    }
+
+    if (doc.purchaseLines.length > 0) {
+      return (
+        <div className="flex items-center gap-2">
+          <FormModal triggerLabel="Editar" iconName="edit" title="Editar compra" action={updateCompra} maxWidthClass="max-w-2xl">
+            <CompraFormFields
+              entityId={entityId}
+              items={items}
+              editingDocumentId={doc.id}
+              defaultValues={headerDefaults}
+            />
+          </FormModal>
+          <DeleteButton
+            action={deleteCompra}
+            hiddenName="documentId"
+            hiddenValue={doc.id}
+            confirmMessage="¿Borrar esta compra? El stock que sumó se revierte. Esta acción no se puede deshacer."
+          />
+          {moveToBlanco}
+        </div>
+      );
+    }
+
+    if (doc.type === "FACTURA") {
+      return (
+        <div className="flex items-center gap-2">
+          <FormModal triggerLabel="Editar" iconName="edit" title="Editar factura" action={updateFactura}>
+            <EditFacturaFields
+              documentId={doc.id}
+              defaultValues={{
+                ...headerDefaults,
+                netAmount: doc.netAmount.toString(),
+                ivaRate: doc.ivaRate?.toString(),
+                retentionAmount: doc.retentionAmount?.toString(),
+                perceptionAmount: doc.perceptionAmount?.toString(),
+              }}
+            />
+          </FormModal>
+          <DeleteButton
+            action={deleteFactura}
+            hiddenName="documentId"
+            hiddenValue={doc.id}
+            confirmMessage="¿Borrar esta factura? Los remitos vinculados vuelven a quedar pendientes de facturar."
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        <FormModal triggerLabel="Editar" iconName="edit" title="Editar movimiento" action={updateDocument}>
+          <EditDocumentFields
+            documentId={doc.id}
+            defaultValues={{
+              ...headerDefaults,
+              type: doc.type as "NOTA_CREDITO" | "NOTA_DEBITO" | "AJUSTE",
+              amount: doc.netAmount.toString(),
+              ajusteEffect: doc.totalAmount.lessThan(0) ? "RESTA" : "SUMA",
+              reason: doc.reason ?? undefined,
+            }}
+          />
+        </FormModal>
+        <DeleteButton
+          action={deleteDocument}
+          hiddenName="documentId"
+          hiddenValue={doc.id}
+          confirmMessage="¿Borrar este movimiento? Esta acción no se puede deshacer."
+        />
+      </div>
+    );
   }
 
-  rows.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-  let saldoAcumulado = ZERO;
-  const rowsWithBalance = rows.map((row) => {
-    saldoAcumulado = saldoAcumulado.plus(row.debe).minus(row.haber);
-    return { ...row, saldoAcumulado };
-  });
-
-  const totalDebe = sumDecimals(rows.map((r) => r.debe));
-  const totalHaber = sumDecimals(rows.map((r) => r.haber));
+  const exportQuery = new URLSearchParams({ ...(from ? { from } : {}), ...(to ? { to } : {}) }).toString();
+  const exportHref = `/cuentas-corrientes/${entity.slug}/${circuitSlug}/export${exportQuery ? `?${exportQuery}` : ""}`;
+  const hasFilter = Boolean(fromDate || toDate);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <Link
             href={isTreasuryEntity ? "/tesoreria" : `/cuentas-corrientes/${entity.slug}`}
@@ -356,25 +275,64 @@ export default async function AccountLedgerPage({
             {entity.name} — Cuenta {CIRCUIT_LABELS[circuit]}
           </h1>
         </div>
-        {isTreasuryEntity && canEdit && (
-          <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
-            <DocumentFormFields fixedEntityId={entityId} isTreasury />
-          </FormModal>
-        )}
+        <div className="flex items-center gap-2">
+          {isTreasuryEntity && canEdit && (
+            <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
+              <DocumentFormFields fixedEntityId={entityId} isTreasury />
+            </FormModal>
+          )}
+          <a
+            href={exportHref}
+            className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+          >
+            <Download size={16} />
+            Descargar Excel
+          </a>
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3 max-w-xl">
+      <form className="flex flex-wrap items-end gap-2">
+        <div className="space-y-1">
+          <label className="text-xs text-foreground/60" htmlFor="from">
+            Desde
+          </label>
+          <input id="from" type="date" name="from" defaultValue={from} className={`block ${inputClass}`} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs text-foreground/60" htmlFor="to">
+            Hasta
+          </label>
+          <input id="to" type="date" name="to" defaultValue={to} className={`block ${inputClass}`} />
+        </div>
+        <button type="submit" className={`${inputClass} hover:bg-foreground/5`}>
+          Filtrar
+        </button>
+        {hasFilter && (
+          <Link
+            href={`/cuentas-corrientes/${entity.slug}/${circuitSlug}`}
+            className="px-2 py-2 text-sm text-foreground/60 underline underline-offset-2"
+          >
+            Ver todo
+          </Link>
+        )}
+      </form>
+
+      <div className="grid gap-4 sm:grid-cols-4 max-w-3xl">
+        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
+          <p className="text-sm text-foreground/60">Saldo anterior</p>
+          <p className="text-lg font-semibold">{formatMoney(statement.saldoAnterior)}</p>
+        </div>
         <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm text-foreground/60">Debe</p>
-          <p className="text-lg font-semibold">{formatMoney(totalDebe)}</p>
+          <p className="text-lg font-semibold">{formatMoney(statement.totalDebe)}</p>
         </div>
         <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm text-foreground/60">Haber</p>
-          <p className="text-lg font-semibold">{formatMoney(totalHaber)}</p>
+          <p className="text-lg font-semibold">{formatMoney(statement.totalHaber)}</p>
         </div>
         <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm text-foreground/60">Saldo</p>
-          <p className="text-lg font-semibold">{formatMoney(saldoAcumulado)}</p>
+          <p className="text-lg font-semibold">{formatMoney(statement.saldoFinal)}</p>
         </div>
       </div>
 
@@ -391,30 +349,40 @@ export default async function AccountLedgerPage({
             </tr>
           </thead>
           <tbody>
-            {rowsWithBalance
+            {statement.entries
               .slice()
               .reverse()
-              .map((row) => (
-                <tr key={row.key} className="border-b border-foreground/5">
+              .map((entry) => (
+                <tr key={entry.key} className="border-b border-foreground/5">
                   <td className="py-2 pr-4 whitespace-nowrap">
-                    {row.date.toLocaleDateString("es-AR")}
+                    {entry.date.toLocaleDateString("es-AR")}
                   </td>
                   <td className="py-2 pr-4">
-                    {row.title}
-                    {row.subtitle && (
-                      <p className="text-xs font-normal text-foreground/50">{row.subtitle}</p>
+                    {entry.title}
+                    {entry.subtitle && (
+                      <p className="text-xs font-normal text-foreground/50">{entry.subtitle}</p>
                     )}
                   </td>
-                  <td className="py-2 pr-4">{row.debe.isZero() ? "—" : formatMoney(row.debe)}</td>
-                  <td className="py-2 pr-4">{row.haber.isZero() ? "—" : formatMoney(row.haber)}</td>
-                  <td className="py-2 pr-4 font-medium">{formatMoney(row.saldoAcumulado)}</td>
-                  {canEdit && <td className="py-2 pr-4">{row.actions}</td>}
+                  <td className="py-2 pr-4">{entry.debe.isZero() ? "—" : formatMoney(entry.debe)}</td>
+                  <td className="py-2 pr-4">{entry.haber.isZero() ? "—" : formatMoney(entry.haber)}</td>
+                  <td className="py-2 pr-4 font-medium">{formatMoney(entry.saldoAcumulado)}</td>
+                  {canEdit && <td className="py-2 pr-4">{renderActions(entry)}</td>}
                 </tr>
               ))}
-            {rowsWithBalance.length === 0 && (
+            {fromDate && (
+              <tr className="border-b border-foreground/5 bg-foreground/[0.02] font-medium">
+                <td className="py-2 pr-4 whitespace-nowrap">{fromDate.toLocaleDateString("es-AR")}</td>
+                <td className="py-2 pr-4">Saldo anterior</td>
+                <td className="py-2 pr-4">—</td>
+                <td className="py-2 pr-4">—</td>
+                <td className="py-2 pr-4">{formatMoney(statement.saldoAnterior)}</td>
+                {canEdit && <td className="py-2 pr-4"></td>}
+              </tr>
+            )}
+            {statement.entries.length === 0 && (
               <tr>
                 <td colSpan={canEdit ? 6 : 5} className="py-6 text-center text-foreground/40">
-                  Sin movimientos todavía.
+                  {hasFilter ? "Sin movimientos en este período." : "Sin movimientos todavía."}
                 </td>
               </tr>
             )}

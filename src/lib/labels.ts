@@ -15,6 +15,11 @@ export const CIRCUIT_LABELS: Record<Circuit, string> = {
   NEGRO: "Negro",
 };
 
+/** Segmento de URL → circuito, para las rutas `/cuentas-corrientes/<entidad>/<circuito>`. */
+export const CIRCUIT_BY_SLUG: Record<string, Circuit> = { blanco: "BLANCO", negro: "NEGRO" };
+
+export const CIRCUIT_SLUGS: Record<Circuit, string> = { BLANCO: "blanco", NEGRO: "negro" };
+
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   REMITO: "Remito",
   FACTURA: "Factura",

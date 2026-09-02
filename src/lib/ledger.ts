@@ -15,7 +15,7 @@ export function defaultDueDate(date: Date, circuit: Circuit): Date {
   return result;
 }
 
-type DocumentWithRelations = Prisma.DocumentGetPayload<{
+export type DocumentWithRelations = Prisma.DocumentGetPayload<{
   include: {
     remitoLinks: true;
     allocations: true;
