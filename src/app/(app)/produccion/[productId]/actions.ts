@@ -30,7 +30,7 @@ export async function updateProduct(formData: FormData) {
   if (!oilType) throw new Error("El tipo de aceite es obligatorio.");
   if (!presentation) throw new Error("La presentación es obligatoria.");
 
-  await prisma.product.update({
+  const product = await prisma.product.update({
     where: { id: productId },
     data: {
       name,
@@ -50,7 +50,7 @@ export async function updateProduct(formData: FormData) {
     summary: `${name} ${oilType} — ${presentation}`,
   });
 
-  revalidatePath(`/produccion/${productId}`);
+  revalidatePath(`/produccion/${product.slug}`);
   revalidatePath("/produccion");
 }
 
@@ -127,7 +127,7 @@ export async function generateRecipeFromPresentation(formData: FormData) {
     summary: `Receta de ${product.name} ${product.oilType} generada automáticamente — ${lines.length} insumo(s)`,
   });
 
-  revalidatePath(`/produccion/${productId}`);
+  revalidatePath(`/produccion/${product.slug}`);
   revalidatePath("/produccion");
 }
 
@@ -146,7 +146,10 @@ export async function upsertRecipeLine(formData: FormData) {
     throw new Error("La cantidad por unidad debe ser mayor a cero.");
   }
 
-  const item = await prisma.item.findUnique({ where: { id: itemId } });
+  const [item, product] = await Promise.all([
+    prisma.item.findUnique({ where: { id: itemId } }),
+    prisma.product.findUnique({ where: { id: productId }, select: { slug: true } }),
+  ]);
 
   await prisma.recipeItem.upsert({
     where: { productId_itemId: { productId, itemId } },
@@ -162,7 +165,7 @@ export async function upsertRecipeLine(formData: FormData) {
     summary: `${item?.name ?? "Insumo"} — ${quantityPerUnitRaw} por unidad`,
   });
 
-  revalidatePath(`/produccion/${productId}`);
+  revalidatePath(`/produccion/${product?.slug ?? productId}`);
   revalidatePath("/produccion");
 }
 
@@ -173,10 +176,13 @@ export async function deleteRecipeLine(formData: FormData) {
   const productId = String(formData.get("productId") || "");
   if (!recipeItemId) throw new Error("Falta el ítem de receta.");
 
-  const recipeItem = await prisma.recipeItem.findUnique({
-    where: { id: recipeItemId },
-    include: { item: true },
-  });
+  const [recipeItem, product] = await Promise.all([
+    prisma.recipeItem.findUnique({
+      where: { id: recipeItemId },
+      include: { item: true },
+    }),
+    prisma.product.findUnique({ where: { id: productId }, select: { slug: true } }),
+  ]);
 
   await prisma.recipeItem.delete({ where: { id: recipeItemId } });
 
@@ -188,6 +194,6 @@ export async function deleteRecipeLine(formData: FormData) {
     summary: recipeItem ? recipeItem.item.name : "Ítem de receta",
   });
 
-  revalidatePath(`/produccion/${productId}`);
+  revalidatePath(`/produccion/${product?.slug ?? productId}`);
   revalidatePath("/produccion");
 }

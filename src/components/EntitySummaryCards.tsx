@@ -7,7 +7,7 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 export function EntitySummaryCards({
-  entityId,
+  entitySlug,
   blancoSaldo,
   negroSaldo,
   card3Label,
@@ -15,7 +15,7 @@ export function EntitySummaryCards({
   card4Label,
   card4Value,
 }: {
-  entityId: string;
+  entitySlug: string;
   blancoSaldo: Prisma.Decimal;
   negroSaldo: Prisma.Decimal;
   card3Label: string;
@@ -25,13 +25,13 @@ export function EntitySummaryCards({
 }) {
   return (
     <div className="grid gap-4 sm:grid-cols-4">
-      <Link href={`/cuentas-corrientes/${entityId}/blanco`}>
+      <Link href={`/cuentas-corrientes/${entitySlug}/blanco`}>
         <Card>
           <p className="text-sm text-foreground/60">Cuenta 1 (c/factura)</p>
           <p className="text-2xl font-semibold">{formatMoney(blancoSaldo)}</p>
         </Card>
       </Link>
-      <Link href={`/cuentas-corrientes/${entityId}/negro`}>
+      <Link href={`/cuentas-corrientes/${entitySlug}/negro`}>
         <Card>
           <p className="text-sm text-foreground/60">Cuenta 2 (s/factura)</p>
           <p className="text-2xl font-semibold">{formatMoney(negroSaldo)}</p>

@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getItemMovements, getItemStock } from "@/lib/stock";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
@@ -17,8 +18,13 @@ export default async function ItemDetailPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const item = await prisma.item.findUnique({ where: { id: itemId } });
+  const item = await findBySlugOrId(
+    () => prisma.item.findUnique({ where: { slug: itemId } }),
+    (id) => prisma.item.findUnique({ where: { id } }),
+    itemId
+  );
   if (!item) notFound();
+  if (itemId !== item.slug) redirect(`/stock/${item.slug}`);
 
   const [stock, movements] = await Promise.all([getItemStock(item.id), getItemMovements(item.id)]);
   const movementsDesc = movements.slice().reverse();

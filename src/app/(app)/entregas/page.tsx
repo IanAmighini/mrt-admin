@@ -141,7 +141,7 @@ export default async function EntregasPage({
                 <td className="py-2 pr-4">#{doc.number}</td>
                 <td className="py-2 pr-4">
                   <Link
-                    href={`/cuentas-corrientes/${doc.account.entityId}`}
+                    href={`/cuentas-corrientes/${doc.account.entity.slug}`}
                     className="underline underline-offset-2"
                   >
                     {doc.account.entity.name}

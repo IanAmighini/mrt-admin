@@ -106,7 +106,7 @@ export async function PagosPageContent({
                   <tr key={payment.id} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">
                       <Link
-                        href={`/cuentas-corrientes/${payment.account.entityId}`}
+                        href={`/cuentas-corrientes/${payment.account.entity.slug}`}
                         className="underline underline-offset-2"
                       >
                         {payment.account.entity.name}

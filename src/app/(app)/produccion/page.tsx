@@ -138,7 +138,7 @@ export default async function ProduccionPage() {
                   <div key={line.id} className="flex items-center justify-between px-4 py-2 text-sm">
                     <div className="flex items-center gap-4">
                       <Link
-                        href={`/produccion/${line.product.id}`}
+                        href={`/produccion/${line.product.slug}`}
                         className="font-medium underline underline-offset-2"
                       >
                         {formatProductBrandLabel(line.product)}

@@ -14,12 +14,6 @@ export default async function NuevaCompraPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  async function submitCompra(formData: FormData) {
-    "use server";
-    await createCompra(formData);
-    redirect(fixedEntityId ? `/cuentas-corrientes/${fixedEntityId}` : "/compras");
-  }
-
   const [proveedores, items] = await Promise.all([
     prisma.entity.findMany({
       where: { type: { in: ["PROVEEDOR", "AMBOS"] } },
@@ -30,11 +24,17 @@ export default async function NuevaCompraPage({
 
   const fixedEntity = fixedEntityId ? proveedores.find((p) => p.id === fixedEntityId) : undefined;
 
+  async function submitCompra(formData: FormData) {
+    "use server";
+    await createCompra(formData);
+    redirect(fixedEntity ? `/cuentas-corrientes/${fixedEntity.slug}` : "/compras");
+  }
+
   return (
     <div className="max-w-4xl space-y-6">
       <div>
         <Link
-          href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.id}` : "/compras"}
+          href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.slug}` : "/compras"}
           className="text-sm underline underline-offset-2"
         >
           ← {fixedEntity ? `Volver a ${fixedEntity.name}` : "Volver a compras"}

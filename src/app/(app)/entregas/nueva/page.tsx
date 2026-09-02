@@ -17,12 +17,6 @@ export default async function NuevaEntregaPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  async function submitRemito(formData: FormData) {
-    "use server";
-    await createRemito(formData);
-    redirect(fixedEntityId ? `/cuentas-corrientes/${fixedEntityId}` : "/entregas");
-  }
-
   const [clientes, products, allPrices, allPedidos] = await Promise.all([
     prisma.entity.findMany({
       where: { type: { in: ["CLIENTE", "AMBOS"] } },
@@ -63,11 +57,17 @@ export default async function NuevaEntregaPage({
 
   const fixedEntity = fixedEntityId ? clientes.find((c) => c.id === fixedEntityId) : undefined;
 
+  async function submitRemito(formData: FormData) {
+    "use server";
+    await createRemito(formData);
+    redirect(fixedEntity ? `/cuentas-corrientes/${fixedEntity.slug}` : "/entregas");
+  }
+
   return (
     <div className="max-w-4xl space-y-6">
       <div>
         <Link
-          href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.id}` : "/entregas"}
+          href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.slug}` : "/entregas"}
           className="text-sm underline underline-offset-2"
         >
           ← {fixedEntity ? `Volver a ${fixedEntity.name}` : "Volver a entregas"}

@@ -130,7 +130,7 @@ export async function updateDocument(formData: FormData) {
     summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
   });
 
-  revalidatePath(`/cuentas-corrientes/${account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
 }
 
 export async function deleteDocument(formData: FormData) {
@@ -159,7 +159,7 @@ export async function deleteDocument(formData: FormData) {
     });
   });
 
-  revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
 }
 
 /**
@@ -230,7 +230,7 @@ export async function createDocumentForEntity(formData: FormData) {
     summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
   });
 
-  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
 }
 
 /** Núcleo compartido por createRemito y updateRemito (que borra y vuelve a llamar a este núcleo)
@@ -358,7 +358,7 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
     });
   }, { timeout: 20000 });
 
-  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath(`/cuentas-corrientes/${entity.slug}`);
   revalidatePath("/entregas");
   revalidatePath("/dashboard-clientes");
   if (pedidoIds.length > 0) revalidatePath("/pedidos");
@@ -403,7 +403,7 @@ export async function deleteRemito(formData: FormData) {
     });
   });
 
-  revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
   revalidatePath("/entregas");
   revalidatePath("/dashboard-clientes");
 }
@@ -534,7 +534,7 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
     });
   });
 
-  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath(`/cuentas-corrientes/${entity.slug}`);
   revalidatePath("/stock");
   revalidatePath("/compras");
   revalidatePath("/dashboard-proveedores");
@@ -577,7 +577,7 @@ export async function deleteCompra(formData: FormData) {
     });
   });
 
-  revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
   revalidatePath("/stock");
   revalidatePath("/compras");
   revalidatePath("/dashboard-proveedores");
@@ -689,7 +689,7 @@ export async function createFactura(formData: FormData) {
     });
   });
 
-  revalidatePath(`/cuentas-corrientes/${account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
 }
 
 /** Edita los montos de una factura ya cargada. No toca los remitos que tenga vinculados — para
@@ -748,7 +748,7 @@ export async function updateFactura(formData: FormData) {
     summary: `#${number} — ${factura.account.entity.name} — ${formatMoney(totalAmount, currency)}`,
   });
 
-  revalidatePath(`/cuentas-corrientes/${factura.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${factura.account.entity.slug}`);
 }
 
 /** Borrar una factura "desfactura" los remitos que tenía vinculados (vuelven a pendiente). */
@@ -777,7 +777,7 @@ export async function deleteFactura(formData: FormData) {
     });
   });
 
-  revalidatePath(`/cuentas-corrientes/${factura.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${factura.account.entity.slug}`);
 }
 
 /**
@@ -938,7 +938,7 @@ export async function createPaymentForEntity(formData: FormData) {
     summary: `${isCobro ? "Cobro de" : "Pago a"} ${account.entity.name} — ${formatMoney(amount)} — ${PAYMENT_METHOD_LABELS[method]}`,
   });
 
-  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
   revalidatePath("/pagos-clientes");
   revalidatePath("/pagos-proveedores");
   revalidatePath("/dashboard-clientes");
@@ -957,7 +957,10 @@ export async function deletePayment(formData: FormData) {
   if (!payment) throw new Error("El pago ya no existe.");
 
   const linkedPayment = payment.linkedPaymentId
-    ? await prisma.payment.findUnique({ where: { id: payment.linkedPaymentId }, include: { account: true } })
+    ? await prisma.payment.findUnique({
+        where: { id: payment.linkedPaymentId },
+        include: { account: { include: { entity: true } } },
+      })
     : null;
 
   await prisma.$transaction(async (tx) => {
@@ -977,8 +980,8 @@ export async function deletePayment(formData: FormData) {
     });
   });
 
-  revalidatePath(`/cuentas-corrientes/${payment.account.entityId}`);
-  if (linkedPayment) revalidatePath(`/cuentas-corrientes/${linkedPayment.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${payment.account.entity.slug}`);
+  if (linkedPayment) revalidatePath(`/cuentas-corrientes/${linkedPayment.account.entity.slug}`);
   revalidatePath("/pagos-clientes");
   revalidatePath("/pagos-proveedores");
   revalidatePath("/dashboard-clientes");
@@ -1021,7 +1024,10 @@ export async function updatePayment(formData: FormData) {
 
   const oldLinkedPaymentId = payment.linkedPaymentId;
   const oldLinkedPayment = oldLinkedPaymentId
-    ? await prisma.payment.findUnique({ where: { id: oldLinkedPaymentId }, include: { account: true } })
+    ? await prisma.payment.findUnique({
+        where: { id: oldLinkedPaymentId },
+        include: { account: { include: { entity: true } } },
+      })
     : null;
 
   await prisma.$transaction(async (tx) => {
@@ -1074,8 +1080,8 @@ export async function updatePayment(formData: FormData) {
     summary: `${isCobro ? "Cobro de" : "Pago a"} ${account.entity.name} — ${formatMoney(amount)} — ${PAYMENT_METHOD_LABELS[method]}`,
   });
 
-  revalidatePath(`/cuentas-corrientes/${entityId}`);
-  if (oldLinkedPayment) revalidatePath(`/cuentas-corrientes/${oldLinkedPayment.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
+  if (oldLinkedPayment) revalidatePath(`/cuentas-corrientes/${oldLinkedPayment.account.entity.slug}`);
   revalidatePath("/pagos-clientes");
   revalidatePath("/pagos-proveedores");
   revalidatePath("/dashboard-clientes");
@@ -1118,7 +1124,7 @@ export async function moveRemitoToBlanco(formData: FormData) {
     summary: `#${document.number} — ${document.account.entity.name} — movido a cuenta Blanco`,
   });
 
-  revalidatePath(`/cuentas-corrientes/${document.account.entityId}`);
+  revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
 }
 
 export async function createPrice(formData: FormData) {
@@ -1152,5 +1158,5 @@ export async function createPrice(formData: FormData) {
     summary: `${product?.name ?? "Producto"} para ${entity?.name ?? "entidad"} — ${formatMoney(amount, currency)}`,
   });
 
-  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath(`/cuentas-corrientes/${entity?.slug ?? entityId}`);
 }

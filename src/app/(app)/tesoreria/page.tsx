@@ -42,7 +42,7 @@ export default async function TesoreriaPage() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               {blanco && (
                 <Link
-                  href={`/cuentas-corrientes/${treasury.id}/blanco`}
+                  href={`/cuentas-corrientes/${treasury.slug}/blanco`}
                   className="rounded-lg border border-foreground/10 p-3 hover:bg-foreground/5 transition-colors"
                 >
                   <p className="text-foreground/60">{CIRCUIT_LABELS.BLANCO}</p>
@@ -51,7 +51,7 @@ export default async function TesoreriaPage() {
               )}
               {negro && (
                 <Link
-                  href={`/cuentas-corrientes/${treasury.id}/negro`}
+                  href={`/cuentas-corrientes/${treasury.slug}/negro`}
                   className="rounded-lg border border-foreground/10 p-3 hover:bg-foreground/5 transition-colors"
                 >
                   <p className="text-foreground/60">{CIRCUIT_LABELS.NEGRO}</p>

@@ -1,5 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
+import { generateUniqueSlug } from "./slug";
 
 type Tx = Prisma.TransactionClient;
 
@@ -20,9 +21,17 @@ export async function resolveOrCreateProduct(tx: Tx, marcaId: string, formatoId:
     include: { recipe: true },
   });
   if (!product) {
+    // El nombre solo (la "marca") se repite entre presentaciones distintas del mismo producto —
+    // se suma oilType + presentation para que el slug identifique la presentación puntual.
+    const slug = await generateUniqueSlug(
+      `${marca.name} ${marca.oilType} ${formato.presentation}`,
+      (candidate) => tx.product.findUnique({ where: { slug: candidate } }).then(Boolean),
+      "producto"
+    );
     product = await tx.product.create({
       data: {
         name: marca.name,
+        slug,
         oilType: marca.oilType,
         presentation: formato.presentation,
         boxesPerPallet: formato.boxesPerPallet,

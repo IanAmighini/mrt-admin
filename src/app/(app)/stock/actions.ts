@@ -5,6 +5,7 @@ import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
+import { generateUniqueSlug } from "@/lib/slug";
 
 const CATEGORIES: SupplierCategory[] = [
   "ACEITE",
@@ -33,9 +34,15 @@ export async function createItem(formData: FormData) {
   if (!CATEGORIES.includes(category)) throw new Error("Elegí una categoría válida.");
 
   await prisma.$transaction(async (tx) => {
+    const slug = await generateUniqueSlug(
+      name,
+      (candidate) => tx.item.findUnique({ where: { slug: candidate } }).then(Boolean),
+      "insumo"
+    );
     const item = await tx.item.create({
       data: {
         name,
+        slug,
         unit,
         category,
         isResellable,
@@ -90,6 +97,6 @@ export async function updateItemCost(formData: FormData) {
     summary: `${item.name} — costo unitario: ${unitCostRaw}`,
   });
 
-  revalidatePath(`/stock/${itemId}`);
+  revalidatePath(`/stock/${item.slug}`);
   revalidatePath("/stock");
 }

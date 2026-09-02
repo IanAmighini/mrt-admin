@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { formatMoney } from "@/lib/money";
 
 export type SaldoRow = {
-  entity: { id: string; name: string };
+  entity: { id: string; name: string; slug: string };
   blancoSaldo: Prisma.Decimal | null;
   negroSaldo: Prisma.Decimal | null;
 };
@@ -40,7 +40,7 @@ export function TopDeudaSection({
               return (
                 <tr key={entity.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">
-                    <Link href={`/cuentas-corrientes/${entity.id}/${circuit}`} className="underline underline-offset-2">
+                    <Link href={`/cuentas-corrientes/${entity.slug}/${circuit}`} className="underline underline-offset-2">
                       {entity.name}
                     </Link>
                   </td>

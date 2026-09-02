@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
 import { logAudit } from "@/lib/audit";
+import { generateUniqueSlug } from "@/lib/slug";
 import type { EntityType, SupplierCategory } from "@prisma/client";
 
 const ENTITY_TYPES: EntityType[] = ["CLIENTE", "PROVEEDOR", "AMBOS"];
@@ -51,8 +52,13 @@ export async function createEntity(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    const slug = await generateUniqueSlug(
+      name,
+      (candidate) => tx.entity.findUnique({ where: { slug: candidate } }).then(Boolean),
+      "entidad"
+    );
     const entity = await tx.entity.create({
-      data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
+      data: { name, slug, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
     });
     const [blanco, negro] = await Promise.all([
       tx.account.create({ data: { entityId: entity.id, circuit: "BLANCO" } }),
@@ -121,7 +127,7 @@ export async function updateEntity(formData: FormData) {
     throw new Error("Tipo inválido.");
   }
 
-  await prisma.entity.update({
+  const entity = await prisma.entity.update({
     where: { id: entityId },
     data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
   });
@@ -136,5 +142,5 @@ export async function updateEntity(formData: FormData) {
 
   revalidatePath("/clientes");
   revalidatePath("/proveedores");
-  revalidatePath(`/cuentas-corrientes/${entityId}`);
+  revalidatePath(`/cuentas-corrientes/${entity.slug}`);
 }

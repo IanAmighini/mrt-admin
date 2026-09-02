@@ -97,6 +97,7 @@ enum SupplierCategory {
 
 model Entity {
   id                 String            @id @default(cuid())
+  slug               String            @unique
   name               String
   type               EntityType
   taxId              String?
@@ -287,6 +288,7 @@ model PaymentAllocation {
 
 model Item {
   id           String           @id @default(cuid())
+  slug         String           @unique
   name         String
   unit         String
   category     SupplierCategory @default(OTRO)
@@ -335,6 +337,7 @@ model ItemMovement {
 
 model Product {
   id               String   @id @default(cuid())
+  slug             String   @unique
   name             String
   oilType          String
   presentation     String

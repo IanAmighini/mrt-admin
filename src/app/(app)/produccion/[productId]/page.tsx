@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getProductStock } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
 import {
@@ -20,11 +21,21 @@ export default async function ProductDetailPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const product = await prisma.product.findUnique({
-    where: { id: productId },
-    include: { recipe: { include: { item: true } } },
-  });
+  const product = await findBySlugOrId(
+    () =>
+      prisma.product.findUnique({
+        where: { slug: productId },
+        include: { recipe: { include: { item: true } } },
+      }),
+    (id) =>
+      prisma.product.findUnique({
+        where: { id },
+        include: { recipe: { include: { item: true } } },
+      }),
+    productId
+  );
   if (!product) notFound();
+  if (productId !== product.slug) redirect(`/produccion/${product.slug}`);
 
   const [stock, items] = await Promise.all([
     getProductStock(product.id),

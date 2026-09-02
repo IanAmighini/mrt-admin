@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Circuit, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getAccountDocuments, getDocumentEffect, getTreasuries } from "@/lib/ledger";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
@@ -58,15 +59,21 @@ export default async function AccountLedgerPage({
 }: {
   params: Promise<{ entityId: string; circuit: string }>;
 }) {
-  const { entityId, circuit: circuitSlug } = await params;
+  const { entityId: entityParam, circuit: circuitSlug } = await params;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const circuit = CIRCUIT_BY_SLUG[circuitSlug];
   if (!circuit) notFound();
 
-  const entity = await prisma.entity.findUnique({ where: { id: entityId } });
+  const entity = await findBySlugOrId(
+    () => prisma.entity.findUnique({ where: { slug: entityParam } }),
+    (id) => prisma.entity.findUnique({ where: { id } }),
+    entityParam
+  );
   if (!entity) notFound();
+  if (entityParam !== entity.slug) redirect(`/cuentas-corrientes/${entity.slug}/${circuitSlug}`);
+  const entityId = entity.id;
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
@@ -343,7 +350,7 @@ export default async function AccountLedgerPage({
       <div className="flex items-start justify-between">
         <div>
           <Link
-            href={isTreasuryEntity ? "/tesoreria" : `/cuentas-corrientes/${entityId}`}
+            href={isTreasuryEntity ? "/tesoreria" : `/cuentas-corrientes/${entity.slug}`}
             className="text-sm underline underline-offset-2"
           >
             ← Volver a {isTreasuryEntity ? "Tesorería" : entity.name}

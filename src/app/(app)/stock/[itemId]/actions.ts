@@ -74,6 +74,6 @@ export async function createItemMovement(formData: FormData) {
     summary: `${ITEM_MOVEMENT_TYPE_LABELS[type]} — ${item.name} — ${formatQuantity(quantity, item.unit)}`,
   });
 
-  revalidatePath(`/stock/${item.id}`);
+  revalidatePath(`/stock/${item.slug}`);
   revalidatePath("/stock");
 }

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Account, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { findBySlugOrId } from "@/lib/slug-lookup";
 import {
   getAccountBalance,
   getComprasSummary,
@@ -36,11 +37,13 @@ export default async function EntityLedgerPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const entity = await prisma.entity.findUnique({
-    where: { id: entityId },
-    include: { accounts: true },
-  });
+  const entity = await findBySlugOrId(
+    () => prisma.entity.findUnique({ where: { slug: entityId }, include: { accounts: true } }),
+    (id) => prisma.entity.findUnique({ where: { id }, include: { accounts: true } }),
+    entityId
+  );
   if (!entity) notFound();
+  if (entityId !== entity.slug) redirect(`/cuentas-corrientes/${entity.slug}`);
 
   const blancoAccount = entity.accounts.find((a) => a.circuit === "BLANCO");
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
@@ -142,7 +145,7 @@ export default async function EntityLedgerPage({
       </div>
 
       <EntitySummaryCards
-        entityId={entity.id}
+        entitySlug={entity.slug}
         blancoSaldo={blancoSaldo}
         negroSaldo={negroSaldo}
         card3Label={card3Label}

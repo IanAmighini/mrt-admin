@@ -52,7 +52,7 @@ export default async function ClientesPage() {
               <tr key={entity.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4">
                   <Link
-                    href={`/cuentas-corrientes/${entity.id}`}
+                    href={`/cuentas-corrientes/${entity.slug}`}
                     className="underline underline-offset-2"
                   >
                     {entity.name}

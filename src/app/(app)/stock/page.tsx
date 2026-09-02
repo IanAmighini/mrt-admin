@@ -135,7 +135,7 @@ export default async function StockPage({
                     <td className="py-2 px-4">{product.name}</td>
                     <td className="py-2 px-4">{product.oilType}</td>
                     <td className="py-2 px-4">
-                      <Link href={`/produccion/${product.id}`} className="underline underline-offset-2">
+                      <Link href={`/produccion/${product.slug}`} className="underline underline-offset-2">
                         {product.presentation}
                       </Link>
                     </td>
@@ -304,7 +304,7 @@ export default async function StockPage({
                       const negative = Number(stock) < 0;
                       return (
                         <div key={item.id} className="flex items-center justify-between text-sm">
-                          <Link href={`/stock/${item.id}`} className="underline underline-offset-2">
+                          <Link href={`/stock/${item.slug}`} className="underline underline-offset-2">
                             {item.name}
                           </Link>
                           <span className={negative ? "font-medium text-red-600 dark:text-red-400" : "font-medium"}>
@@ -317,7 +317,7 @@ export default async function StockPage({
                 )}
                 {categoryItems.length === 1 && (
                   <Link
-                    href={`/stock/${categoryItems[0].id}`}
+                    href={`/stock/${categoryItems[0].slug}`}
                     className="text-xs underline underline-offset-2"
                   >
                     Ver kardex
