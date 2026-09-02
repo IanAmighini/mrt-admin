@@ -211,6 +211,23 @@ export async function getRecentCompras(limit = 30, entityId?: string, search?: s
  * según la receta del producto (RecipeItem.quantityPerUnit ya está expresado por pallet armado,
  * no por botella). Ignora líneas de productos sin receta de aceite o sin cajas/pallet y
  * botellas/caja cargados. */
+export type LineWithRecipe = Prisma.DocumentLineGetPayload<{
+  include: { product: { include: { recipe: { include: { item: true } } } } };
+}>;
+
+/**
+ * Litros de aceite que representa una línea de remito: pallets × los litros por pallet que dice
+ * la receta del producto (el insumo medido en "L"). Cero si al producto le falta la presentación
+ * o no tiene aceite en la receta. Única definición de "litros entregados" en la app.
+ */
+export function litrosDeLinea(line: LineWithRecipe): Prisma.Decimal {
+  const { product } = line;
+  if (!product.boxesPerPallet || !product.unitsPerBox) return ZERO;
+  const oilRecipe = product.recipe.find((r) => r.item.unit === "L");
+  if (!oilRecipe) return ZERO;
+  return toDecimal(line.quantity).times(oilRecipe.quantityPerUnit);
+}
+
 export async function getLitrosEntregados(entityId: string): Promise<Prisma.Decimal> {
   const documents = await prisma.document.findMany({
     where: { type: "REMITO", account: { entityId }, lines: { some: {} } },
@@ -223,17 +240,7 @@ export async function getLitrosEntregados(entityId: string): Promise<Prisma.Deci
     },
   });
 
-  let litros = ZERO;
-  for (const doc of documents) {
-    for (const line of doc.lines) {
-      const { product } = line;
-      if (!product.boxesPerPallet || !product.unitsPerBox) continue;
-      const oilRecipe = product.recipe.find((r) => r.item.unit === "L");
-      if (!oilRecipe) continue;
-      litros = litros.plus(toDecimal(line.quantity).times(oilRecipe.quantityPerUnit));
-    }
-  }
-  return litros;
+  return sumDecimals(documents.flatMap((doc) => doc.lines.map(litrosDeLinea)));
 }
 
 /** Cantidad de remitos (entregas) distintos de una entidad — una compra/entrega mixta
