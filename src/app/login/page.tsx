@@ -40,7 +40,7 @@ export default async function LoginPage({
         <div className="flex flex-col items-center gap-2 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" width={56} height={56} />
-          <h1 className="text-lg font-semibold">Envasadora</h1>
+          <h1 className="text-lg font-semibold">MRT</h1>
           <p className="text-sm text-foreground/60">Iniciá sesión para continuar</p>
         </div>
         {params.error && (

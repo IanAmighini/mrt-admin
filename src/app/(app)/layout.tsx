@@ -21,7 +21,7 @@ export default async function AppLayout({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" width={32} height={32} className="shrink-0 rounded-lg" />
           <div>
-            <p className="font-semibold">Envasadora</p>
+            <p className="font-semibold">MRT</p>
             <p className="text-sm text-foreground/60">
               {user.name} · {ROLE_LABELS[user.role]}
             </p>

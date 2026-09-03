@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Envasadora — Sistema de Gestión",
+  title: "MRT — Sistema de Gestión",
   description: "Cuentas corrientes, stock, producción y pallets",
 };
 

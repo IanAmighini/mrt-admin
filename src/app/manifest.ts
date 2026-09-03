@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Envasadora — Sistema de Gestión",
-    short_name: "Envasadora",
+    name: "MRT — Sistema de Gestión",
+    short_name: "MRT",
     description: "Cuentas corrientes, stock, producción y pallets",
     start_url: "/",
     display: "standalone",
