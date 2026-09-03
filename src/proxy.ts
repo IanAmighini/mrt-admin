@@ -32,5 +32,13 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
+  /**
+   * Los archivos estáticos quedan afuera por extensión: sin esto, alguien sin sesión pide
+   * /logo.png, el middleware lo manda a /login y el <img> termina recibiendo HTML (por eso el
+   * logo se veía roto justamente en la pantalla de login). Lo mismo aplica al manifest y a los
+   * íconos, que iOS pide sin sesión al ofrecer "Agregar a pantalla de inicio".
+   */
+  matcher: [
+    "/((?!api/auth|_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|webmanifest)$).*)",
+  ],
 };
