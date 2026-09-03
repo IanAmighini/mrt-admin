@@ -2,6 +2,7 @@ import { LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth-helpers";
 import { NAV_ITEMS, ROLE_LABELS } from "@/lib/nav";
 import { SidebarNav } from "@/components/SidebarNav";
+import { SearchPalette } from "@/components/SearchPalette";
 import { signOut } from "@/auth";
 
 export default async function AppLayout({
@@ -26,20 +27,25 @@ export default async function AppLayout({
             </p>
           </div>
         </div>
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/login" });
-          }}
-        >
-          <button
-            type="submit"
-            className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
+        {/* Montada acá y no en cada página: un solo listener global de ⌘K para toda la app, y la
+            paleta sobrevive a la navegación sin volver a registrarlo. */}
+        <div className="flex items-center gap-1">
+          <SearchPalette />
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/login" });
+            }}
           >
-            <LogOut size={16} />
-            Cerrar sesión
-          </button>
-        </form>
+            <button
+              type="submit"
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
+            >
+              <LogOut size={16} />
+              Cerrar sesión
+            </button>
+          </form>
+        </div>
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
         <SidebarNav items={items} />
