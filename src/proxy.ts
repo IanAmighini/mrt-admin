@@ -37,8 +37,16 @@ export const config = {
    * /logo.png, el middleware lo manda a /login y el <img> termina recibiendo HTML (por eso el
    * logo se veía roto justamente en la pantalla de login). Lo mismo aplica al manifest y a los
    * íconos, que iOS pide sin sesión al ofrecer "Agregar a pantalla de inicio".
+   *
+   * `api/cron` también queda afuera, y es importante entender por qué: esas rutas las llama
+   * Vercel Cron sin sesión, autenticándose con un token. Si el middleware las redirigiera al
+   * login, el job **desaparecería en silencio** — Vercel Cron no sigue redirects y ni siquiera
+   * los registra en el log, así que no habría forma de darse cuenta de que nunca corrió. El
+   * handler valida el token por su cuenta.
+   *
+   * Ojo: se excluye `api/cron`, no todo `/api` — `/api/buscar` sí necesita el chequeo de sesión.
    */
   matcher: [
-    "/((?!api/auth|_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|webmanifest)$).*)",
+    "/((?!api/auth|api/cron|_next/static|_next/image|.*\\.(?:png|jpg|jpeg|gif|svg|ico|webp|webmanifest)$).*)",
   ],
 };

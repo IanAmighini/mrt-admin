@@ -17,7 +17,7 @@ export type PedidoPendiente = Awaited<ReturnType<typeof getPedidosPendientesByEn
 export function getAllPedidosPendientes() {
   return prisma.pedido.findMany({
     where: { status: { not: "ENTREGADO" } },
-    include: { lines: { include: { product: true } } },
+    include: { entity: true, lines: { include: { product: true } } },
     orderBy: { date: "asc" },
   });
 }

@@ -1,7 +1,11 @@
 import Link from "next/link";
-import { Download } from "lucide-react";
+import { Download, Send } from "lucide-react";
 import type { Circuit } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
+import { FormModal } from "@/components/Modal";
+import { WeeklyReportFields } from "@/components/WeeklyReportFields";
+import { getLastRunInfo, getRecipients } from "@/lib/weekly-report";
+import { sendWeeklyReportNow, updateWeeklyReportRecipients } from "./actions";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
 import { formatPeriodLabel, periodFromSearchParams, PERIOD_PRESETS } from "@/lib/period";
 import { isReportKey, REPORT_KEYS, REPORT_LABELS, type ReportKey } from "@/lib/reports";
@@ -51,8 +55,13 @@ export default async function ReportesPage({
 }: {
   searchParams: Promise<{ report?: string; preset?: string; from?: string; to?: string; circuit?: string }>;
 }) {
-  await requireRole(["ADMIN", "SOLO_LECTURA"]);
+  const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const sp = await searchParams;
+  const isAdmin = user.role === "ADMIN";
+
+  const [recipients, lastRun] = isAdmin
+    ? await Promise.all([getRecipients(), getLastRunInfo()])
+    : [[], null];
 
   const report: ReportKey = isReportKey(sp.report) ? sp.report : "remitos-vencidos";
   const { period, preset } = periodFromSearchParams(sp);
@@ -98,13 +107,36 @@ export default async function ReportesPage({
             {usaPeriodo ? ` — ${formatPeriodLabel(period)}` : " — a hoy"}
           </p>
         </div>
-        <a
-          href={`/reportes/export?${exportParams.toString()}`}
-          className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-        >
-          <Download size={16} />
-          Descargar Excel
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <>
+              <form action={sendWeeklyReportNow}>
+                <button
+                  type="submit"
+                  className="flex w-fit items-center gap-1.5 rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors hover:bg-foreground/5"
+                >
+                  <Send size={15} />
+                  Enviar reporte ahora
+                </button>
+              </form>
+              <FormModal
+                triggerLabel="Reporte semanal"
+                iconName="edit"
+                title="Reporte semanal por mail"
+                action={updateWeeklyReportRecipients}
+              >
+                <WeeklyReportFields recipients={recipients.join("\n")} lastRun={lastRun} />
+              </FormModal>
+            </>
+          )}
+          <a
+            href={`/reportes/export?${exportParams.toString()}`}
+            className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+          >
+            <Download size={16} />
+            Descargar Excel
+          </a>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-1">
