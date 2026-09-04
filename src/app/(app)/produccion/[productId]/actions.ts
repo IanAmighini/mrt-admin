@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
@@ -77,6 +78,30 @@ export async function generateRecipeFromPresentation(formData: FormData) {
   const boxItemId = String(formData.get("boxItemId") || "");
   const oilItemId = String(formData.get("oilItemId") || "");
 
+  // Cada rol del generador se corresponde con una categoría de insumo. Validarlo importa porque el
+  // resto de la app decide por categoría: cuál es la tapa de la receta, qué se puede reemplazar al
+  // producir, y qué líneas limpia el deleteMany de más abajo.
+  const ROLES: { itemId: string; category: SupplierCategory; label: string }[] = [
+    { itemId: woodPalletItemId, category: "PALLET_NORMALIZADO", label: "Pallet" },
+    { itemId: bottleItemId, category: "ENVASES", label: "Envase" },
+    { itemId: capItemId, category: "TAPAS", label: "Tapa" },
+    { itemId: labelItemId, category: "ETIQUETAS", label: "Etiqueta" },
+    { itemId: boxItemId, category: "CAJAS", label: "Caja" },
+    { itemId: oilItemId, category: "ACEITE", label: "Aceite" },
+  ];
+  const elegidos = ROLES.filter((r) => r.itemId);
+  const itemsElegidos = await prisma.item.findMany({
+    where: { id: { in: elegidos.map((r) => r.itemId) } },
+    select: { id: true, name: true, category: true },
+  });
+  for (const rol of elegidos) {
+    const item = itemsElegidos.find((i) => i.id === rol.itemId);
+    if (!item) throw new Error(`El insumo elegido para ${rol.label} ya no existe.`);
+    if (item.category !== rol.category) {
+      throw new Error(`"${item.name}" no es un insumo de ${rol.label.toLowerCase()}.`);
+    }
+  }
+
   const lines: { itemId: string; quantityPerUnit: ReturnType<typeof toDecimal> }[] = [];
 
   if (woodPalletItemId) {
@@ -109,15 +134,27 @@ export async function generateRecipeFromPresentation(formData: FormData) {
     throw new Error("Elegí al menos un insumo para generar la receta.");
   }
 
-  await prisma.$transaction(
-    lines.map((line) =>
-      prisma.recipeItem.upsert({
+  await prisma.$transaction(async (tx) => {
+    // Antes solo se hacía upsert, así que regenerar la receta con otra tapa dejaba las dos y
+    // producir consumía ambas. Se limpia lo anterior, pero **solo de las categorías que se
+    // completaron**: un rol vacío tiene que seguir significando "no toques", no "borrá". Excluir
+    // los recién elegidos lo hace idempotente.
+    await tx.recipeItem.deleteMany({
+      where: {
+        productId,
+        item: { category: { in: elegidos.map((r) => r.category) } },
+        itemId: { notIn: lines.map((l) => l.itemId) },
+      },
+    });
+
+    for (const line of lines) {
+      await tx.recipeItem.upsert({
         where: { productId_itemId: { productId, itemId: line.itemId } },
         update: { quantityPerUnit: line.quantityPerUnit },
         create: { productId, itemId: line.itemId, quantityPerUnit: line.quantityPerUnit },
-      })
-    )
-  );
+      });
+    }
+  });
 
   await logAudit(prisma, {
     userId: user.id,

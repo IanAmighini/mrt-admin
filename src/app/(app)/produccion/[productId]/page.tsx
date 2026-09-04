@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
@@ -41,6 +42,13 @@ export default async function ProductDetailPage({
     getProductStock(product.id),
     prisma.item.findMany({ orderBy: { name: "asc" } }),
   ]);
+
+  /** Cada rol del generador es una categoría de insumo. Filtrar no es cosmético: la sustitución al
+   * producir y la limpieza de la receta deciden por categoría, así que una caja archivada bajo
+   * TAPAS por un mal clic haría fallar las dos en silencio. */
+  function itemsPorCategoria(category: SupplierCategory) {
+    return items.filter((item) => item.category === category);
+  }
 
   return (
     <div className="space-y-8">
@@ -172,7 +180,7 @@ export default async function ProductDetailPage({
             <Field label="Pallet de madera">
               <select name="woodPalletItemId" defaultValue="" className={selectClass}>
                 <option value="">— No aplica —</option>
-                {items.map((item) => (
+                {itemsPorCategoria("PALLET_NORMALIZADO").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -182,7 +190,7 @@ export default async function ProductDetailPage({
             <Field label="Botella / bidón">
               <select name="bottleItemId" defaultValue="" className={selectClass}>
                 <option value="">— No aplica —</option>
-                {items.map((item) => (
+                {itemsPorCategoria("ENVASES").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -192,7 +200,7 @@ export default async function ProductDetailPage({
             <Field label="Tapa">
               <select name="capItemId" defaultValue="" className={selectClass}>
                 <option value="">— No aplica —</option>
-                {items.map((item) => (
+                {itemsPorCategoria("TAPAS").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -202,7 +210,7 @@ export default async function ProductDetailPage({
             <Field label="Etiqueta">
               <select name="labelItemId" defaultValue="" className={selectClass}>
                 <option value="">— No aplica —</option>
-                {items.map((item) => (
+                {itemsPorCategoria("ETIQUETAS").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -212,7 +220,7 @@ export default async function ProductDetailPage({
             <Field label="Caja">
               <select name="boxItemId" defaultValue="" className={selectClass}>
                 <option value="">— No aplica —</option>
-                {items.map((item) => (
+                {itemsPorCategoria("CAJAS").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
@@ -222,7 +230,7 @@ export default async function ProductDetailPage({
             <Field label="Aceite">
               <select name="oilItemId" defaultValue="" className={selectClass}>
                 <option value="">— No aplica —</option>
-                {items.map((item) => (
+                {itemsPorCategoria("ACEITE").map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>

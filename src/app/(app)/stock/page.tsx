@@ -34,11 +34,21 @@ const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
   OTRO: HelpCircle,
 };
 
-/** Los nombres de insumo siguen la convención "Envase 850ml" / "Tapa 900ml" — se usa para
- * ordenar cada categoría de menor a mayor tamaño en vez de alfabéticamente. */
-function extractMl(name: string): number | null {
-  const match = name.match(/(\d+)\s*ml/i);
-  return match ? parseInt(match[1], 10) : null;
+/**
+ * Tamaño con el que se ordena cada categoría, de menor a mayor, en vez de alfabéticamente.
+ * Los nombres no siguen una sola convención: los envases y etiquetas terminan en "850ml", las
+ * cajas en "12x900" y las tapas llevan la boca en milímetros ("29mm"). Sin contemplar los tres
+ * casos, cajas y tapas caerían en orden alfabético y quedaría "Caja Lisa 12x1500" antes que
+ * "Caja Lisa 12x900".
+ */
+function extractSize(name: string): number | null {
+  const ml = name.match(/(\d+)\s*ml/i);
+  if (ml) return parseInt(ml[1], 10);
+  const porCaja = name.match(/\d+x(\d+)\s*$/);
+  if (porCaja) return parseInt(porCaja[1], 10);
+  const mm = name.match(/(\d+)\s*mm/i);
+  if (mm) return parseInt(mm[1], 10);
+  return null;
 }
 
 export default async function StockPage({
@@ -79,11 +89,11 @@ export default async function StockPage({
   }
   for (const list of itemsByCategory.values()) {
     list.sort((a, b) => {
-      const mlA = extractMl(a.name);
-      const mlB = extractMl(b.name);
-      if (mlA !== null && mlB !== null && mlA !== mlB) return mlA - mlB;
-      if (mlA !== null && mlB === null) return -1;
-      if (mlA === null && mlB !== null) return 1;
+      const sizeA = extractSize(a.name);
+      const sizeB = extractSize(b.name);
+      if (sizeA !== null && sizeB !== null && sizeA !== sizeB) return sizeA - sizeB;
+      if (sizeA !== null && sizeB === null) return -1;
+      if (sizeA === null && sizeB !== null) return 1;
       return a.name.localeCompare(b.name);
     });
   }

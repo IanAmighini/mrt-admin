@@ -5,13 +5,26 @@ import { formatProductBrandLabel } from "@/lib/product-label";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
+type ItemInfo = { id: string; name: string };
 
 type Row = {
   key: number;
   marcaId: string;
   formatoId: string;
   pallets: string;
+  /** Vacío = la que dice la receta. Se completa solo cuando se usó otra. */
+  tapaUsadaItemId: string;
+  cajaUsadaItemId: string;
 };
+
+const filaVacia = (key: number): Row => ({
+  key,
+  marcaId: "",
+  formatoId: "",
+  pallets: "",
+  tapaUsadaItemId: "",
+  cajaUsadaItemId: "",
+});
 
 const inputClass =
   "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -19,11 +32,15 @@ const inputClass =
 export function ProductionLinesFields({
   marcas,
   formatos,
+  tapas,
+  cajas,
 }: {
   marcas: MarcaInfo[];
   formatos: FormatoInfo[];
+  tapas: ItemInfo[];
+  cajas: ItemInfo[];
 }) {
-  const [rows, setRows] = useState<Row[]>([{ key: 0, marcaId: "", formatoId: "", pallets: "" }]);
+  const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
   const [nextKey, setNextKey] = useState(1);
 
   function updateRow(key: number, patch: Partial<Row>) {
@@ -31,7 +48,7 @@ export function ProductionLinesFields({
   }
 
   function addRow() {
-    setRows((prev) => [...prev, { key: nextKey, marcaId: "", formatoId: "", pallets: "" }]);
+    setRows((prev) => [...prev, filaVacia(nextKey)]);
     setNextKey((k) => k + 1);
   }
 
@@ -101,6 +118,43 @@ export function ProductionLinesFields({
                 </option>
               ))}
             </select>
+          </div>
+          {/* Se completan solo si se usó algo distinto a la receta: las tres tapas de 29mm son
+              intercambiables, y cuando se acaba la caja de la marca se usa la Lisa. Siempre se
+              renderizan, aunque estén vacías, porque el servidor aparea las filas por posición. */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-foreground/60">Tapa usada</label>
+              <select
+                name="tapaUsadaItemId"
+                value={row.tapaUsadaItemId}
+                onChange={(e) => updateRow(row.key, { tapaUsadaItemId: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">— la de la receta —</option>
+                {tapas.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-foreground/60">Caja usada</label>
+              <select
+                name="cajaUsadaItemId"
+                value={row.cajaUsadaItemId}
+                onChange={(e) => updateRow(row.key, { cajaUsadaItemId: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">— la de la receta —</option>
+                {cajas.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       ))}

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { Prisma, type AuditAction } from "@prisma/client";
+import { Prisma, type AuditAction, type SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
@@ -37,24 +37,42 @@ export async function updateOilEfficiency(formData: FormData) {
   revalidatePath("/produccion");
 }
 
-/** Núcleo compartido por createProductionRun y updateProductionRun (que borra y vuelve a llamar
- * a este núcleo) — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
+/** Núcleo compartido por createProductionRun y updateProductionRun — así una edición queda como un
+ * solo UPDATE en el log, no un DELETE + CREATE. */
 async function createProductionRunCore(
   user: { id: string },
   formData: FormData,
-  auditAction: AuditAction
+  auditAction: AuditAction,
+  /** Al editar: la corrida que esta reemplaza. Se borra DENTRO de la transacción, ver updateProductionRun. */
+  replaceRunId?: string
 ) {
   const date = parseFormDate(formData.get("date"));
   const notes = String(formData.get("notes") || "").trim() || null;
   const marcaIds = formData.getAll("marcaId").map(String);
   const formatoIds = formData.getAll("formatoId").map(String);
   const quantities = formData.getAll("quantity").map(String);
+  const tapaUsadaIds = formData.getAll("tapaUsadaItemId").map(String);
+  const cajaUsadaIds = formData.getAll("cajaUsadaItemId").map(String);
+
+  // Los campos del formulario llegan como arrays paralelos que se aparean por posición. Si alguno
+  // viniera con distinto largo, los reemplazos caerían en la fila equivocada y descontarían del
+  // insumo que no era, sin que nadie lo note. Mejor romper fuerte.
+  if (
+    formatoIds.length !== marcaIds.length ||
+    quantities.length !== marcaIds.length ||
+    tapaUsadaIds.length !== marcaIds.length ||
+    cajaUsadaIds.length !== marcaIds.length
+  ) {
+    throw new Error("El formulario llegó incompleto — recargá la página y volvé a cargar la producción.");
+  }
 
   const lines = marcaIds
     .map((marcaId, i) => ({
       marcaId,
       formatoId: formatoIds[i] || "",
       quantity: toDecimal(quantities[i] || "0"),
+      tapaUsadaItemId: tapaUsadaIds[i] || "",
+      cajaUsadaItemId: cajaUsadaIds[i] || "",
     }))
     .filter((l) => l.marcaId && l.formatoId && !l.quantity.isZero());
 
@@ -64,9 +82,39 @@ async function createProductionRunCore(
     );
   }
 
+  // Los reemplazos se validan contra la base y no solo con el filtro del desplegable: un POST
+  // armado a mano podría, si no, descontar tapas del aceite.
+  const reemplazoIds = Array.from(
+    new Set(lines.flatMap((l) => [l.tapaUsadaItemId, l.cajaUsadaItemId]).filter(Boolean))
+  );
+  const reemplazos = reemplazoIds.length
+    ? await prisma.item.findMany({
+        where: { id: { in: reemplazoIds } },
+        select: { id: true, name: true, category: true },
+      })
+    : [];
+  const reemplazoPorId = new Map(reemplazos.map((i) => [i.id, i]));
+  for (const line of lines) {
+    for (const [itemId, categoria, rol] of [
+      [line.tapaUsadaItemId, "TAPAS", "tapa"],
+      [line.cajaUsadaItemId, "CAJAS", "caja"],
+    ] as const) {
+      if (!itemId) continue;
+      const item = reemplazoPorId.get(itemId);
+      if (!item) throw new Error(`El insumo elegido como ${rol} usada ya no existe.`);
+      if (item.category !== categoria) {
+        throw new Error(`"${item.name}" no es una ${rol}.`);
+      }
+    }
+  }
+
   const dateLabel = date.toLocaleDateString("es-AR");
 
   await prisma.$transaction(async (tx) => {
+    // Borrar acá adentro y no antes: si el alta falla, la corrida original tiene que seguir
+    // existiendo. Las líneas y sus movimientos de producto/insumo se van en cascada.
+    if (replaceRunId) await tx.productionRun.delete({ where: { id: replaceRunId } });
+
     const run = await tx.productionRun.create({
       data: { date, notes, createdById: user.id },
     });
@@ -90,16 +138,43 @@ async function createProductionRunCore(
         },
       });
 
+      // La receta dice CUÁNTO se consume; el reemplazo solo cambia DE QUÉ insumo sale.
+      const reemplazoPorCategoria: Partial<Record<SupplierCategory, string>> = {
+        ...(line.tapaUsadaItemId ? { TAPAS: line.tapaUsadaItemId } : {}),
+        ...(line.cajaUsadaItemId ? { CAJAS: line.cajaUsadaItemId } : {}),
+      };
+      for (const categoria of Object.keys(reemplazoPorCategoria) as SupplierCategory[]) {
+        const rol = categoria === "TAPAS" ? "tapa" : "caja";
+        const enReceta = product.recipe.filter((r) => r.item.category === categoria);
+        // Aceptar la instrucción y descartarla en silencio dejaría el stock mal sin que nadie se
+        // entere, así que se avisa.
+        if (enReceta.length === 0) {
+          throw new Error(
+            `${product.name} ${product.presentation} no tiene ${rol} en la receta — cargala antes de indicar cuál usaste.`
+          );
+        }
+        if (enReceta.length > 1) {
+          throw new Error(
+            `${product.name} ${product.presentation} tiene más de una ${rol} en la receta — corregila antes de indicar cuál usaste.`
+          );
+        }
+      }
+
       if (product.recipe.length > 0) {
         await tx.itemMovement.createMany({
           data: product.recipe.map((recipeItem) => {
             const consumed = new Prisma.Decimal(recipeItem.quantityPerUnit).times(line.quantity);
+            const reemplazo = reemplazoPorCategoria[recipeItem.item.category];
+            const usado = reemplazo && reemplazo !== recipeItem.itemId ? reemplazo : null;
             return {
-              itemId: recipeItem.itemId,
+              itemId: usado ?? recipeItem.itemId,
               date,
               quantity: consumed.negated(),
               type: "CONSUMO_PRODUCCION" as const,
-              reason: `Producción del ${dateLabel}`,
+              // Que hubo reemplazo queda en el texto, que es lo que ya se ve en el kardex.
+              reason: usado
+                ? `Producción del ${dateLabel} — en lugar de ${recipeItem.item.name}`
+                : `Producción del ${dateLabel}`,
               productionLineId: productionLine.id,
               createdById: user.id,
             };
@@ -141,9 +216,7 @@ export async function updateProductionRun(formData: FormData) {
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
   if (!run) throw new Error("La carga de producción ya no existe.");
 
-  await prisma.productionRun.delete({ where: { id: runId } });
-
-  await createProductionRunCore(user, formData, "UPDATE");
+  await createProductionRunCore(user, formData, "UPDATE", runId);
 }
 
 export async function deleteProductionRun(formData: FormData) {

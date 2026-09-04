@@ -2,15 +2,20 @@ import { ProductionLinesFields } from "@/app/(app)/produccion/ProductionLinesFie
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
+type ItemInfo = { id: string; name: string };
 
 export function ProductionRunFormFields({
   marcas,
   formatos,
+  tapas,
+  cajas,
   editingRunId,
   defaultValues,
 }: {
   marcas: MarcaInfo[];
   formatos: FormatoInfo[];
+  tapas: ItemInfo[];
+  cajas: ItemInfo[];
   /** Si viene, el formulario edita esta carga en vez de crear una nueva — los ítems se cargan
    * de nuevo desde cero (no se prellenan), pero la fecha y las notas sí. */
   editingRunId?: string;
@@ -37,7 +42,7 @@ export function ProductionRunFormFields({
           className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
         />
       </div>
-      <ProductionLinesFields marcas={marcas} formatos={formatos} />
+      <ProductionLinesFields marcas={marcas} formatos={formatos} tapas={tapas} cajas={cajas} />
       <div className="space-y-1">
         <label className="text-sm" htmlFor="notes">
           Notas

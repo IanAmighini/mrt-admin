@@ -15,7 +15,7 @@ export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [runs, oilFillEfficiencyPercent, marcas, formatos] = await Promise.all([
+  const [runs, oilFillEfficiencyPercent, marcas, formatos, tapas, cajas] = await Promise.all([
     prisma.productionRun.findMany({
       orderBy: { date: "desc" },
       include: {
@@ -29,6 +29,18 @@ export default async function ProduccionPage() {
     prisma.formato.findMany({
       orderBy: [{ bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
       select: { id: true, presentation: true },
+    }),
+    // Para poder indicar, al cargar la producción, si se usó una tapa o una caja distinta a la de
+    // la receta.
+    prisma.item.findMany({
+      where: { category: "TAPAS" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.item.findMany({
+      where: { category: "CAJAS" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
     }),
   ]);
 
@@ -67,7 +79,7 @@ export default async function ProduccionPage() {
               action={createProductionRun}
               maxWidthClass="max-w-xl"
             >
-              <ProductionRunFormFields marcas={marcas} formatos={formatos} />
+              <ProductionRunFormFields marcas={marcas} formatos={formatos} tapas={tapas} cajas={cajas} />
             </FormModal>
             <FormModal
               triggerLabel="Rendimiento de aceite"
@@ -114,6 +126,8 @@ export default async function ProduccionPage() {
                       <ProductionRunFormFields
                         marcas={marcas}
                         formatos={formatos}
+                        tapas={tapas}
+                        cajas={cajas}
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
                       />

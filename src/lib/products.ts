@@ -18,7 +18,7 @@ export async function resolveOrCreateProduct(tx: Tx, marcaId: string, formatoId:
 
   let product = await tx.product.findFirst({
     where: { name: marca.name, oilType: marca.oilType, presentation: formato.presentation },
-    include: { recipe: true },
+    include: { recipe: { include: { item: true } } },
   });
   if (!product) {
     // El nombre solo (la "marca") se repite entre presentaciones distintas del mismo producto —
@@ -38,7 +38,7 @@ export async function resolveOrCreateProduct(tx: Tx, marcaId: string, formatoId:
         unitsPerBox: formato.unitsPerBox,
         bottleCapacityMl: formato.bottleCapacityMl,
       },
-      include: { recipe: true },
+      include: { recipe: { include: { item: true } } },
     });
   }
   return product;
