@@ -6,6 +6,7 @@ import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
 import { formatPeriodLabel, periodFromSearchParams, PERIOD_PRESETS } from "@/lib/period";
 import { isReportKey, REPORT_KEYS, REPORT_LABELS, type ReportKey } from "@/lib/reports";
 import { VencidosSection } from "./sections/VencidosSection";
+import { InsumosSection } from "./sections/InsumosSection";
 import { VentasSection } from "./sections/VentasSection";
 import { CobranzasSection } from "./sections/CobranzasSection";
 import { ComprasSection } from "./sections/ComprasSection";
@@ -19,9 +20,10 @@ const chipClass = (active: boolean) =>
     active ? "bg-primary text-primary-foreground" : "border border-foreground/20 hover:bg-foreground/5"
   }`;
 
-/** "Remitos vencidos" es una foto a hoy, no de un período: para ese tab el rango no aplica. */
+/** Los reportes-foto ("a hoy") no llevan rango: para esos tabs el filtro de período no aplica. */
 const USA_PERIODO: Record<ReportKey, boolean> = {
   "remitos-vencidos": false,
+  "insumos-bajo-minimo": false,
   ventas: true,
   cobranzas: true,
   compras: true,
@@ -31,6 +33,7 @@ const USA_PERIODO: Record<ReportKey, boolean> = {
 /** Los tabs que se pueden acotar por circuito. */
 const USA_CIRCUITO: Record<ReportKey, boolean> = {
   "remitos-vencidos": true,
+  "insumos-bajo-minimo": false,
   ventas: true,
   cobranzas: false,
   compras: false,
@@ -173,6 +176,7 @@ export default async function ReportesPage({
       )}
 
       {report === "remitos-vencidos" && <VencidosSection circuit={circuit} />}
+      {report === "insumos-bajo-minimo" && <InsumosSection />}
       {report === "ventas" && <VentasSection period={period} circuit={circuit} />}
       {report === "cobranzas" && <CobranzasSection period={period} />}
       {report === "compras" && <ComprasSection period={period} />}

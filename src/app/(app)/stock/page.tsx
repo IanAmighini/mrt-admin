@@ -302,13 +302,31 @@ export default async function StockPage({
                     {categoryItems.map((item) => {
                       const stock = stocks.get(item.id) ?? 0;
                       const negative = Number(stock) < 0;
+                      // Ámbar cuando está en o por debajo del mínimo; el rojo queda para stock negativo.
+                      const minStock = item.minStock;
+                      const bajoMinimo =
+                        !negative && minStock != null && Number(stock) <= Number(minStock);
                       return (
                         <div key={item.id} className="flex items-center justify-between text-sm">
                           <Link href={`/stock/${item.slug}`} className="underline underline-offset-2">
                             {item.name}
                           </Link>
-                          <span className={negative ? "font-medium text-red-600 dark:text-red-400" : "font-medium"}>
+                          <span
+                            title={
+                              bajoMinimo && minStock
+                                ? `Por debajo del mínimo (${formatQuantity(minStock, item.unit)})`
+                                : undefined
+                            }
+                            className={
+                              negative
+                                ? "font-medium text-red-600 dark:text-red-400"
+                                : bajoMinimo
+                                  ? "font-medium text-amber-600 dark:text-amber-400"
+                                  : "font-medium"
+                            }
+                          >
                             {formatQuantity(stock, item.unit)}
+                            {bajoMinimo && " ▾"}
                           </span>
                         </div>
                       );

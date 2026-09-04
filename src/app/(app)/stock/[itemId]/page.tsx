@@ -7,7 +7,7 @@ import { getItemMovements, getItemStock } from "@/lib/stock";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { createItemMovement } from "./actions";
-import { updateItemCost } from "../actions";
+import { updateItemAjustes } from "../actions";
 
 export default async function ItemDetailPage({
   params,
@@ -40,19 +40,20 @@ export default async function ItemDetailPage({
           <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
         </div>
         <p className="mt-1 text-sm text-foreground/60">
-          Costo unitario: {item.unitCost ? formatMoney(item.unitCost) : "sin cargar"}
+          Costo unitario: {item.unitCost ? formatMoney(item.unitCost) : "sin cargar"} · Stock mínimo:{" "}
+          {item.minStock ? formatQuantity(item.minStock, item.unit) : "sin definir"}
         </p>
       </div>
 
       {canEdit && (
         <form
-          action={updateItemCost}
+          action={updateItemAjustes}
           className="flex flex-wrap items-end gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <input type="hidden" name="itemId" value={item.id} />
           <div className="space-y-1">
             <label className="text-sm" htmlFor="unitCost">
-              Actualizar costo unitario
+              Costo unitario
             </label>
             <input
               id="unitCost"
@@ -63,12 +64,28 @@ export default async function ItemDetailPage({
               className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="minStock">
+              Stock mínimo ({item.unit})
+            </label>
+            <input
+              id="minStock"
+              name="minStock"
+              inputMode="decimal"
+              placeholder="sin mínimo"
+              defaultValue={item.minStock?.toString() ?? ""}
+              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+            />
+          </div>
           <button
             type="submit"
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
-            Guardar costo
+            Guardar
           </button>
+          <p className="w-full text-xs text-foreground/50">
+            Dejá el mínimo vacío para que este insumo no aparezca en el control de faltantes.
+          </p>
         </form>
       )}
 

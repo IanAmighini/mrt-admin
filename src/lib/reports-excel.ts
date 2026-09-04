@@ -11,9 +11,11 @@ import { sheet, type ExcelSheet } from "@/lib/excel";
 import { slugify } from "@/lib/slug";
 import { formatPeriodLabel, toDateInputValue, periodLastDay, type Period } from "@/lib/period";
 import {
+  REPORT_KEYS_SNAPSHOT,
   REPORT_LABELS,
   type CobranzasReport,
   type ComprasReport,
+  type InsumosMinimoReport,
   type ProduccionReport,
   type ReportKey,
   type VencidosReport,
@@ -99,6 +101,59 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
         { header: "Pendiente", value: (r) => r.pendiente, format: "money" },
       ],
       rows: report.porBucket,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+
+function insumosMinimoSheets(report: InsumosMinimoReport): ExcelSheet<never>[] {
+  const subtitle = [
+    `Al ${report.asOf.toLocaleDateString("es-AR")}`,
+    `${report.rows.length} de ${report.totalItems} insumos por debajo del mínimo.`,
+    ...(report.itemsSinMinimo > 0
+      ? [`${report.itemsSinMinimo} insumo(s) todavía no tienen mínimo configurado.`]
+      : []),
+  ];
+
+  return [
+    sheet<InsumosMinimoReport["rows"][number]>({
+      name: "Detalle",
+      title: "Insumos bajo el mínimo",
+      subtitle,
+      columns: [
+        { header: "Insumo", value: (r) => r.itemName, width: 36 },
+        { header: "Categoría", value: (r) => SUPPLIER_CATEGORY_LABELS[r.category], width: 22 },
+        { header: "Unidad", value: (r) => r.unit, width: 10 },
+        { header: "Stock actual", value: (r) => r.stock, format: "number", width: 14 },
+        { header: "Mínimo", value: (r) => r.minStock, format: "number" },
+        { header: "Faltante", value: (r) => r.faltante, format: "number" },
+        { header: "Costo unitario", value: (r) => r.unitCost, format: "money", width: 16 },
+        { header: "Costo reposición", value: (r) => r.costoReposicion, format: "money", width: 18 },
+      ],
+      rows: report.rows,
+      totals: [
+        "Totales",
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        report.costoReposicionTotal,
+      ],
+    }),
+    sheet<InsumosMinimoReport["porCategoria"][number]>({
+      name: "Por categoría",
+      title: "Faltantes por categoría",
+      subtitle,
+      columns: [
+        { header: "Categoría", value: (r) => SUPPLIER_CATEGORY_LABELS[r.category], width: 24 },
+        { header: "Insumos", value: (r) => r.count, format: "integer" },
+        { header: "Costo reposición", value: (r) => r.costoReposicion, format: "money", width: 18 },
+      ],
+      rows: report.porCategoria,
+      totals: ["Totales", report.rows.length, report.costoReposicionTotal],
     }),
   ];
 }
@@ -332,6 +387,7 @@ function produccionSheets(report: ProduccionReport, generatedAt: Date): ExcelShe
 
 export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
+  | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
   | { key: "ventas"; report: VentasReport }
   /** Los dos lados, igual que la pantalla: cobranzas a clientes y pagos a proveedores. */
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
@@ -342,6 +398,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
   switch (data.key) {
     case "remitos-vencidos":
       return vencidosSheets(data.report);
+    case "insumos-bajo-minimo":
+      return insumosMinimoSheets(data.report);
     case "ventas":
       return ventasSheets(data.report, generatedAt);
     case "cobranzas":
@@ -358,6 +416,6 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
 
 export function reportFilename(key: ReportKey, period: Period, asOf: Date): string {
   const slug = slugify(REPORT_LABELS[key]);
-  if (key === "remitos-vencidos") return `reporte_${slug}_al_${toDateInputValue(asOf)}.xlsx`;
+  if (REPORT_KEYS_SNAPSHOT.includes(key)) return `reporte_${slug}_al_${toDateInputValue(asOf)}.xlsx`;
   return `reporte_${slug}_${toDateInputValue(period.from)}_${toDateInputValue(periodLastDay(period))}.xlsx`;
 }

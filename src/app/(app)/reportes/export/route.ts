@@ -6,6 +6,7 @@ import { periodFromSearchParams } from "@/lib/period";
 import {
   getCobranzasReport,
   getComprasReport,
+  getInsumosMinimoReport,
   getProduccionReport,
   getVencidosReport,
   getVentasReport,
@@ -45,6 +46,9 @@ export async function GET(request: NextRequest) {
   switch (key) {
     case "remitos-vencidos":
       data = { key, report: await getVencidosReport({ asOf, circuit }) };
+      break;
+    case "insumos-bajo-minimo":
+      data = { key, report: await getInsumosMinimoReport({ asOf }) };
       break;
     case "ventas":
       data = { key, report: await getVentasReport(period, { circuit }) };

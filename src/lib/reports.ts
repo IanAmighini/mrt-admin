@@ -11,11 +11,13 @@ import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getVencimientos, litrosDeLinea } from "@/lib/ledger";
 import { getCostoInsumos } from "@/lib/dashboard-kpis";
+import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
 import type { Period } from "@/lib/period";
 
 export const REPORT_KEYS = [
   "remitos-vencidos",
+  "insumos-bajo-minimo",
   "ventas",
   "cobranzas",
   "compras",
@@ -26,11 +28,15 @@ export type ReportKey = (typeof REPORT_KEYS)[number];
 
 export const REPORT_LABELS: Record<ReportKey, string> = {
   "remitos-vencidos": "Remitos vencidos",
+  "insumos-bajo-minimo": "Insumos bajo mínimo",
   ventas: "Ventas / entregas",
   cobranzas: "Cobranzas y pagos",
   compras: "Compras de insumos",
   produccion: "Producción",
 };
+
+/** Reportes que son una foto del momento y no de un período: el nombre del archivo lleva "al <fecha>". */
+export const REPORT_KEYS_SNAPSHOT: ReportKey[] = ["remitos-vencidos", "insumos-bajo-minimo"];
 
 export function isReportKey(value: string | undefined): value is ReportKey {
   return REPORT_KEYS.includes(value as ReportKey);
@@ -158,7 +164,109 @@ export async function getVencidosReport(options?: {
 }
 
 // ---------------------------------------------------------------------------
-// 2. Ventas / entregas del período
+// 2. Insumos bajo el mínimo — foto de hoy, no lleva período
+// ---------------------------------------------------------------------------
+
+export type InsumoBajoMinimo = {
+  itemId: string;
+  itemSlug: string;
+  itemName: string;
+  unit: string;
+  category: SupplierCategory;
+  stock: Prisma.Decimal;
+  minStock: Prisma.Decimal;
+  /** Cuánto falta para llegar al mínimo. */
+  faltante: Prisma.Decimal;
+  /** stock / minStock — para ordenar por urgencia. */
+  cobertura: Prisma.Decimal;
+  unitCost: Prisma.Decimal | null;
+  costoReposicion: Prisma.Decimal | null;
+};
+
+export type InsumosMinimoReport = {
+  asOf: Date;
+  /** Ordenados por cobertura ascendente: primero los más desabastecidos. */
+  rows: InsumoBajoMinimo[];
+  porCategoria: { category: SupplierCategory; count: number; costoReposicion: Prisma.Decimal }[];
+  /** Cuántos insumos no tienen mínimo cargado — sin esto, "0 bajo mínimo" engaña. */
+  itemsSinMinimo: number;
+  totalItems: number;
+  costoReposicionTotal: Prisma.Decimal;
+};
+
+/**
+ * Insumos cuyo stock actual está en o por debajo de su mínimo.
+ *
+ * Se recorren los insumos y no el mapa de stocks a propósito: getAllItemStocks solo tiene claves
+ * para los que registraron algún movimiento, así que un insumo con mínimo cargado y sin movimientos
+ * —el caso más urgente de todos— desaparecería del reporte.
+ */
+export async function getInsumosMinimoReport(options?: { asOf?: Date }): Promise<InsumosMinimoReport> {
+  const asOf = options?.asOf ?? new Date();
+  const [items, stocks] = await Promise.all([
+    prisma.item.findMany({ orderBy: { name: "asc" } }),
+    getAllItemStocks(),
+  ]);
+
+  const rows: InsumoBajoMinimo[] = [];
+  let itemsSinMinimo = 0;
+
+  for (const item of items) {
+    const minStock = item.minStock ? toDecimal(item.minStock) : null;
+    // Un mínimo en cero no es un mínimo: no habría forma de estar por debajo.
+    if (!minStock || minStock.lessThanOrEqualTo(0)) {
+      itemsSinMinimo++;
+      continue;
+    }
+
+    const stock = stocks.get(item.id) ?? ZERO;
+    // Estar justo en el mínimo también avisa: si no, uno se entera recién cuando ya faltó.
+    if (!stock.lessThanOrEqualTo(minStock)) continue;
+
+    const faltante = minStock.minus(stock);
+    rows.push({
+      itemId: item.id,
+      itemSlug: item.slug,
+      itemName: item.name,
+      unit: item.unit,
+      category: item.category,
+      stock,
+      minStock,
+      faltante,
+      cobertura: stock.dividedBy(minStock),
+      unitCost: item.unitCost,
+      costoReposicion: item.unitCost ? faltante.times(item.unitCost) : null,
+    });
+  }
+
+  rows.sort((a, b) => a.cobertura.comparedTo(b.cobertura));
+
+  const porCategoriaMap = new Map<SupplierCategory, { category: SupplierCategory; count: number; costoReposicion: Prisma.Decimal }>();
+  for (const row of rows) {
+    const current = porCategoriaMap.get(row.category) ?? {
+      category: row.category,
+      count: 0,
+      costoReposicion: ZERO,
+    };
+    current.count++;
+    current.costoReposicion = current.costoReposicion.plus(row.costoReposicion ?? ZERO);
+    porCategoriaMap.set(row.category, current);
+  }
+
+  return {
+    asOf,
+    rows,
+    porCategoria: Array.from(porCategoriaMap.values()).sort((a, b) =>
+      b.costoReposicion.comparedTo(a.costoReposicion)
+    ),
+    itemsSinMinimo,
+    totalItems: items.length,
+    costoReposicionTotal: sumDecimals(rows.map((r) => r.costoReposicion ?? ZERO)),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 3. Ventas / entregas del período
 // ---------------------------------------------------------------------------
 
 type VentasAgg = { pallets: Prisma.Decimal; litros: Prisma.Decimal; byCurrency: Map<Currency, Prisma.Decimal> };
@@ -281,7 +389,7 @@ export async function getVentasReport(
 }
 
 // ---------------------------------------------------------------------------
-// 3. Cobranzas y pagos del período
+// 4. Cobranzas y pagos del período
 // ---------------------------------------------------------------------------
 
 export type CobranzasLado = "CLIENTES" | "PROVEEDORES";
@@ -371,7 +479,7 @@ export async function getCobranzasReport(period: Period, lado: CobranzasLado): P
 }
 
 // ---------------------------------------------------------------------------
-// 4. Compras de insumos del período
+// 5. Compras de insumos del período
 // ---------------------------------------------------------------------------
 
 export type ComprasReport = {
@@ -482,7 +590,7 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Producción del período
+// 6. Producción del período
 // ---------------------------------------------------------------------------
 
 export type ProduccionReport = {
