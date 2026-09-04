@@ -49,9 +49,22 @@ export async function getRecipients(): Promise<string[]> {
   );
 }
 
-export async function getLastRunInfo(): Promise<string | null> {
+export type LastRunInfo = { at: Date; resultado: string };
+
+/** Se guarda como JSON para poder mostrar el instante en horario argentino al leerlo. */
+async function recordRun(at: Date, resultado: string) {
+  await setSetting(SETTING_LAST_RUN, JSON.stringify({ at: at.toISOString(), resultado }));
+}
+
+export async function getLastRunInfo(): Promise<LastRunInfo | null> {
   const value = await getSetting(SETTING_LAST_RUN, "");
-  return value || null;
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as { at: string; resultado: string };
+    return { at: new Date(parsed.at), resultado: parsed.resultado };
+  } catch {
+    return null;
+  }
 }
 
 function moneyArs(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
@@ -111,7 +124,7 @@ export async function sendWeeklyReport(options?: {
   const destinatarios = await getRecipients();
   if (destinatarios.length === 0) {
     // Una configuración incompleta no tiene que sonar como caída todos los lunes.
-    await setSetting(SETTING_LAST_RUN, `${asOf.toISOString()} — sin destinatarios`);
+    await recordRun(asOf, "sin destinatarios");
     return { enviado: false, motivo: "sin destinatarios", destinatarios, semana };
   }
 
@@ -133,16 +146,13 @@ export async function sendWeeklyReport(options?: {
       attachments: [email.attachment],
     });
   } catch (error) {
-    await setSetting(
-      SETTING_LAST_RUN,
-      `${asOf.toISOString()} — error: ${error instanceof Error ? error.message : "desconocido"}`
-    );
+    await recordRun(asOf, `error: ${error instanceof Error ? error.message : "desconocido"}`);
     throw error;
   }
 
   // Se marca la semana DESPUÉS del envío exitoso, para que un fallo se pueda reintentar.
   await setSetting(SETTING_LAST_SENT_WEEK, semanaKey);
-  await setSetting(SETTING_LAST_RUN, `${asOf.toISOString()} — ok, ${destinatarios.length} destinatario(s)`);
+  await recordRun(asOf, `enviado a ${destinatarios.length} destinatario(s)`);
 
   return { enviado: true, destinatarios, semana };
 }

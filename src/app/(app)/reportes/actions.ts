@@ -40,8 +40,10 @@ export async function updateWeeklyReportRecipients(formData: FormData) {
   revalidatePath("/reportes");
 }
 
+export type SendNowResult = { ok: boolean; mensaje: string };
+
 /** Manda el reporte en el momento — es cómo se prueba la configuración sin esperar al lunes. */
-export async function sendWeeklyReportNow() {
+export async function sendWeeklyReportNow(): Promise<SendNowResult> {
   const user = await requireRole(["ADMIN"]);
 
   const resultado = await sendWeeklyReport({ force: true });
@@ -56,4 +58,11 @@ export async function sendWeeklyReportNow() {
   });
 
   revalidatePath("/reportes");
+
+  return resultado.enviado
+    ? {
+        ok: true,
+        mensaje: `Enviado a ${resultado.destinatarios.length} destinatario(s): ${resultado.destinatarios.join(", ")}`,
+      }
+    : { ok: false, mensaje: `No se envió: ${resultado.motivo ?? "motivo desconocido"}` };
 }

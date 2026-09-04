@@ -1,15 +1,18 @@
+import { formatDateTime } from "@/lib/period";
+import type { LastRunInfo } from "@/lib/weekly-report";
+
 export function WeeklyReportFields({
   recipients,
   lastRun,
 }: {
   recipients: string;
-  lastRun: string | null;
+  lastRun: LastRunInfo | null;
 }) {
   return (
     <>
       <p className="text-xs text-foreground/50">
-        Todos los lunes a la mañana sale un mail con lo vencido, los insumos bajo mínimo, los
-        pedidos pendientes y el resumen de la semana que terminó, con el detalle de vencidos
+        Todos los lunes a las 8 de la mañana sale un mail con lo vencido, los insumos bajo mínimo,
+        los pedidos pendientes y el resumen de la semana que terminó, con el detalle de vencidos
         adjunto en Excel. Una dirección por línea (o separadas por coma).
       </p>
       <div className="space-y-1">
@@ -26,7 +29,8 @@ export function WeeklyReportFields({
         />
       </div>
       <p className="text-xs text-foreground/50">
-        Último envío: {lastRun ?? "todavía no se envió ninguno"}
+        Último envío:{" "}
+        {lastRun ? `${formatDateTime(lastRun.at)} — ${lastRun.resultado}` : "todavía no se envió ninguno"}
       </p>
       <button
         type="submit"

@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { AuditAction } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { formatDateTime } from "@/lib/period";
 
 const ACTION_LABELS: Record<AuditAction, string> = {
   CREATE: "Alta",
@@ -149,7 +150,7 @@ export default async function ActividadPage({
             {logs.map((log) => (
               <tr key={log.id} className="border-b border-foreground/5">
                 <td className="py-2 pr-4 whitespace-nowrap">
-                  {log.createdAt.toLocaleString("es-AR")}
+                  {formatDateTime(log.createdAt)}
                 </td>
                 <td className="py-2 pr-4">{log.user.name}</td>
                 <td className="py-2 pr-4">

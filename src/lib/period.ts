@@ -15,6 +15,30 @@ export const PERIOD_PRESETS: { key: PeriodPresetKey; label: string }[] = [
   { key: "anio", label: "Este año" },
 ];
 
+/** El negocio opera en Argentina; el servidor de producción corre en UTC. */
+export const TIMEZONE = "America/Argentina/Buenos_Aires";
+
+/**
+ * Fecha y hora de un instante, en horario argentino y reloj de 24 horas.
+ *
+ * **Solo para timestamps reales** (`createdAt` y similares). Las fechas de documentos, pagos y
+ * vencimientos son fechas de calendario que se guardan como medianoche en la zona del servidor:
+ * convertirlas de zona las correría un día para atrás. Esas se siguen mostrando con
+ * `toLocaleDateString` sin `timeZone`.
+ */
+export function formatDateTime(date: Date): string {
+  return date.toLocaleString("es-AR", {
+    timeZone: TIMEZONE,
+    hour12: false,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }

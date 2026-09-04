@@ -4,6 +4,10 @@ import { sendWeeklyReport } from "@/lib/weekly-report";
 /**
  * Envío del resumen semanal, disparado por Vercel Cron los lunes.
  *
+ * El horario vive en vercel.json como `0 11 * * 1`: Vercel agenda siempre en UTC, y como Argentina
+ * es UTC-3 todo el año (no hay horario de verano), eso son las 08:00 locales y no se corre nunca.
+ * En el plan Hobby dispara en algún momento dentro de esa hora, no a las 8 en punto.
+ *
  * Vive fuera de `(app)` y fuera del middleware a propósito, que es lo contrario de lo que hacen
  * las rutas de export: aquellas cuelgan de su página para heredar el gate de rol, y esta no puede
  * pasar por el middleware porque la llama un job sin sesión. Si el middleware la redirigiera al

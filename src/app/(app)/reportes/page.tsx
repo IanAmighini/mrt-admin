@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { Download, Send } from "lucide-react";
+import { Download } from "lucide-react";
 import type { Circuit } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { FormModal } from "@/components/Modal";
 import { WeeklyReportFields } from "@/components/WeeklyReportFields";
+import { SendWeeklyReportButton } from "@/components/SendWeeklyReportButton";
 import { getLastRunInfo, getRecipients } from "@/lib/weekly-report";
 import { sendWeeklyReportNow, updateWeeklyReportRecipients } from "./actions";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
@@ -110,15 +111,7 @@ export default async function ReportesPage({
         <div className="flex flex-wrap items-center gap-2">
           {isAdmin && (
             <>
-              <form action={sendWeeklyReportNow}>
-                <button
-                  type="submit"
-                  className="flex w-fit items-center gap-1.5 rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors hover:bg-foreground/5"
-                >
-                  <Send size={15} />
-                  Enviar reporte ahora
-                </button>
-              </form>
+              <SendWeeklyReportButton action={sendWeeklyReportNow} />
               <FormModal
                 triggerLabel="Reporte semanal"
                 iconName="edit"
