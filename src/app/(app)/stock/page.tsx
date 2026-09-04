@@ -6,22 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
-import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
+import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
+import { compareItemsBySize } from "@/lib/item-order";
 import { FormModal } from "@/components/Modal";
 import { ItemMovementFields } from "@/components/ItemMovementFields";
 import { createItem } from "./actions";
 import { createItemMovement } from "./[itemId]/actions";
-
-const CATEGORY_ORDER: SupplierCategory[] = [
-  "ACEITE",
-  "ENVASES",
-  "TAPAS",
-  "CAJAS",
-  "ETIQUETAS",
-  "CINTA",
-  "PALLET_NORMALIZADO",
-  "OTRO",
-];
 
 const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
   ACEITE: Droplet,
@@ -33,23 +23,6 @@ const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
   PALLET_NORMALIZADO: Layers,
   OTRO: HelpCircle,
 };
-
-/**
- * Tamaño con el que se ordena cada categoría, de menor a mayor, en vez de alfabéticamente.
- * Los nombres no siguen una sola convención: los envases y etiquetas terminan en "850ml", las
- * cajas en "12x900" y las tapas llevan la boca en milímetros ("29mm"). Sin contemplar los tres
- * casos, cajas y tapas caerían en orden alfabético y quedaría "Caja Lisa 12x1500" antes que
- * "Caja Lisa 12x900".
- */
-function extractSize(name: string): number | null {
-  const ml = name.match(/(\d+)\s*ml/i);
-  if (ml) return parseInt(ml[1], 10);
-  const porCaja = name.match(/\d+x(\d+)\s*$/);
-  if (porCaja) return parseInt(porCaja[1], 10);
-  const mm = name.match(/(\d+)\s*mm/i);
-  if (mm) return parseInt(mm[1], 10);
-  return null;
-}
 
 export default async function StockPage({
   searchParams,
@@ -88,14 +61,7 @@ export default async function StockPage({
     itemsByCategory.set(item.category, list);
   }
   for (const list of itemsByCategory.values()) {
-    list.sort((a, b) => {
-      const sizeA = extractSize(a.name);
-      const sizeB = extractSize(b.name);
-      if (sizeA !== null && sizeB !== null && sizeA !== sizeB) return sizeA - sizeB;
-      if (sizeA !== null && sizeB === null) return -1;
-      if (sizeA === null && sizeB !== null) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    list.sort(compareItemsBySize);
   }
 
   return (
@@ -194,7 +160,7 @@ export default async function StockPage({
                     required
                     className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                   >
-                    {CATEGORY_ORDER.map((c) => (
+                    {SUPPLIER_CATEGORY_ORDER.map((c) => (
                       <option key={c} value={c}>
                         {SUPPLIER_CATEGORY_LABELS[c]}
                       </option>
@@ -262,7 +228,7 @@ export default async function StockPage({
         </div>
 
         <div className="space-y-4">
-          {CATEGORY_ORDER.map((category) => {
+          {SUPPLIER_CATEGORY_ORDER.map((category) => {
             const categoryItems = itemsByCategory.get(category);
             if (!categoryItems || categoryItems.length === 0) return null;
 

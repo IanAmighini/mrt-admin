@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { createCompra } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { NuevaCompraForm } from "@/components/NuevaCompraForm";
+import { compareItemsBySize } from "@/lib/item-order";
 
 export default async function NuevaCompraPage({
   searchParams,
@@ -21,6 +22,10 @@ export default async function NuevaCompraPage({
     }),
     prisma.item.findMany({ orderBy: { name: "asc" } }),
   ]);
+
+  // El desplegable agrupa por categoría, así que dentro de cada una conviene el orden por tamaño y
+  // no el alfabético, que pondría "Caja Lisa 12x1500" antes que "Caja Lisa 12x900".
+  items.sort(compareItemsBySize);
 
   const fixedEntity = fixedEntityId ? proveedores.find((p) => p.id === fixedEntityId) : undefined;
 
@@ -48,7 +53,7 @@ export default async function NuevaCompraPage({
         <NuevaCompraForm
           action={submitCompra}
           proveedores={proveedores.map((p) => ({ id: p.id, name: p.name }))}
-          items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+          items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, category: i.category }))}
           fixedEntity={fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name } : undefined}
         />
       )}

@@ -1,20 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import type { SupplierCategory } from "@prisma/client";
 import { formatMoney } from "@/lib/money";
+import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 
 type Circuit = "BLANCO" | "NEGRO";
 
 type ProveedorInfo = { id: string; name: string };
-type ItemInfo = { id: string; name: string; unit: string };
+type ItemInfo = { id: string; name: string; unit: string; category: SupplierCategory };
 
 type Row = {
   key: number;
+  /** Solo filtra el desplegable de insumo; no se manda al servidor. */
+  category: SupplierCategory | "";
   itemId: string;
   quantity: string;
   unitPrice: string;
   circuit: Circuit;
 };
+
+const filaVacia = (key: number): Row => ({
+  key,
+  category: "",
+  itemId: "",
+  quantity: "",
+  unitPrice: "",
+  circuit: "BLANCO",
+});
 
 export function NuevaCompraForm({
   action,
@@ -28,17 +41,38 @@ export function NuevaCompraForm({
   /** Si se llega desde la ficha de un proveedor puntual, fija el proveedor y oculta el selector. */
   fixedEntity?: ProveedorInfo;
 }) {
-  const [rows, setRows] = useState<Row[]>([
-    { key: 0, itemId: "", quantity: "", unitPrice: "", circuit: "BLANCO" },
-  ]);
+  const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
   const [nextKey, setNextKey] = useState(1);
+
+  const itemsPorCategoria = useMemo(() => {
+    const m = new Map<SupplierCategory, ItemInfo[]>();
+    for (const i of items) {
+      const list = m.get(i.category) ?? [];
+      list.push(i);
+      m.set(i.category, list);
+    }
+    return m;
+  }, [items]);
+
+  // Solo las categorías que tienen algo cargado: ofrecer "Cinta" cuando no hay ninguna cinta manda
+  // al usuario a un desplegable vacío.
+  const categorias = useMemo(
+    () => SUPPLIER_CATEGORY_ORDER.filter((c) => itemsPorCategoria.has(c)),
+    [itemsPorCategoria]
+  );
 
   function updateRow(key: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   }
 
+  /** Cambiar el tipo invalida el insumo elegido. Si la categoría tiene uno solo, se elige solo. */
+  function changeCategory(key: number, category: SupplierCategory | "") {
+    const enCategoria = category ? itemsPorCategoria.get(category) ?? [] : [];
+    updateRow(key, { category, itemId: enCategoria.length === 1 ? enCategoria[0].id : "" });
+  }
+
   function addRow() {
-    setRows((prev) => [...prev, { key: nextKey, itemId: "", quantity: "", unitPrice: "", circuit: "BLANCO" }]);
+    setRows((prev) => [...prev, filaVacia(nextKey)]);
     setNextKey((k) => k + 1);
   }
 
@@ -136,24 +170,40 @@ export function NuevaCompraForm({
           {computedRows.map(({ row, item, subtotal }) => (
             <div
               key={row.key}
-              className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
+              className="grid grid-cols-2 gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2 sm:grid-cols-[minmax(0,2fr)_minmax(0,3fr)_minmax(0,1.3fr)_minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1.5fr)_auto] sm:items-end"
             >
-              <div className="col-span-3 min-w-0">
+              <div className="col-span-2 min-w-0 sm:col-span-1">
+                <label className="text-xs text-foreground/60">Tipo</label>
+                <select
+                  value={row.category}
+                  onChange={(e) => changeCategory(row.key, e.target.value as SupplierCategory | "")}
+                  className={inputClass}
+                >
+                  <option value="">— Tipo —</option>
+                  {categorias.map((c) => (
+                    <option key={c} value={c}>
+                      {SUPPLIER_CATEGORY_LABELS[c]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="col-span-2 min-w-0 sm:col-span-1">
                 <label className="text-xs text-foreground/60">Insumo</label>
                 <select
                   value={row.itemId}
                   onChange={(e) => updateRow(row.key, { itemId: e.target.value })}
-                  className={inputClass}
+                  disabled={!row.category}
+                  className={`${inputClass} disabled:cursor-not-allowed disabled:bg-foreground/5 disabled:text-foreground/40`}
                 >
-                  <option value="">— Insumo —</option>
-                  {items.map((i) => (
+                  <option value="">{row.category ? "— Insumo —" : "Elegí el tipo primero"}</option>
+                  {(row.category ? itemsPorCategoria.get(row.category) ?? [] : []).map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name}
                     </option>
                   ))}
                 </select>
               </div>
-              <div className="col-span-2 min-w-0">
+              <div className="min-w-0">
                 <label className="text-xs text-foreground/60">Cantidad {item ? `(${item.unit})` : ""}</label>
                 <input
                   value={row.quantity}
@@ -162,7 +212,7 @@ export function NuevaCompraForm({
                   className={inputClass}
                 />
               </div>
-              <div className="col-span-2 min-w-0">
+              <div className="min-w-0">
                 <label className="text-xs text-foreground/60">Precio unit.</label>
                 <input
                   value={row.unitPrice}
@@ -171,7 +221,7 @@ export function NuevaCompraForm({
                   className={inputClass}
                 />
               </div>
-              <div className="col-span-2 min-w-0">
+              <div className="col-span-2 min-w-0 sm:col-span-1">
                 <label className="text-xs text-foreground/60">Circuito</label>
                 <select
                   value={row.circuit}
@@ -182,11 +232,11 @@ export function NuevaCompraForm({
                   <option value="NEGRO">Negro (sin facturar)</option>
                 </select>
               </div>
-              <div className="col-span-2 min-w-0">
+              <div className="min-w-0">
                 <label className="text-xs text-foreground/60">Subtotal</label>
                 <p className="px-2 py-2 text-sm">{formatMoney(subtotal)}</p>
               </div>
-              <div className="col-span-1 min-w-0">
+              <div className="flex min-w-0 justify-end sm:pb-2">
                 {rows.length > 1 && (
                   <button
                     type="button"

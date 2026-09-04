@@ -58,6 +58,19 @@ export const PRODUCT_MOVEMENT_TYPE_LABELS: Record<ProductMovementType, string> =
   ENTREGA: "Entrega",
 };
 
+/** Orden en que se muestran las categorías de insumo: sigue la línea de envasado (aceite, envase,
+ * tapa, caja…) y no el alfabético, que mezclaría cajas con cinta. */
+export const SUPPLIER_CATEGORY_ORDER: SupplierCategory[] = [
+  "ACEITE",
+  "ENVASES",
+  "TAPAS",
+  "CAJAS",
+  "ETIQUETAS",
+  "CINTA",
+  "PALLET_NORMALIZADO",
+  "OTRO",
+];
+
 export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
   ACEITE: "Aceite",
   ENVASES: "Envases",
