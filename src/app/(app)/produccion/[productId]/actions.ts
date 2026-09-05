@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { toDecimal } from "@/lib/money";
+import { parseNumeroEscrito, toDecimal } from "@/lib/money";
 import { getSetting } from "@/lib/settings";
 import { logAudit } from "@/lib/audit";
 import { litrosPorPallet } from "@/lib/recipe-template";
@@ -32,6 +32,9 @@ export async function updateProduct(formData: FormData) {
   if (!name) throw new UserError("El nombre es obligatorio.");
   if (!oilType) throw new UserError("El tipo de aceite es obligatorio.");
   if (!presentation) throw new UserError("La presentación es obligatoria.");
+  const bottleCapacityMl = bottleCapacityMlRaw
+    ? parseNumeroEscrito(bottleCapacityMlRaw, "capacidad de la botella")
+    : null;
 
   const product = await prisma.product.update({
     where: { id: productId },
@@ -41,7 +44,7 @@ export async function updateProduct(formData: FormData) {
       presentation,
       boxesPerPallet,
       unitsPerBox,
-      bottleCapacityMl: bottleCapacityMlRaw || null,
+      bottleCapacityMl,
     },
   });
 
@@ -178,7 +181,7 @@ export async function upsertRecipeLine(formData: FormData) {
   if (!productId || !itemId) throw new UserError("Faltan datos.");
   if (!quantityPerUnitRaw) throw new UserError("Falta la cantidad por unidad.");
 
-  const quantityPerUnit = toDecimal(quantityPerUnitRaw);
+  const quantityPerUnit = parseNumeroEscrito(quantityPerUnitRaw, "cantidad por unidad");
   if (!quantityPerUnit.greaterThan(0)) {
     throw new UserError("La cantidad por unidad debe ser mayor a cero.");
   }

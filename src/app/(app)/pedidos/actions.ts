@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import type { Prisma, PedidoStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { toDecimal } from "@/lib/money";
+import { parseNumeroOpcional, toDecimal } from "@/lib/money";
 import { getSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
@@ -28,7 +28,7 @@ function parseLines(formData: FormData) {
     .map((marcaId, i) => ({
       marcaId,
       formatoId: formatoIds[i] || "",
-      pallets: toDecimal(pallets[i] || "0"),
+      pallets: parseNumeroOpcional(pallets[i] ?? "", "pallets"),
     }))
     .filter((l) => l.marcaId && l.formatoId && l.pallets.greaterThan(0));
 

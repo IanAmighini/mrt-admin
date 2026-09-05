@@ -4,7 +4,7 @@ import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { toDecimal } from "@/lib/money";
+import { parseNumeroEscrito } from "@/lib/money";
 import { logAudit } from "@/lib/audit";
 import { generateUniqueSlug } from "@/lib/slug";
 import type { EntityType, SupplierCategory } from "@prisma/client";
@@ -72,7 +72,7 @@ export async function createEntity(formData: FormData) {
       [negro, saldoInicialNegroRaw],
     ] as const) {
       if (!raw) continue;
-      const amount = toDecimal(raw);
+      const amount = parseNumeroEscrito(raw, "saldo inicial");
       if (amount.isZero()) continue;
       await tx.document.create({
         data: {

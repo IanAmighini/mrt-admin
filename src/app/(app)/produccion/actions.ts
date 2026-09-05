@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma, type AuditAction, type SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { toDecimal } from "@/lib/money";
+import { parseNumeroEscrito, parseNumeroOpcional, toDecimal } from "@/lib/money";
 import { getSetting, setSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
@@ -21,12 +21,12 @@ export async function updateOilEfficiency(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const value = String(formData.get("oilFillEfficiencyPercent") || "").trim();
-  const num = toDecimal(value);
+  const num = parseNumeroEscrito(value, "rendimiento");
   if (!num.greaterThan(0) || num.greaterThan(100)) {
     throw new UserError("La eficiencia debe ser un porcentaje entre 0 y 100.");
   }
 
-  await setSetting("oilFillEfficiencyPercent", value);
+  await setSetting("oilFillEfficiencyPercent", num.toString());
 
   await logAudit(prisma, {
     userId: user.id,
@@ -71,7 +71,7 @@ async function createProductionRunCore(
     .map((marcaId, i) => ({
       marcaId,
       formatoId: formatoIds[i] || "",
-      quantity: toDecimal(quantities[i] || "0"),
+      quantity: parseNumeroOpcional(quantities[i] ?? "", "pallets"),
       tapaUsadaItemId: tapaUsadaIds[i] || "",
       cajaUsadaItemId: cajaUsadaIds[i] || "",
     }))

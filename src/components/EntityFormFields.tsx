@@ -17,6 +17,7 @@ export function EntityFormFields({
   entity?: Entity;
 }) {
   const isEdit = Boolean(entity);
+  const esProveedor = (entity?.type ?? defaultType) !== "CLIENTE";
 
   return (
     <>
@@ -103,6 +104,7 @@ export function EntityFormFields({
                 id="saldoInicialBlanco"
                 name="saldoInicialBlanco"
                 inputMode="decimal"
+                placeholder="150.000,50"
                 className={inputClass}
               />
             </div>
@@ -114,12 +116,20 @@ export function EntityFormFields({
                 id="saldoInicialNegro"
                 name="saldoInicialNegro"
                 inputMode="decimal"
+                placeholder="150.000,50"
                 className={inputClass}
               />
             </div>
           </>
         )}
       </div>
+      {!isEdit && (
+        <p className="text-xs text-foreground/50">
+          {esProveedor
+            ? "El saldo inicial es lo que se le debe al proveedor. Si hay saldo a favor nuestro, cargalo con signo menos: −25.000."
+            : "El saldo inicial es lo que el cliente nos debe. Si tiene saldo a favor, cargalo con signo menos: −25.000."}
+        </p>
+      )}
       <div className="space-y-1">
         <label className="text-sm" htmlFor="address">
           Dirección

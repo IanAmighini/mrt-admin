@@ -6,7 +6,7 @@ import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
-import { toDecimal } from "@/lib/money";
+import { parseNumeroEscrito } from "@/lib/money";
 import { generateUniqueSlug } from "@/lib/slug";
 
 const CATEGORIES: SupplierCategory[] = [
@@ -35,6 +35,11 @@ export async function createItem(formData: FormData) {
   if (!unit) throw new UserError("La unidad de medida es obligatoria.");
   if (!CATEGORIES.includes(category)) throw new UserError("Elegí una categoría válida.");
 
+  // Se normalizan acá y no al guardar: son columnas Decimal y un "1.500,25" tal cual las rompe.
+  const minStock = minStockRaw ? parseNumeroEscrito(minStockRaw, "stock mínimo") : null;
+  const unitCost = unitCostRaw ? parseNumeroEscrito(unitCostRaw, "costo unitario") : null;
+  const stockInicial = stockInicialRaw ? parseNumeroEscrito(stockInicialRaw, "stock inicial") : null;
+
   await prisma.$transaction(async (tx) => {
     const slug = await generateUniqueSlug(
       name,
@@ -48,17 +53,17 @@ export async function createItem(formData: FormData) {
         unit,
         category,
         isResellable,
-        minStock: minStockRaw || null,
-        unitCost: unitCostRaw || null,
+        minStock,
+        unitCost,
       },
     });
 
-    if (stockInicialRaw && Number(stockInicialRaw) !== 0) {
+    if (stockInicial && !stockInicial.isZero()) {
       await tx.itemMovement.create({
         data: {
           itemId: item.id,
           date: new Date(),
-          quantity: stockInicialRaw,
+          quantity: stockInicial,
           type: "INGRESO",
           reason: "Stock inicial",
           createdById: user.id,
@@ -92,13 +97,15 @@ export async function updateItemAjustes(formData: FormData) {
   const minStockRaw = String(formData.get("minStock") || "").trim();
   if (!itemId) throw new UserError("Falta el insumo.");
   if (!unitCostRaw) throw new UserError("Falta el costo unitario.");
-  if (minStockRaw && toDecimal(minStockRaw).isNegative()) {
+  const unitCost = parseNumeroEscrito(unitCostRaw, "costo unitario");
+  const minStock = minStockRaw ? parseNumeroEscrito(minStockRaw, "stock mínimo") : null;
+  if (minStock?.isNegative()) {
     throw new UserError("El stock mínimo no puede ser negativo.");
   }
 
   const item = await prisma.item.update({
     where: { id: itemId },
-    data: { unitCost: unitCostRaw, minStock: minStockRaw || null },
+    data: { unitCost, minStock },
   });
 
   await logAudit(prisma, {

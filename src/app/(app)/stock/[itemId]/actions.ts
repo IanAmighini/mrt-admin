@@ -6,7 +6,7 @@ import { notFound } from "next/navigation";
 import { Prisma, type ItemMovementType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { formatQuantity, toDecimal } from "@/lib/money";
+import { formatQuantity, parseNumeroEscrito } from "@/lib/money";
 import { logAudit } from "@/lib/audit";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 
@@ -41,13 +41,13 @@ export async function createItemMovement(formData: FormData) {
   let conversionFactor: Prisma.Decimal | null = null;
 
   if (sourceKgRaw && conversionFactorRaw) {
-    sourceKg = toDecimal(sourceKgRaw);
-    conversionFactor = toDecimal(conversionFactorRaw);
+    sourceKg = parseNumeroEscrito(sourceKgRaw, "kilos");
+    conversionFactor = parseNumeroEscrito(conversionFactorRaw, "factor de conversión");
     quantity = sourceKg.times(conversionFactor);
   } else {
     const quantityRaw = String(formData.get("quantity") || "").trim();
     if (!quantityRaw) throw new UserError("Falta la cantidad.");
-    quantity = toDecimal(quantityRaw);
+    quantity = parseNumeroEscrito(quantityRaw, "cantidad");
   }
 
   if (type !== "INGRESO" && effect === "RESTA") {

@@ -13,7 +13,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { DEFAULT_IVA_RATE, formatMoney, toDecimal } from "@/lib/money";
+import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal } from "@/lib/money";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
@@ -56,9 +56,7 @@ function parseOptionalFormDate(value: FormDataEntryValue | null): Date | null {
 function parseAmount(value: FormDataEntryValue | null, field: string): Prisma.Decimal {
   const str = String(value || "").trim();
   if (!str) throw new UserError(`Falta el monto: ${field}.`);
-  const decimal = new Prisma.Decimal(str);
-  if (decimal.isNaN()) throw new UserError(`Monto inválido: ${field}.`);
-  return decimal;
+  return parseNumeroEscrito(str, field);
 }
 
 async function getAccountOrThrow(accountId: string) {
@@ -261,8 +259,8 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
   const lines = productIds
     .map((productId, i) => ({
       productId,
-      quantity: toDecimal(quantities[i]),
-      unitPrice: toDecimal(unitPrices[i]),
+      quantity: parseNumeroEscrito(quantities[i], "cantidad"),
+      unitPrice: parseNumeroEscrito(unitPrices[i], "precio unitario"),
       circuit: circuits[i] as "BLANCO" | "NEGRO",
     }))
     .filter((l) => l.productId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
@@ -452,8 +450,8 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
   const lines = itemIds
     .map((itemId, i) => ({
       itemId,
-      quantity: toDecimal(quantities[i]),
-      unitPrice: toDecimal(unitPrices[i]),
+      quantity: parseNumeroEscrito(quantities[i], "cantidad"),
+      unitPrice: parseNumeroEscrito(unitPrices[i], "precio unitario"),
       circuit: circuits[i] as "BLANCO" | "NEGRO",
     }))
     .filter((l) => l.itemId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
@@ -621,9 +619,9 @@ export async function createFactura(formData: FormData) {
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
 
   const netAmount = parseAmount(formData.get("netAmount"), "neto");
-  const ivaRate = toDecimal(String(formData.get("ivaRate") || DEFAULT_IVA_RATE));
-  const retentionAmount = toDecimal(String(formData.get("retentionAmount") || "0"));
-  const perceptionAmount = toDecimal(String(formData.get("perceptionAmount") || "0"));
+  const ivaRate = parseNumeroEscrito(String(formData.get("ivaRate") || DEFAULT_IVA_RATE), "IVA");
+  const retentionAmount = parseNumeroOpcional(String(formData.get("retentionAmount") || ""), "retención");
+  const perceptionAmount = parseNumeroOpcional(String(formData.get("perceptionAmount") || ""), "percepción");
 
   const ivaAmount = netAmount.times(ivaRate).dividedBy(100);
   const totalAmount = netAmount.plus(ivaAmount).plus(perceptionAmount).minus(retentionAmount);
@@ -631,7 +629,7 @@ export async function createFactura(formData: FormData) {
   const remitoIds = formData.getAll("remitoId").map(String);
   const remitoAmounts = formData.getAll("remitoAmount").map(String);
   const remitoSelections = remitoIds
-    .map((id, i) => ({ id, amount: toDecimal(remitoAmounts[i]) }))
+    .map((id, i) => ({ id, amount: parseNumeroOpcional(remitoAmounts[i] ?? "", "monto imputado") }))
     .filter((r) => r.id && r.amount.greaterThan(0));
 
   await prisma.$transaction(async (tx) => {
@@ -717,9 +715,9 @@ export async function updateFactura(formData: FormData) {
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
 
   const netAmount = parseAmount(formData.get("netAmount"), "neto");
-  const ivaRate = toDecimal(String(formData.get("ivaRate") || DEFAULT_IVA_RATE));
-  const retentionAmount = toDecimal(String(formData.get("retentionAmount") || "0"));
-  const perceptionAmount = toDecimal(String(formData.get("perceptionAmount") || "0"));
+  const ivaRate = parseNumeroEscrito(String(formData.get("ivaRate") || DEFAULT_IVA_RATE), "IVA");
+  const retentionAmount = parseNumeroOpcional(String(formData.get("retentionAmount") || ""), "retención");
+  const perceptionAmount = parseNumeroOpcional(String(formData.get("perceptionAmount") || ""), "percepción");
 
   const ivaAmount = netAmount.times(ivaRate).dividedBy(100);
   const totalAmount = netAmount.plus(ivaAmount).plus(perceptionAmount).minus(retentionAmount);
