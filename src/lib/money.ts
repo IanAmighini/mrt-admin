@@ -70,6 +70,19 @@ export function parseNumeroOpcional(raw: string, campo: string): Prisma.Decimal 
   return raw.trim() ? parseNumeroEscrito(raw, campo) : ZERO;
 }
 
+const FORMATO_EDITABLE = new Intl.NumberFormat("es-AR", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+/**
+ * Un número guardado, escrito como lo escribiría una persona, para prellenar un campo de texto:
+ * `-25000.5` sale `-25.000,50`. Vuelve a entrar por `parseNumeroEscrito` sin perder nada.
+ */
+export function formatNumeroEditable(value: Prisma.Decimal | number | string): string {
+  return FORMATO_EDITABLE.format(Number(value.toString()));
+}
+
 export function sumDecimals(values: (Prisma.Decimal | number | string | null | undefined)[]) {
   return values.reduce<Prisma.Decimal>((acc, v) => acc.plus(toDecimal(v)), ZERO);
 }

@@ -16,7 +16,7 @@ import {
   getTreasuries,
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
-import { formatMoney, formatQuantity, toDecimal } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, formatQuantity, toDecimal } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
 import { createPrice } from "./actions";
@@ -48,6 +48,24 @@ export default async function EntityLedgerPage({
   const blancoAccount = entity.accounts.find((a) => a.circuit === "BLANCO");
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
   if (!blancoAccount || !negroAccount) notFound();
+
+  // Para poder corregir el saldo con el que arrancó la cuenta desde el mismo formulario de edición.
+  const saldosInicialesDocs = await prisma.document.findMany({
+    where: {
+      accountId: { in: [blancoAccount.id, negroAccount.id] },
+      type: "AJUSTE",
+      number: "SALDO-INICIAL",
+    },
+    select: { accountId: true, totalAmount: true },
+  });
+  const saldoInicialDe = (accountId: string) => {
+    const doc = saldosInicialesDocs.find((d) => d.accountId === accountId);
+    return doc ? formatNumeroEditable(doc.totalAmount) : "";
+  };
+  const saldosIniciales = {
+    blanco: saldoInicialDe(blancoAccount.id),
+    negro: saldoInicialDe(negroAccount.id),
+  };
 
   const isCliente = entity.type !== "PROVEEDOR";
   const isProveedor = entity.type !== "CLIENTE";
@@ -139,6 +157,7 @@ export default async function EntityLedgerPage({
               defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
               showSupplierCategory={entity.type !== "CLIENTE"}
               entity={entity}
+              saldosIniciales={saldosIniciales}
             />
           </FormModal>
         )}

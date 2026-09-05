@@ -4,9 +4,9 @@ import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { parseNumeroEscrito } from "@/lib/money";
 import { logAudit } from "@/lib/audit";
 import { generateUniqueSlug } from "@/lib/slug";
+import { aplicarSaldoInicial } from "@/lib/saldo-inicial";
 import type { EntityType, SupplierCategory } from "@prisma/client";
 
 const ENTITY_TYPES: EntityType[] = ["CLIENTE", "PROVEEDOR", "AMBOS"];
@@ -66,28 +66,10 @@ export async function createEntity(formData: FormData) {
       tx.account.create({ data: { entityId: entity.id, circuit: "NEGRO" } }),
     ]);
 
-    const today = new Date();
-    for (const [account, raw] of [
-      [blanco, saldoInicialBlancoRaw],
-      [negro, saldoInicialNegroRaw],
-    ] as const) {
-      if (!raw) continue;
-      const amount = parseNumeroEscrito(raw, "saldo inicial");
-      if (amount.isZero()) continue;
-      await tx.document.create({
-        data: {
-          accountId: account.id,
-          type: "AJUSTE",
-          number: "SALDO-INICIAL",
-          date: today,
-          currency: "ARS",
-          netAmount: amount,
-          totalAmount: amount,
-          reason: "Saldo inicial",
-          createdById: user.id,
-        },
-      });
-    }
+    await Promise.all([
+      aplicarSaldoInicial(tx, blanco.id, saldoInicialBlancoRaw, user.id),
+      aplicarSaldoInicial(tx, negro.id, saldoInicialNegroRaw, user.id),
+    ]);
 
     await logAudit(tx, {
       userId: user.id,
@@ -120,6 +102,8 @@ export async function updateEntity(formData: FormData) {
   const supplierCategory = SUPPLIER_CATEGORIES.includes(supplierCategoryRaw as SupplierCategory)
     ? (supplierCategoryRaw as SupplierCategory)
     : null;
+  const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
+  const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
 
   if (!name) {
     throw new UserError("El nombre es obligatorio.");
@@ -128,9 +112,23 @@ export async function updateEntity(formData: FormData) {
     throw new UserError("Tipo inválido.");
   }
 
-  const entity = await prisma.entity.update({
-    where: { id: entityId },
-    data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
+  const entity = await prisma.$transaction(async (tx) => {
+    const entity = await tx.entity.update({
+      where: { id: entityId },
+      data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
+      include: { accounts: true },
+    });
+
+    // La cuenta de un circuito puede no existir en entidades viejas; se saltea en vez de romper.
+    for (const [circuit, raw] of [
+      ["BLANCO", saldoInicialBlancoRaw],
+      ["NEGRO", saldoInicialNegroRaw],
+    ] as const) {
+      const account = entity.accounts.find((a) => a.circuit === circuit);
+      if (account) await aplicarSaldoInicial(tx, account.id, raw, user.id);
+    }
+
+    return entity;
   });
 
   await logAudit(prisma, {

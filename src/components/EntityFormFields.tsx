@@ -10,11 +10,14 @@ export function EntityFormFields({
   defaultType,
   showSupplierCategory,
   entity,
+  saldosIniciales,
 }: {
   defaultType: "CLIENTE" | "PROVEEDOR";
   showSupplierCategory?: boolean;
   /** Si viene, el formulario edita esta entidad en vez de crear una nueva. */
   entity?: Entity;
+  /** Al editar: los saldos iniciales que ya tiene cargados, para poder corregirlos. */
+  saldosIniciales?: { blanco: string; negro: string };
 }) {
   const isEdit = Boolean(entity);
   const esProveedor = (entity?.type ?? defaultType) !== "CLIENTE";
@@ -94,42 +97,39 @@ export function EntityFormFields({
             </select>
           </div>
         )}
-        {!isEdit && (
-          <>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="saldoInicialBlanco">
-                Saldo inicial Blanco (opcional)
-              </label>
-              <input
-                id="saldoInicialBlanco"
-                name="saldoInicialBlanco"
-                inputMode="decimal"
-                placeholder="150.000,50"
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="saldoInicialNegro">
-                Saldo inicial Negro (opcional)
-              </label>
-              <input
-                id="saldoInicialNegro"
-                name="saldoInicialNegro"
-                inputMode="decimal"
-                placeholder="150.000,50"
-                className={inputClass}
-              />
-            </div>
-          </>
-        )}
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="saldoInicialBlanco">
+            Saldo inicial Blanco (opcional)
+          </label>
+          <input
+            id="saldoInicialBlanco"
+            name="saldoInicialBlanco"
+            inputMode="decimal"
+            placeholder="150.000,50"
+            defaultValue={saldosIniciales?.blanco ?? ""}
+            className={inputClass}
+          />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="saldoInicialNegro">
+            Saldo inicial Negro (opcional)
+          </label>
+          <input
+            id="saldoInicialNegro"
+            name="saldoInicialNegro"
+            inputMode="decimal"
+            placeholder="150.000,50"
+            defaultValue={saldosIniciales?.negro ?? ""}
+            className={inputClass}
+          />
+        </div>
       </div>
-      {!isEdit && (
-        <p className="text-xs text-foreground/50">
-          {esProveedor
-            ? "El saldo inicial es lo que se le debe al proveedor. Si hay saldo a favor nuestro, cargalo con signo menos: −25.000."
-            : "El saldo inicial es lo que el cliente nos debe. Si tiene saldo a favor, cargalo con signo menos: −25.000."}
-        </p>
-      )}
+      <p className="text-xs text-foreground/50">
+        {esProveedor
+          ? "El saldo inicial es lo que se le debe al proveedor. Si hay saldo a favor nuestro, cargalo con signo menos: −25.000."
+          : "El saldo inicial es lo que el cliente nos debe. Si tiene saldo a favor, cargalo con signo menos: −25.000."}
+        {isEdit && " Vaciá el campo para borrarlo. No afecta al resto de los movimientos de la cuenta."}
+      </p>
       <div className="space-y-1">
         <label className="text-sm" htmlFor="address">
           Dirección
