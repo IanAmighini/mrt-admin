@@ -1,4 +1,5 @@
 import "server-only";
+import { UserError } from "@/lib/user-error";
 import { Prisma, type SupplierCategory } from "@prisma/client";
 
 type Tx = Prisma.TransactionClient;
@@ -100,12 +101,12 @@ export async function buildRecipeTemplate(
   function exigir(nombre: string, categoria: SupplierCategory) {
     const item = porNombre.get(nombre);
     if (!item) {
-      throw new Error(
+      throw new UserError(
         `No se puede armar la receta de ${producto}: falta el insumo "${nombre}". Cargalo en Stock y volvé a intentar.`
       );
     }
     if (item.category !== categoria) {
-      throw new Error(
+      throw new UserError(
         `No se puede armar la receta de ${producto}: "${nombre}" está cargado como ${item.category} y tendría que ser ${categoria}.`
       );
     }

@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -30,9 +31,9 @@ export async function createItem(formData: FormData) {
   const unitCostRaw = String(formData.get("unitCost") || "").trim();
   const stockInicialRaw = String(formData.get("stockInicial") || "").trim();
 
-  if (!name) throw new Error("El nombre es obligatorio.");
-  if (!unit) throw new Error("La unidad de medida es obligatoria.");
-  if (!CATEGORIES.includes(category)) throw new Error("Elegí una categoría válida.");
+  if (!name) throw new UserError("El nombre es obligatorio.");
+  if (!unit) throw new UserError("La unidad de medida es obligatoria.");
+  if (!CATEGORIES.includes(category)) throw new UserError("Elegí una categoría válida.");
 
   await prisma.$transaction(async (tx) => {
     const slug = await generateUniqueSlug(
@@ -89,10 +90,10 @@ export async function updateItemAjustes(formData: FormData) {
   const itemId = String(formData.get("itemId") || "");
   const unitCostRaw = String(formData.get("unitCost") || "").trim();
   const minStockRaw = String(formData.get("minStock") || "").trim();
-  if (!itemId) throw new Error("Falta el insumo.");
-  if (!unitCostRaw) throw new Error("Falta el costo unitario.");
+  if (!itemId) throw new UserError("Falta el insumo.");
+  if (!unitCostRaw) throw new UserError("Falta el costo unitario.");
   if (minStockRaw && toDecimal(minStockRaw).isNegative()) {
-    throw new Error("El stock mínimo no puede ser negativo.");
+    throw new UserError("El stock mínimo no puede ser negativo.");
   }
 
   const item = await prisma.item.update({

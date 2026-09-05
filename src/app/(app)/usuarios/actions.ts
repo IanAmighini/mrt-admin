@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { Prisma, type UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -20,13 +21,13 @@ export async function createUser(formData: FormData) {
   const role = String(formData.get("role") || "") as UserRole;
 
   if (!name || !email || !password) {
-    throw new Error("Faltan datos obligatorios.");
+    throw new UserError("Faltan datos obligatorios.");
   }
   if (password.length < 8) {
-    throw new Error("La contraseña debe tener al menos 8 caracteres.");
+    throw new UserError("La contraseña debe tener al menos 8 caracteres.");
   }
   if (!ROLES.includes(role)) {
-    throw new Error("Rol inválido.");
+    throw new UserError("Rol inválido.");
   }
 
   const passwordHash = await hashPassword(password);
@@ -36,7 +37,7 @@ export async function createUser(formData: FormData) {
     created = await prisma.user.create({ data: { name, email, role, passwordHash } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new Error("Ya existe un usuario con ese email.");
+      throw new UserError("Ya existe un usuario con ese email.");
     }
     throw error;
   }
@@ -63,17 +64,17 @@ export async function updateUser(formData: FormData) {
   const role = String(formData.get("role") || "") as UserRole;
 
   if (!id || !name || !email) {
-    throw new Error("Faltan datos obligatorios.");
+    throw new UserError("Faltan datos obligatorios.");
   }
   if (!ROLES.includes(role)) {
-    throw new Error("Rol inválido.");
+    throw new UserError("Rol inválido.");
   }
 
   try {
     await prisma.user.update({ where: { id }, data: { name, email, role } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw new Error("Ya existe un usuario con ese email.");
+      throw new UserError("Ya existe un usuario con ese email.");
     }
     throw error;
   }
@@ -95,10 +96,10 @@ export async function toggleUserActive(formData: FormData) {
   const id = String(formData.get("id") || "");
   const active = formData.get("active") === "true";
   if (!id) {
-    throw new Error("Falta el usuario.");
+    throw new UserError("Falta el usuario.");
   }
   if (id === admin.id) {
-    throw new Error("No podés desactivar tu propio usuario.");
+    throw new UserError("No podés desactivar tu propio usuario.");
   }
 
   const target = await prisma.user.update({ where: { id }, data: { active: !active } });

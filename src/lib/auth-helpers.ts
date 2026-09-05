@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/user-error";
 import "server-only";
 import { redirect } from "next/navigation";
 import type { UserRole } from "@prisma/client";
@@ -19,7 +20,7 @@ export async function requireUser() {
 export async function requireRole(allowed: UserRole[]) {
   const user = await requireUser();
   if (!allowed.includes(user.role)) {
-    throw new Error("No tenés permisos para realizar esta acción.");
+    throw new UserError("No tenés permisos para realizar esta acción.");
   }
   return user;
 }

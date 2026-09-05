@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { Prisma, type AuditAction, type SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -12,7 +13,7 @@ import { logAudit } from "@/lib/audit";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
-  if (!str) throw new Error("Falta la fecha.");
+  if (!str) throw new UserError("Falta la fecha.");
   return new Date(`${str}T00:00:00`);
 }
 
@@ -22,7 +23,7 @@ export async function updateOilEfficiency(formData: FormData) {
   const value = String(formData.get("oilFillEfficiencyPercent") || "").trim();
   const num = toDecimal(value);
   if (!num.greaterThan(0) || num.greaterThan(100)) {
-    throw new Error("La eficiencia debe ser un porcentaje entre 0 y 100.");
+    throw new UserError("La eficiencia debe ser un porcentaje entre 0 y 100.");
   }
 
   await setSetting("oilFillEfficiencyPercent", value);
@@ -63,7 +64,7 @@ async function createProductionRunCore(
     tapaUsadaIds.length !== marcaIds.length ||
     cajaUsadaIds.length !== marcaIds.length
   ) {
-    throw new Error("El formulario llegó incompleto — recargá la página y volvé a cargar la producción.");
+    throw new UserError("El formulario llegó incompleto — recargá la página y volvé a cargar la producción.");
   }
 
   const lines = marcaIds
@@ -77,7 +78,7 @@ async function createProductionRunCore(
     .filter((l) => l.marcaId && l.formatoId && !l.quantity.isZero());
 
   if (lines.length === 0) {
-    throw new Error(
+    throw new UserError(
       "Cargá al menos un ítem con marca, formato y pallets (puede ser negativo, para reformateo)."
     );
   }
@@ -101,9 +102,9 @@ async function createProductionRunCore(
     ] as const) {
       if (!itemId) continue;
       const item = reemplazoPorId.get(itemId);
-      if (!item) throw new Error(`El insumo elegido como ${rol} usada ya no existe.`);
+      if (!item) throw new UserError(`El insumo elegido como ${rol} usada ya no existe.`);
       if (item.category !== categoria) {
-        throw new Error(`"${item.name}" no es una ${rol}.`);
+        throw new UserError(`"${item.name}" no es una ${rol}.`);
       }
     }
   }
@@ -146,7 +147,7 @@ async function createProductionRunCore(
       // pueden no tenerla. Envasar sin receta no descuenta un solo insumo y no avisa nada: el
       // faltante recién aparece cuando alguien cuenta el stock físico. Mejor no dejar cargar.
       if (product.recipe.length === 0) {
-        throw new Error(
+        throw new UserError(
           `${product.name} ${product.oilType} ${product.presentation} no tiene receta cargada, así que producirlo no descontaría ningún insumo. Cargala desde la ficha del producto.`
         );
       }
@@ -162,12 +163,12 @@ async function createProductionRunCore(
         // Aceptar la instrucción y descartarla en silencio dejaría el stock mal sin que nadie se
         // entere, así que se avisa.
         if (enReceta.length === 0) {
-          throw new Error(
+          throw new UserError(
             `${product.name} ${product.presentation} no tiene ${rol} en la receta — cargala antes de indicar cuál usaste.`
           );
         }
         if (enReceta.length > 1) {
-          throw new Error(
+          throw new UserError(
             `${product.name} ${product.presentation} tiene más de una ${rol} en la receta — corregila antes de indicar cuál usaste.`
           );
         }
@@ -225,7 +226,7 @@ export async function updateProductionRun(formData: FormData) {
 
   const runId = String(formData.get("runId") || "");
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
-  if (!run) throw new Error("La carga de producción ya no existe.");
+  if (!run) throw new UserError("La carga de producción ya no existe.");
 
   await createProductionRunCore(user, formData, "UPDATE", runId);
 }
@@ -235,7 +236,7 @@ export async function deleteProductionRun(formData: FormData) {
 
   const runId = String(formData.get("runId") || "");
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
-  if (!run) throw new Error("La carga de producción ya no existe.");
+  if (!run) throw new UserError("La carga de producción ya no existe.");
 
   await prisma.productionRun.delete({ where: { id: runId } });
 

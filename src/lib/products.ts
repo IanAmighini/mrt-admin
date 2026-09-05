@@ -1,4 +1,5 @@
 import "server-only";
+import { UserError } from "@/lib/user-error";
 import type { Prisma } from "@prisma/client";
 import { generateUniqueSlug } from "./slug";
 import { buildRecipeTemplate } from "./recipe-template";
@@ -24,9 +25,9 @@ export async function resolveOrCreateProduct(
   oilFillEfficiencyPercent: Prisma.Decimal | number
 ) {
   const marca = await tx.marca.findUnique({ where: { id: marcaId } });
-  if (!marca) throw new Error("Alguna de las marcas seleccionadas ya no existe.");
+  if (!marca) throw new UserError("Alguna de las marcas seleccionadas ya no existe.");
   const formato = await tx.formato.findUnique({ where: { id: formatoId } });
-  if (!formato) throw new Error("Alguno de los formatos seleccionados ya no existe.");
+  if (!formato) throw new UserError("Alguno de los formatos seleccionados ya no existe.");
 
   const existente = await tx.product.findFirst({
     where: { name: marca.name, oilType: marca.oilType, presentation: formato.presentation },

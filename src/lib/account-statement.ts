@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/user-error";
 import "server-only";
 import { Prisma, type Account, type Currency, type Entity } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -90,7 +91,7 @@ export async function getAccountStatement({
     where: { id: accountId },
     include: { entity: true },
   });
-  if (!account) throw new Error("Cuenta inexistente.");
+  if (!account) throw new UserError("Cuenta inexistente.");
 
   const [documents, payments, treasuries] = await Promise.all([
     getAccountDocuments(accountId),

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import type { Currency } from "@prisma/client";
+import { UserError } from "@/lib/user-error";
 
 export const DEFAULT_IVA_RATE = 21;
 
@@ -7,7 +8,16 @@ export const ZERO = new Prisma.Decimal(0);
 
 export function toDecimal(value: string | number | Prisma.Decimal | null | undefined) {
   if (value === null || value === undefined || value === "") return ZERO;
-  return new Prisma.Decimal(value);
+  try {
+    return new Prisma.Decimal(value);
+  } catch {
+    // Decimal tira "[DecimalError] Invalid argument", que no le dice nada a nadie. Pasa seguido
+    // porque escribir el monto en formato argentino ("150.000,50") es lo natural y Decimal solo
+    // acepta punto decimal y sin separador de miles.
+    throw new UserError(
+      `"${String(value)}" no es un número válido. Escribilo sin separador de miles y con punto para los decimales: 150000.50`
+    );
+  }
 }
 
 export function sumDecimals(values: (Prisma.Decimal | number | string | null | undefined)[]) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { userErrorMessage } from "@/lib/user-error";
 import { useActionState } from "react";
 import type { PedidoStatus } from "@prisma/client";
 import { PEDIDO_STATUS_COLORS, PEDIDO_STATUS_LABELS } from "@/lib/labels";
@@ -14,7 +15,7 @@ export function PedidoStatusSelect({ pedidoId, status }: { pedidoId: string; sta
         await updatePedidoStatus(formData);
         return null;
       } catch (e) {
-        return e instanceof Error ? e.message : "Ocurrió un error.";
+        return userErrorMessage(e);
       }
     },
     null

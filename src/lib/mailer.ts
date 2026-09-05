@@ -1,3 +1,4 @@
+import { UserError } from "@/lib/user-error";
 import "server-only";
 import nodemailer, { type Transporter } from "nodemailer";
 
@@ -26,7 +27,7 @@ function getTransporter(): Transporter {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) {
-    throw new Error(
+    throw new UserError(
       "Faltan GMAIL_USER y/o GMAIL_APP_PASSWORD: no hay credenciales para enviar el mail."
     );
   }

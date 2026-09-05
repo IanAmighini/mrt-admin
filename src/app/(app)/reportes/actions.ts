@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
@@ -25,7 +26,7 @@ export async function updateWeeklyReportRecipients(formData: FormData) {
 
   const invalidas = direcciones.filter((d) => !EMAIL_RE.test(d));
   if (invalidas.length > 0) {
-    throw new Error(`Direcciones inválidas: ${invalidas.join(", ")}`);
+    throw new UserError(`Direcciones inválidas: ${invalidas.join(", ")}`);
   }
 
   await setSetting(SETTING_RECIPIENTS, direcciones.join(", "));

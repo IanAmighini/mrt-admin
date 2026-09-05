@@ -1,5 +1,6 @@
 "use client";
 
+import { userErrorMessage } from "@/lib/user-error";
 import { useActionState } from "react";
 import { CircleAlert, CircleCheck, Send } from "lucide-react";
 import type { SendNowResult } from "@/app/(app)/reportes/actions";
@@ -13,7 +14,7 @@ export function SendWeeklyReportButton({ action }: { action: () => Promise<SendN
     try {
       return await action();
     } catch (e) {
-      return { ok: false, mensaje: e instanceof Error ? e.message : "Ocurrió un error." };
+      return { ok: false, mensaje: userErrorMessage(e) };
     }
   }, null);
 

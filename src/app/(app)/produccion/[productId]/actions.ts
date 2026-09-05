@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -27,10 +28,10 @@ export async function updateProduct(formData: FormData) {
   const unitsPerBox = parseOptionalInt(formData.get("unitsPerBox"));
   const bottleCapacityMlRaw = String(formData.get("bottleCapacityMl") || "").trim();
 
-  if (!productId) throw new Error("Falta el producto.");
-  if (!name) throw new Error("El nombre es obligatorio.");
-  if (!oilType) throw new Error("El tipo de aceite es obligatorio.");
-  if (!presentation) throw new Error("La presentación es obligatoria.");
+  if (!productId) throw new UserError("Falta el producto.");
+  if (!name) throw new UserError("El nombre es obligatorio.");
+  if (!oilType) throw new UserError("El tipo de aceite es obligatorio.");
+  if (!presentation) throw new UserError("La presentación es obligatoria.");
 
   const product = await prisma.product.update({
     where: { id: productId },
@@ -60,12 +61,12 @@ export async function generateRecipeFromPresentation(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const productId = String(formData.get("productId") || "");
-  if (!productId) throw new Error("Falta el producto.");
+  if (!productId) throw new UserError("Falta el producto.");
 
   const product = await prisma.product.findUnique({ where: { id: productId } });
-  if (!product) throw new Error("El producto ya no existe.");
+  if (!product) throw new UserError("El producto ya no existe.");
   if (!product.boxesPerPallet || !product.unitsPerBox) {
-    throw new Error(
+    throw new UserError(
       "Este producto no tiene cargado cajas por pallet / botellas por caja — completalo en 'Editar producto'."
     );
   }
@@ -97,9 +98,9 @@ export async function generateRecipeFromPresentation(formData: FormData) {
   });
   for (const rol of elegidos) {
     const item = itemsElegidos.find((i) => i.id === rol.itemId);
-    if (!item) throw new Error(`El insumo elegido para ${rol.label} ya no existe.`);
+    if (!item) throw new UserError(`El insumo elegido para ${rol.label} ya no existe.`);
     if (item.category !== rol.category) {
-      throw new Error(`"${item.name}" no es un insumo de ${rol.label.toLowerCase()}.`);
+      throw new UserError(`"${item.name}" no es un insumo de ${rol.label.toLowerCase()}.`);
     }
   }
 
@@ -118,7 +119,7 @@ export async function generateRecipeFromPresentation(formData: FormData) {
   }
   if (oilItemId) {
     if (!product.bottleCapacityMl) {
-      throw new Error(
+      throw new UserError(
         "Este producto no tiene cargada la capacidad de la botella — completala en 'Editar producto'."
       );
     }
@@ -130,7 +131,7 @@ export async function generateRecipeFromPresentation(formData: FormData) {
   }
 
   if (lines.length === 0) {
-    throw new Error("Elegí al menos un insumo para generar la receta.");
+    throw new UserError("Elegí al menos un insumo para generar la receta.");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -174,12 +175,12 @@ export async function upsertRecipeLine(formData: FormData) {
   const itemId = String(formData.get("itemId") || "");
   const quantityPerUnitRaw = String(formData.get("quantityPerUnit") || "").trim();
 
-  if (!productId || !itemId) throw new Error("Faltan datos.");
-  if (!quantityPerUnitRaw) throw new Error("Falta la cantidad por unidad.");
+  if (!productId || !itemId) throw new UserError("Faltan datos.");
+  if (!quantityPerUnitRaw) throw new UserError("Falta la cantidad por unidad.");
 
   const quantityPerUnit = toDecimal(quantityPerUnitRaw);
   if (!quantityPerUnit.greaterThan(0)) {
-    throw new Error("La cantidad por unidad debe ser mayor a cero.");
+    throw new UserError("La cantidad por unidad debe ser mayor a cero.");
   }
 
   const [item, product] = await Promise.all([
@@ -210,7 +211,7 @@ export async function deleteRecipeLine(formData: FormData) {
 
   const recipeItemId = String(formData.get("recipeItemId") || "");
   const productId = String(formData.get("productId") || "");
-  if (!recipeItemId) throw new Error("Falta el ítem de receta.");
+  if (!recipeItemId) throw new UserError("Falta el ítem de receta.");
 
   const [recipeItem, product] = await Promise.all([
     prisma.recipeItem.findUnique({

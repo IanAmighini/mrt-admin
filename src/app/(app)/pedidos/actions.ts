@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import type { Prisma, PedidoStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +15,7 @@ const PEDIDO_STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
-  if (!str) throw new Error("Falta la fecha.");
+  if (!str) throw new UserError("Falta la fecha.");
   return new Date(`${str}T00:00:00`);
 }
 
@@ -32,7 +33,7 @@ function parseLines(formData: FormData) {
     .filter((l) => l.marcaId && l.formatoId && l.pallets.greaterThan(0));
 
   if (lines.length === 0) {
-    throw new Error("Cargá al menos una línea con marca, formato y cantidad de pallets.");
+    throw new UserError("Cargá al menos una línea con marca, formato y cantidad de pallets.");
   }
   return lines;
 }
@@ -50,7 +51,7 @@ export async function createPedido(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
-  if (!entityId) throw new Error("Elegí un cliente.");
+  if (!entityId) throw new UserError("Elegí un cliente.");
   const date = parseFormDate(formData.get("date"));
   const comments = String(formData.get("comments") || "").trim() || null;
   const lines = parseLines(formData);
@@ -87,7 +88,7 @@ export async function createPedido(formData: FormData) {
 
 async function getPedidoOrThrow(pedidoId: string) {
   const pedido = await prisma.pedido.findUnique({ where: { id: pedidoId } });
-  if (!pedido) throw new Error("El pedido ya no existe.");
+  if (!pedido) throw new UserError("El pedido ya no existe.");
   return pedido;
 }
 
@@ -113,7 +114,7 @@ export async function updatePedido(formData: FormData) {
   const existing = await getPedidoOrThrow(pedidoId);
 
   const entityId = String(formData.get("entityId") || "");
-  if (!entityId) throw new Error("Elegí un cliente.");
+  if (!entityId) throw new UserError("Elegí un cliente.");
   const date = parseFormDate(formData.get("date"));
   const comments = String(formData.get("comments") || "").trim() || null;
   const lines = parseLines(formData);
@@ -155,7 +156,7 @@ export async function updatePedidoStatus(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
   const status = String(formData.get("status") || "") as PedidoStatus;
-  if (!PEDIDO_STATUSES.includes(status)) throw new Error("Estado inválido.");
+  if (!PEDIDO_STATUSES.includes(status)) throw new UserError("Estado inválido.");
 
   const pedido = await getPedidoOrThrow(pedidoId);
 

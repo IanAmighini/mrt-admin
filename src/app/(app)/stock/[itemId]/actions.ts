@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import { Prisma, type ItemMovementType } from "@prisma/client";
@@ -13,7 +14,7 @@ const MOVEMENT_TYPES: ItemMovementType[] = ["INGRESO", "AJUSTE", "MERMA", "VENTA
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
-  if (!str) throw new Error("Falta la fecha.");
+  if (!str) throw new UserError("Falta la fecha.");
   return new Date(`${str}T00:00:00`);
 }
 
@@ -25,11 +26,11 @@ export async function createItemMovement(formData: FormData) {
   if (!item) notFound();
 
   const type = String(formData.get("type") || "") as ItemMovementType;
-  if (!MOVEMENT_TYPES.includes(type)) throw new Error("Tipo de movimiento inválido.");
+  if (!MOVEMENT_TYPES.includes(type)) throw new UserError("Tipo de movimiento inválido.");
 
   const date = parseFormDate(formData.get("date"));
   const reason = String(formData.get("reason") || "").trim();
-  if (!reason) throw new Error("El motivo es obligatorio.");
+  if (!reason) throw new UserError("El motivo es obligatorio.");
 
   const effect = String(formData.get("effect") || "SUMA");
   const sourceKgRaw = String(formData.get("sourceKg") || "").trim();
@@ -45,7 +46,7 @@ export async function createItemMovement(formData: FormData) {
     quantity = sourceKg.times(conversionFactor);
   } else {
     const quantityRaw = String(formData.get("quantity") || "").trim();
-    if (!quantityRaw) throw new Error("Falta la cantidad.");
+    if (!quantityRaw) throw new UserError("Falta la cantidad.");
     quantity = toDecimal(quantityRaw);
   }
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import {
@@ -43,7 +44,7 @@ function parseManualTreasuryCategory(
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
-  if (!str) throw new Error("Falta la fecha.");
+  if (!str) throw new UserError("Falta la fecha.");
   return new Date(`${str}T00:00:00`);
 }
 
@@ -54,9 +55,9 @@ function parseOptionalFormDate(value: FormDataEntryValue | null): Date | null {
 
 function parseAmount(value: FormDataEntryValue | null, field: string): Prisma.Decimal {
   const str = String(value || "").trim();
-  if (!str) throw new Error(`Falta el monto: ${field}.`);
+  if (!str) throw new UserError(`Falta el monto: ${field}.`);
   const decimal = new Prisma.Decimal(str);
-  if (decimal.isNaN()) throw new Error(`Monto inválido: ${field}.`);
+  if (decimal.isNaN()) throw new UserError(`Monto inválido: ${field}.`);
   return decimal;
 }
 
@@ -65,7 +66,7 @@ async function getAccountOrThrow(accountId: string) {
     where: { id: accountId },
     include: { entity: true },
   });
-  if (!account) throw new Error("Cuenta inexistente.");
+  if (!account) throw new UserError("Cuenta inexistente.");
   return account;
 }
 
@@ -76,16 +77,16 @@ export async function updateDocument(formData: FormData) {
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({ where: { id: documentId } });
-  if (!document) throw new Error("El comprobante ya no existe.");
+  if (!document) throw new UserError("El comprobante ya no existe.");
   if (!NON_FACTURA_TYPES.includes(document.type)) {
-    throw new Error("Este comprobante no es una nota ni un ajuste.");
+    throw new UserError("Este comprobante no es una nota ni un ajuste.");
   }
 
   const type = String(formData.get("type") || "") as DocumentType;
-  if (!NON_FACTURA_TYPES.includes(type)) throw new Error("Tipo de comprobante inválido.");
+  if (!NON_FACTURA_TYPES.includes(type)) throw new UserError("Tipo de comprobante inválido.");
 
   const number = String(formData.get("number") || "").trim();
-  if (!number) throw new Error("El número es obligatorio.");
+  if (!number) throw new UserError("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
@@ -97,7 +98,7 @@ export async function updateDocument(formData: FormData) {
   const reason = String(formData.get("reason") || "").trim() || null;
 
   if (type === "AJUSTE" && !reason) {
-    throw new Error("El ajuste manual requiere un motivo.");
+    throw new UserError("El ajuste manual requiere un motivo.");
   }
 
   const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
@@ -141,9 +142,9 @@ export async function deleteDocument(formData: FormData) {
     where: { id: documentId },
     include: { account: { include: { entity: true } } },
   });
-  if (!document) throw new Error("El comprobante ya no existe.");
+  if (!document) throw new UserError("El comprobante ya no existe.");
   if (!NON_FACTURA_TYPES.includes(document.type)) {
-    throw new Error("Este comprobante no es una nota ni un ajuste.");
+    throw new UserError("Este comprobante no es una nota ni un ajuste.");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -171,22 +172,22 @@ export async function createDocumentForEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
-  if (!entityId) throw new Error("Falta el cliente o proveedor.");
+  if (!entityId) throw new UserError("Falta el cliente o proveedor.");
 
   const circuit = String(formData.get("circuit") || "");
-  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Cuenta inválida.");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Cuenta inválida.");
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
     include: { entity: true },
   });
-  if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
+  if (!account) throw new UserError("No se encontró la cuenta de esta entidad.");
 
   const type = String(formData.get("type") || "") as DocumentType;
-  if (!NON_FACTURA_TYPES.includes(type)) throw new Error("Tipo de comprobante inválido.");
+  if (!NON_FACTURA_TYPES.includes(type)) throw new UserError("Tipo de comprobante inválido.");
 
   const number = String(formData.get("number") || "").trim();
-  if (!number) throw new Error("El número es obligatorio.");
+  if (!number) throw new UserError("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
@@ -198,7 +199,7 @@ export async function createDocumentForEntity(formData: FormData) {
   const reason = String(formData.get("reason") || "").trim() || null;
 
   if (type === "AJUSTE" && !reason) {
-    throw new Error("El ajuste manual requiere un motivo.");
+    throw new UserError("El ajuste manual requiere un motivo.");
   }
 
   const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
@@ -237,13 +238,13 @@ export async function createDocumentForEntity(formData: FormData) {
  * — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
 async function createRemitoCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
   const entityId = String(formData.get("entityId") || "");
-  if (!entityId) throw new Error("Falta la entidad.");
+  if (!entityId) throw new UserError("Falta la entidad.");
 
   const entity = await prisma.entity.findUnique({ where: { id: entityId } });
-  if (!entity) throw new Error("Entidad inexistente.");
+  if (!entity) throw new UserError("Entidad inexistente.");
 
   const number = String(formData.get("number") || "").trim();
-  if (!number) throw new Error("El número es obligatorio.");
+  if (!number) throw new UserError("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
   const dueDateOverride = parseOptionalFormDate(formData.get("dueDate"));
@@ -267,10 +268,10 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
     .filter((l) => l.productId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
 
   if (lines.length === 0) {
-    throw new Error("Cargá al menos una línea con producto, cantidad y precio.");
+    throw new UserError("Cargá al menos una línea con producto, cantidad y precio.");
   }
   if (lines.some((l) => l.circuit !== "BLANCO" && l.circuit !== "NEGRO")) {
-    throw new Error("Circuito inválido en alguna línea.");
+    throw new UserError("Circuito inválido en alguna línea.");
   }
 
   const pedidoIds = formData.getAll("pedidoId").map(String).filter(Boolean);
@@ -290,7 +291,7 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
   await prisma.$transaction(async (tx) => {
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
-      if (!account) throw new Error(`No se encontró la cuenta ${circuit} de esta entidad.`);
+      if (!account) throw new UserError(`No se encontró la cuenta ${circuit} de esta entidad.`);
 
       const lineData = circuitLines.map((l) => ({
         productId: l.productId,
@@ -374,12 +375,12 @@ async function getRemitoOrThrow(documentId: string) {
     where: { id: documentId },
     include: { remitoLinks: true, lines: true, account: { include: { entity: true } } },
   });
-  if (!document) throw new Error("El remito ya no existe.");
+  if (!document) throw new UserError("El remito ya no existe.");
   if (document.type !== "REMITO" || document.lines.length === 0) {
-    throw new Error("Este comprobante no es una entrega.");
+    throw new UserError("Este comprobante no es una entrega.");
   }
   if (document.remitoLinks.length > 0) {
-    throw new Error("Este remito ya está facturado — hay que borrar la factura primero.");
+    throw new UserError("Este remito ya está facturado — hay que borrar la factura primero.");
   }
   return document;
 }
@@ -432,10 +433,10 @@ export async function updateRemito(formData: FormData) {
  * — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
 async function createCompraCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
   const entityId = String(formData.get("entityId") || "");
-  if (!entityId) throw new Error("Falta la entidad.");
+  if (!entityId) throw new UserError("Falta la entidad.");
 
   const number = String(formData.get("number") || "").trim();
-  if (!number) throw new Error("El número es obligatorio.");
+  if (!number) throw new UserError("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
@@ -458,10 +459,10 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
     .filter((l) => l.itemId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
 
   if (lines.length === 0) {
-    throw new Error("Cargá al menos una línea con insumo, cantidad y precio.");
+    throw new UserError("Cargá al menos una línea con insumo, cantidad y precio.");
   }
   if (lines.some((l) => l.circuit !== "BLANCO" && l.circuit !== "NEGRO")) {
-    throw new Error("Circuito inválido en alguna línea.");
+    throw new UserError("Circuito inválido en alguna línea.");
   }
 
   const accounts = await prisma.account.findMany({ where: { entityId } });
@@ -475,14 +476,14 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
   }
 
   const entity = await prisma.entity.findUnique({ where: { id: entityId } });
-  if (!entity) throw new Error("Entidad inexistente.");
+  if (!entity) throw new UserError("Entidad inexistente.");
 
   let combinedTotal = toDecimal(0);
 
   await prisma.$transaction(async (tx) => {
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
-      if (!account) throw new Error(`No se encontró la cuenta ${circuit} de esta entidad.`);
+      if (!account) throw new UserError(`No se encontró la cuenta ${circuit} de esta entidad.`);
 
       const lineData = circuitLines.map((l) => ({
         itemId: l.itemId,
@@ -550,9 +551,9 @@ async function getCompraOrThrow(documentId: string) {
     where: { id: documentId },
     include: { purchaseLines: true, account: { include: { entity: true } } },
   });
-  if (!document) throw new Error("La compra ya no existe.");
+  if (!document) throw new UserError("La compra ya no existe.");
   if (document.type !== "REMITO" || document.purchaseLines.length === 0) {
-    throw new Error("Este comprobante no es una compra.");
+    throw new UserError("Este comprobante no es una compra.");
   }
   return document;
 }
@@ -607,11 +608,11 @@ export async function createFactura(formData: FormData) {
   const accountId = String(formData.get("accountId") || "");
   const account = await getAccountOrThrow(accountId);
   if (account.circuit !== "BLANCO") {
-    throw new Error("Las facturas solo se cargan en la cuenta Blanco.");
+    throw new UserError("Las facturas solo se cargan en la cuenta Blanco.");
   }
 
   const number = String(formData.get("number") || "").trim();
-  if (!number) throw new Error("El número es obligatorio.");
+  if (!number) throw new UserError("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, "BLANCO");
@@ -663,14 +664,14 @@ export async function createFactura(formData: FormData) {
         include: { remitoLinks: true, allocations: true, lines: { include: { product: true } }, purchaseLines: { include: { item: true } } },
       });
       if (remitos.length !== remitoSelections.length) {
-        throw new Error("Alguno de los remitos seleccionados ya no está disponible.");
+        throw new UserError("Alguno de los remitos seleccionados ya no está disponible.");
       }
 
       const linkData = remitoSelections.map((selection) => {
         const remito = remitos.find((r) => r.id === selection.id)!;
         const pending = getDocumentEffect(remito);
         if (selection.amount.greaterThan(pending)) {
-          throw new Error(
+          throw new UserError(
             `El monto a facturar del remito #${remito.number} supera su saldo pendiente.`
           );
         }
@@ -703,11 +704,11 @@ export async function updateFactura(formData: FormData) {
     where: { id: documentId },
     include: { account: { include: { entity: true } } },
   });
-  if (!factura) throw new Error("La factura ya no existe.");
-  if (factura.type !== "FACTURA") throw new Error("Este comprobante no es una factura.");
+  if (!factura) throw new UserError("La factura ya no existe.");
+  if (factura.type !== "FACTURA") throw new UserError("Este comprobante no es una factura.");
 
   const number = String(formData.get("number") || "").trim();
-  if (!number) throw new Error("El número es obligatorio.");
+  if (!number) throw new UserError("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, "BLANCO");
@@ -760,8 +761,8 @@ export async function deleteFactura(formData: FormData) {
     where: { id: documentId },
     include: { account: { include: { entity: true } } },
   });
-  if (!factura) throw new Error("La factura ya no existe.");
-  if (factura.type !== "FACTURA") throw new Error("Este comprobante no es una factura.");
+  if (!factura) throw new UserError("La factura ya no existe.");
+  if (factura.type !== "FACTURA") throw new UserError("Este comprobante no es una factura.");
 
   await prisma.$transaction(async (tx) => {
     await tx.documentLink.deleteMany({ where: { facturaId: documentId } });
@@ -804,13 +805,13 @@ async function applyPaymentDestino(params: {
   if (!destino) return;
 
   if (destino === PROVEEDOR_DIRECTO_VALUE) {
-    if (!isCobro) throw new Error('"Directo a un proveedor" solo aplica a cobros de clientes.');
-    if (!proveedorId) throw new Error("Elegí a qué proveedor fue directo el pago.");
+    if (!isCobro) throw new UserError('"Directo a un proveedor" solo aplica a cobros de clientes.');
+    if (!proveedorId) throw new UserError("Elegí a qué proveedor fue directo el pago.");
 
     const proveedorAccount = await prisma.account.findUnique({
       where: { entityId_circuit: { entityId: proveedorId, circuit: payment.circuit } },
     });
-    if (!proveedorAccount) throw new Error("No se encontró la cuenta del proveedor elegido.");
+    if (!proveedorAccount) throw new UserError("No se encontró la cuenta del proveedor elegido.");
 
     const proveedorAllocations = await allocateFifo(proveedorAccount.id, payment.amount, "ARS");
     const linkedPayment = await prisma.payment.create({
@@ -846,7 +847,7 @@ async function applyPaymentDestino(params: {
     include: { entity: true },
   });
   if (!treasuryAccount || treasuryAccount.entity.type !== "TESORERIA") {
-    throw new Error("Destino inválido.");
+    throw new UserError("Destino inválido.");
   }
 
   const category: TreasuryMovementCategory = isCobro ? "COBRO" : "PAGO_PROVEEDOR";
@@ -873,16 +874,16 @@ export async function createPaymentForEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
-  if (!entityId) throw new Error("Falta el cliente o proveedor.");
+  if (!entityId) throw new UserError("Falta el cliente o proveedor.");
 
   const circuit = String(formData.get("circuit") || "");
-  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Cuenta inválida.");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Cuenta inválida.");
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
     include: { entity: true },
   });
-  if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
+  if (!account) throw new UserError("No se encontró la cuenta de esta entidad.");
 
   const date = parseFormDate(formData.get("date"));
   const amount = parseAmount(formData.get("amount"), "monto del pago");
@@ -954,7 +955,7 @@ export async function deletePayment(formData: FormData) {
     where: { id: paymentId },
     include: { account: { include: { entity: true } } },
   });
-  if (!payment) throw new Error("El pago ya no existe.");
+  if (!payment) throw new UserError("El pago ya no existe.");
 
   const linkedPayment = payment.linkedPaymentId
     ? await prisma.payment.findUnique({
@@ -1002,17 +1003,17 @@ export async function updatePayment(formData: FormData) {
     where: { id: paymentId },
     include: { account: true },
   });
-  if (!payment) throw new Error("El pago ya no existe.");
+  if (!payment) throw new UserError("El pago ya no existe.");
 
   const entityId = payment.account.entityId;
   const circuit = String(formData.get("circuit") || "");
-  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Cuenta inválida.");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Cuenta inválida.");
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
     include: { entity: true },
   });
-  if (!account) throw new Error("No se encontró la cuenta de esta entidad.");
+  if (!account) throw new UserError("No se encontró la cuenta de esta entidad.");
 
   const date = parseFormDate(formData.get("date"));
   const amount = parseAmount(formData.get("amount"), "monto del pago");
@@ -1098,18 +1099,18 @@ export async function moveRemitoToBlanco(formData: FormData) {
     include: { account: { include: { entity: true } }, remitoLinks: true },
   });
   if (!document) notFound();
-  if (document.type !== "REMITO") throw new Error("Solo los remitos se pueden mover de cuenta.");
+  if (document.type !== "REMITO") throw new UserError("Solo los remitos se pueden mover de cuenta.");
   if (document.remitoLinks.length > 0) {
-    throw new Error("Este remito ya está facturado, no se puede mover.");
+    throw new UserError("Este remito ya está facturado, no se puede mover.");
   }
   if (document.account.circuit === "BLANCO") {
-    throw new Error("El remito ya está en la cuenta Blanco.");
+    throw new UserError("El remito ya está en la cuenta Blanco.");
   }
 
   const blancoAccount = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId: document.account.entityId, circuit: "BLANCO" } },
   });
-  if (!blancoAccount) throw new Error("No se encontró la cuenta Blanco de esta entidad.");
+  if (!blancoAccount) throw new UserError("No se encontró la cuenta Blanco de esta entidad.");
 
   await prisma.document.update({
     where: { id: document.id },
@@ -1137,9 +1138,9 @@ export async function createPrice(formData: FormData) {
   const validFrom = parseFormDate(formData.get("validFrom"));
   const amount = parseAmount(formData.get("amount"), "precio");
 
-  if (!entityId) throw new Error("Falta la entidad.");
-  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new Error("Circuito inválido.");
-  if (!productId) throw new Error("Falta el producto.");
+  if (!entityId) throw new UserError("Falta la entidad.");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Circuito inválido.");
+  if (!productId) throw new UserError("Falta el producto.");
 
   const [entity, product] = await Promise.all([
     prisma.entity.findUnique({ where: { id: entityId } }),

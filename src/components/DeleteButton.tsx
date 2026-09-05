@@ -1,5 +1,6 @@
 "use client";
 
+import { userErrorMessage } from "@/lib/user-error";
 import { useActionState } from "react";
 import { Trash2 } from "lucide-react";
 
@@ -26,7 +27,7 @@ export function DeleteButton({
         await action(formData);
         return null;
       } catch (e) {
-        return e instanceof Error ? e.message : "Ocurrió un error.";
+        return userErrorMessage(e);
       }
     },
     null

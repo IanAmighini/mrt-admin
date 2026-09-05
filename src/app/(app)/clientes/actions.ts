@@ -1,5 +1,6 @@
 "use server";
 
+import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
@@ -45,10 +46,10 @@ export async function createEntity(formData: FormData) {
     : null;
 
   if (!name) {
-    throw new Error("El nombre es obligatorio.");
+    throw new UserError("El nombre es obligatorio.");
   }
   if (!ENTITY_TYPES.includes(type)) {
-    throw new Error("Tipo inválido.");
+    throw new UserError("Tipo inválido.");
   }
 
   await prisma.$transaction(async (tx) => {
@@ -105,7 +106,7 @@ export async function updateEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const entityId = String(formData.get("entityId") || "");
-  if (!entityId) throw new Error("Falta la entidad.");
+  if (!entityId) throw new UserError("Falta la entidad.");
 
   const name = String(formData.get("name") || "").trim();
   const type = String(formData.get("type") || "") as EntityType;
@@ -121,10 +122,10 @@ export async function updateEntity(formData: FormData) {
     : null;
 
   if (!name) {
-    throw new Error("El nombre es obligatorio.");
+    throw new UserError("El nombre es obligatorio.");
   }
   if (!ENTITY_TYPES.includes(type)) {
-    throw new Error("Tipo inválido.");
+    throw new UserError("Tipo inválido.");
   }
 
   const entity = await prisma.entity.update({

@@ -1,5 +1,6 @@
 "use client";
 
+import { userErrorMessage } from "@/lib/user-error";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Pencil, Plus, X, type LucideIcon } from "lucide-react";
 
@@ -35,7 +36,7 @@ export function FormModal({
         await action(formData);
         return null;
       } catch (e) {
-        return e instanceof Error ? e.message : "Ocurrió un error.";
+        return userErrorMessage(e);
       }
     },
     null
