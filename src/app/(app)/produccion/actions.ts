@@ -5,7 +5,7 @@ import { Prisma, type AuditAction, type SupplierCategory } from "@prisma/client"
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
-import { setSetting } from "@/lib/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
 import { logAudit } from "@/lib/audit";
@@ -110,6 +110,10 @@ async function createProductionRunCore(
 
   const dateLabel = date.toLocaleDateString("es-AR");
 
+  // Lo necesita la receta que se arma sola al crear un producto nuevo. Se lee acá y no adentro de
+  // la transacción para no gastarle una consulta a cada línea.
+  const oilFillEfficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
+
   await prisma.$transaction(async (tx) => {
     // Borrar acá adentro y no antes: si el alta falla, la corrida original tiene que seguir
     // existiendo. Las líneas y sus movimientos de producto/insumo se van en cascada.
@@ -120,7 +124,7 @@ async function createProductionRunCore(
     });
 
     for (const line of lines) {
-      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId);
+      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
 
       const productionLine = await tx.productionLine.create({
         data: { productionRunId: run.id, productId: product.id, quantity: line.quantity },
@@ -137,6 +141,15 @@ async function createProductionRunCore(
           createdById: user.id,
         },
       });
+
+      // Los productos nuevos nacen con receta, pero los que se crearon antes de que eso existiera
+      // pueden no tenerla. Envasar sin receta no descuenta un solo insumo y no avisa nada: el
+      // faltante recién aparece cuando alguien cuenta el stock físico. Mejor no dejar cargar.
+      if (product.recipe.length === 0) {
+        throw new Error(
+          `${product.name} ${product.oilType} ${product.presentation} no tiene receta cargada, así que producirlo no descontaría ningún insumo. Cargala desde la ficha del producto.`
+        );
+      }
 
       // La receta dice CUÁNTO se consume; el reemplazo solo cambia DE QUÉ insumo sale.
       const reemplazoPorCategoria: Partial<Record<SupplierCategory, string>> = {
@@ -160,27 +173,25 @@ async function createProductionRunCore(
         }
       }
 
-      if (product.recipe.length > 0) {
-        await tx.itemMovement.createMany({
-          data: product.recipe.map((recipeItem) => {
-            const consumed = new Prisma.Decimal(recipeItem.quantityPerUnit).times(line.quantity);
-            const reemplazo = reemplazoPorCategoria[recipeItem.item.category];
-            const usado = reemplazo && reemplazo !== recipeItem.itemId ? reemplazo : null;
-            return {
-              itemId: usado ?? recipeItem.itemId,
-              date,
-              quantity: consumed.negated(),
-              type: "CONSUMO_PRODUCCION" as const,
-              // Que hubo reemplazo queda en el texto, que es lo que ya se ve en el kardex.
-              reason: usado
-                ? `Producción del ${dateLabel} — en lugar de ${recipeItem.item.name}`
-                : `Producción del ${dateLabel}`,
-              productionLineId: productionLine.id,
-              createdById: user.id,
-            };
-          }),
-        });
-      }
+      await tx.itemMovement.createMany({
+        data: product.recipe.map((recipeItem) => {
+          const consumed = new Prisma.Decimal(recipeItem.quantityPerUnit).times(line.quantity);
+          const reemplazo = reemplazoPorCategoria[recipeItem.item.category];
+          const usado = reemplazo && reemplazo !== recipeItem.itemId ? reemplazo : null;
+          return {
+            itemId: usado ?? recipeItem.itemId,
+            date,
+            quantity: consumed.negated(),
+            type: "CONSUMO_PRODUCCION" as const,
+            // Que hubo reemplazo queda en el texto, que es lo que ya se ve en el kardex.
+            reason: usado
+              ? `Producción del ${dateLabel} — en lugar de ${recipeItem.item.name}`
+              : `Producción del ${dateLabel}`,
+            productionLineId: productionLine.id,
+            createdById: user.id,
+          };
+        }),
+      });
     }
 
     await syncPedidoStatuses(tx);

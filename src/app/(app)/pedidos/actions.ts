@@ -5,6 +5,7 @@ import type { Prisma, PedidoStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
+import { getSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
 import { logAudit } from "@/lib/audit";
@@ -53,6 +54,8 @@ export async function createPedido(formData: FormData) {
   const date = parseFormDate(formData.get("date"));
   const comments = String(formData.get("comments") || "").trim() || null;
   const lines = parseLines(formData);
+  // Lo necesita la receta que se arma sola si alguna línea estrena producto.
+  const oilFillEfficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
 
   await prisma.$transaction(async (tx) => {
     const orderNumber = await nextOrderNumber(tx);
@@ -63,7 +66,7 @@ export async function createPedido(formData: FormData) {
 
     const lineData = [];
     for (const line of lines) {
-      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId);
+      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
       lineData.push({ pedidoId: pedido.id, productId: product.id, pallets: line.pallets });
     }
     await tx.pedidoLine.createMany({ data: lineData });
@@ -114,6 +117,8 @@ export async function updatePedido(formData: FormData) {
   const date = parseFormDate(formData.get("date"));
   const comments = String(formData.get("comments") || "").trim() || null;
   const lines = parseLines(formData);
+  // Lo necesita la receta que se arma sola si alguna línea estrena producto.
+  const oilFillEfficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
 
   await prisma.$transaction(async (tx) => {
     await tx.pedidoLine.deleteMany({ where: { pedidoId } });
@@ -125,7 +130,7 @@ export async function updatePedido(formData: FormData) {
 
     const lineData = [];
     for (const line of lines) {
-      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId);
+      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
       lineData.push({ pedidoId, productId: product.id, pallets: line.pallets });
     }
     await tx.pedidoLine.createMany({ data: lineData });

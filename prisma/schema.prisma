@@ -360,10 +360,14 @@ model Product {
  * Marca (nombre + tipo de aceite), sin formato — catálogo reutilizable al crear productos.
  */
 model Marca {
-  id        String   @id @default(cuid())
-  name      String
-  oilType   String
-  createdAt DateTime @default(now())
+  id      String @id @default(cuid())
+  name    String
+  oilType String
+  /// Si es false, la receta que se arma sola no lleva línea de etiqueta. Es el caso de "Sin
+  /// etiqueta", que es producto terminado sin etiquetar. Para el resto, que falte la etiqueta es
+  /// un error que hay que avisar, no algo que se pueda ignorar en silencio.
+  usaEtiqueta Boolean @default(true)
+  createdAt   DateTime @default(now())
 
   @@unique([name, oilType])
 }

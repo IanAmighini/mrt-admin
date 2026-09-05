@@ -60,6 +60,16 @@ export default async function CatalogoPage() {
                   className={inputClass}
                 />
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="usaEtiqueta" defaultChecked className="mt-0.5" />
+                <span>
+                  Lleva etiqueta
+                  <span className="block text-xs text-foreground/50">
+                    Destildalo solo si es producto sin etiquetar. La receta se arma sola sin línea de
+                    etiqueta en vez de avisar que falta.
+                  </span>
+                </span>
+              </label>
               <button
                 type="submit"
                 className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
@@ -81,7 +91,14 @@ export default async function CatalogoPage() {
             <tbody>
               {marcas.map((marca) => (
                 <tr key={marca.id} className="border-b border-foreground/5 last:border-0">
-                  <td className="py-2 px-4">{marca.name}</td>
+                  <td className="py-2 px-4">
+                    {marca.name}
+                    {!marca.usaEtiqueta && (
+                      <span className="ml-2 rounded bg-foreground/10 px-1.5 py-0.5 text-xs text-foreground/60">
+                        sin etiqueta
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 px-4">{marca.oilType}</td>
                   {canEdit && (
                     <td className="py-2 px-4">
@@ -117,6 +134,20 @@ export default async function CatalogoPage() {
                               className={inputClass}
                             />
                           </div>
+                          <label className="flex items-start gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              name="usaEtiqueta"
+                              defaultChecked={marca.usaEtiqueta}
+                              className="mt-0.5"
+                            />
+                            <span>
+                              Lleva etiqueta
+                              <span className="block text-xs text-foreground/50">
+                                Destildalo solo si es producto sin etiquetar.
+                              </span>
+                            </span>
+                          </label>
                           <button
                             type="submit"
                             className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"

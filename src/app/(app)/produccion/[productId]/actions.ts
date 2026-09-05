@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { toDecimal } from "@/lib/money";
 import { getSetting } from "@/lib/settings";
 import { logAudit } from "@/lib/audit";
+import { litrosPorPallet } from "@/lib/recipe-template";
 
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   const str = String(value || "").trim();
@@ -122,12 +123,10 @@ export async function generateRecipeFromPresentation(formData: FormData) {
       );
     }
     const efficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
-    const oilLiters = toDecimal(unitsPerPallet)
-      .times(product.bottleCapacityMl)
-      .times(efficiencyPercent)
-      .dividedBy(100)
-      .dividedBy(1000);
-    lines.push({ itemId: oilItemId, quantityPerUnit: oilLiters });
+    lines.push({
+      itemId: oilItemId,
+      quantityPerUnit: litrosPorPallet(unitsPerPallet, product.bottleCapacityMl, efficiencyPercent),
+    });
   }
 
   if (lines.length === 0) {

@@ -21,19 +21,21 @@ export async function createMarca(formData: FormData) {
 
   const name = String(formData.get("name") || "").trim();
   const oilType = String(formData.get("oilType") || "").trim();
+  // Un checkbox que no se tilda no viaja en el FormData, así que ausente = false.
+  const usaEtiqueta = formData.get("usaEtiqueta") !== null;
   if (!name) throw new Error("Falta el nombre de la marca.");
   if (!oilType) throw new Error("Falta el tipo de aceite.");
 
   const existing = await prisma.marca.findUnique({ where: { name_oilType: { name, oilType } } });
   if (existing) throw new Error(`Ya existe la marca "${name} ${oilType}".`);
 
-  const marca = await prisma.marca.create({ data: { name, oilType } });
+  const marca = await prisma.marca.create({ data: { name, oilType, usaEtiqueta } });
   await logAudit(prisma, {
     userId: user.id,
     action: "CREATE",
     entityType: "Marca",
     entityId: marca.id,
-    summary: `${name} ${oilType}`,
+    summary: `${name} ${oilType}${usaEtiqueta ? "" : " (sin etiqueta)"}`,
   });
   revalidateCatalogo();
 }
@@ -44,6 +46,7 @@ export async function updateMarca(formData: FormData) {
   const marcaId = String(formData.get("marcaId") || "");
   const name = String(formData.get("name") || "").trim();
   const oilType = String(formData.get("oilType") || "").trim();
+  const usaEtiqueta = formData.get("usaEtiqueta") !== null;
   if (!marcaId) throw new Error("Falta la marca.");
   if (!name) throw new Error("Falta el nombre de la marca.");
   if (!oilType) throw new Error("Falta el tipo de aceite.");
@@ -53,13 +56,13 @@ export async function updateMarca(formData: FormData) {
     throw new Error(`Ya existe la marca "${name} ${oilType}".`);
   }
 
-  await prisma.marca.update({ where: { id: marcaId }, data: { name, oilType } });
+  await prisma.marca.update({ where: { id: marcaId }, data: { name, oilType, usaEtiqueta } });
   await logAudit(prisma, {
     userId: user.id,
     action: "UPDATE",
     entityType: "Marca",
     entityId: marcaId,
-    summary: `${name} ${oilType}`,
+    summary: `${name} ${oilType}${usaEtiqueta ? "" : " (sin etiqueta)"}`,
   });
   revalidateCatalogo();
 }
