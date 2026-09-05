@@ -259,8 +259,11 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
   const lines = productIds
     .map((productId, i) => ({
       productId,
-      quantity: parseNumeroEscrito(quantities[i], "cantidad"),
-      unitPrice: parseNumeroEscrito(unitPrices[i], "precio unitario"),
+      // Opcional y no obligatorio: la fila vacía que queda al tocar "+ Agregar línea" y no
+      // completarla se descarta con el filter de abajo, no tiene que cortar la carga. Un número
+      // mal escrito sigue dando error.
+      quantity: parseNumeroOpcional(quantities[i] ?? "", "cantidad"),
+      unitPrice: parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario"),
       circuit: circuits[i] as "BLANCO" | "NEGRO",
     }))
     .filter((l) => l.productId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
@@ -440,20 +443,59 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
   const currency = String(formData.get("currency") || "ARS") as Currency;
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+  // La cotización ya no depende de que la moneda sea USD: el proveedor de envases factura en pesos
+  // pero el precio está pactado en dólares, así que la cotización es el dato con el que se calcula.
+  const exchangeRate = exchangeRateRaw ? parseNumeroEscrito(exchangeRateRaw, "cotización") : null;
+  if (exchangeRate && !exchangeRate.greaterThan(0)) {
+    throw new UserError("La cotización tiene que ser mayor a cero.");
+  }
 
   const itemIds = formData.getAll("lineItemId").map(String);
   const quantities = formData.getAll("lineQuantity").map(String);
   const unitPrices = formData.getAll("lineUnitPrice").map(String);
+  const unitPricesUsd = formData.getAll("lineUnitPriceUsd").map(String);
   const circuits = formData.getAll("lineCircuit").map(String);
 
+  // Los campos llegan como arrays paralelos que se aparean por posición: si vinieran con distinto
+  // largo, el precio de una línea caería en otra sin que nadie lo note.
+  for (const [nombre, arr] of [
+    ["cantidad", quantities],
+    ["precio", unitPrices],
+    ["circuito", circuits],
+  ] as const) {
+    if (arr.length !== itemIds.length) {
+      throw new UserError(
+        `El formulario llegó incompleto (${nombre}) — recargá la página y volvé a cargar la compra.`
+      );
+    }
+  }
+  // El precio en U$S es el único que puede no venir: un formulario sin ese campo manda el array
+  // vacío, y eso significa "sin precio en dólares", no un error. Pero si viene, tiene que venir
+  // completo — si no, el precio de una línea caería en otra.
+  if (unitPricesUsd.length > 0 && unitPricesUsd.length !== itemIds.length) {
+    throw new UserError(
+      "El formulario llegó incompleto (precio en U$S) — recargá la página y volvé a cargar la compra."
+    );
+  }
+
   const lines = itemIds
-    .map((itemId, i) => ({
-      itemId,
-      quantity: parseNumeroEscrito(quantities[i], "cantidad"),
-      unitPrice: parseNumeroEscrito(unitPrices[i], "precio unitario"),
-      circuit: circuits[i] as "BLANCO" | "NEGRO",
-    }))
+    .map((itemId, i) => {
+      const usdRaw = (unitPricesUsd[i] ?? "").trim();
+      const usd = usdRaw ? parseNumeroEscrito(usdRaw, "precio en U$S") : null;
+      // Con precio en dólares el de pesos es derivado, y se calcula acá y no en el navegador: es el
+      // que termina en la cuenta corriente.
+      const unitPrice =
+        usd && exchangeRate
+          ? usd.times(exchangeRate)
+          : parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario");
+      return {
+        itemId,
+        quantity: parseNumeroOpcional(quantities[i] ?? "", "cantidad"),
+        unitPrice,
+        unitPriceUsd: usd && exchangeRate ? usd : null,
+        circuit: circuits[i] as "BLANCO" | "NEGRO",
+      };
+    })
     .filter((l) => l.itemId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
 
   if (lines.length === 0) {
@@ -461,6 +503,24 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
   }
   if (lines.some((l) => l.circuit !== "BLANCO" && l.circuit !== "NEGRO")) {
     throw new UserError("Circuito inválido en alguna línea.");
+  }
+
+  // Un envase sin preforma asignada no sumaría a ninguna cuenta de preformas, y el faltante recién
+  // aparecería cuando el proveedor reclame. Mejor no dejar cargarlo.
+  const entidadLlevaPreformas = await prisma.entity.findUnique({
+    where: { id: entityId },
+    select: { llevaCuentaPreformas: true },
+  });
+  if (entidadLlevaPreformas?.llevaCuentaPreformas) {
+    const sinPreforma = await prisma.item.findMany({
+      where: { id: { in: lines.map((l) => l.itemId) }, category: "ENVASES", preformaId: null },
+      select: { name: true },
+    });
+    if (sinPreforma.length > 0) {
+      throw new UserError(
+        `${sinPreforma.map((i) => `"${i.name}"`).join(", ")} no tiene asignado un tipo de preforma, así que no se contaría en la cuenta de preformas. Asignáselo en Stock y volvé a intentar.`
+      );
+    }
   }
 
   const accounts = await prisma.account.findMany({ where: { entityId } });
@@ -487,6 +547,7 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
         itemId: l.itemId,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
+        unitPriceUsd: l.unitPriceUsd,
         subtotal: l.quantity.times(l.unitPrice),
       }));
       const totalAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
@@ -522,6 +583,17 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
           createdById: user.id,
         })),
       });
+    }
+
+    // El precio pactado en U$S queda como el vigente del insumo, para que el próximo remito lo
+    // proponga solo. Los envases lo tienen fijo; las tapas lo mueven seguido y así se mantiene al día.
+    for (const line of lines) {
+      if (line.unitPriceUsd) {
+        await tx.item.update({
+          where: { id: line.itemId },
+          data: { precioSopladoUsd: line.unitPriceUsd },
+        });
+      }
     }
 
     await logAudit(tx, {

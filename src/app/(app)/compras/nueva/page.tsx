@@ -53,7 +53,14 @@ export default async function NuevaCompraPage({
         <NuevaCompraForm
           action={submitCompra}
           proveedores={proveedores.map((p) => ({ id: p.id, name: p.name }))}
-          items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit, category: i.category }))}
+          items={items.map((i) => ({
+            id: i.id,
+            name: i.name,
+            unit: i.unit,
+            category: i.category,
+            unitsPerPallet: i.unitsPerPallet,
+            precioSopladoUsd: i.precioSopladoUsd ? i.precioSopladoUsd.toString() : null,
+          }))}
           fixedEntity={fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name } : undefined}
         />
       )}

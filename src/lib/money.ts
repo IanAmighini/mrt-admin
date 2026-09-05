@@ -32,6 +32,19 @@ const MILES = /^(?!0\.)\d{1,3}(\.\d{3})+$/;
  * error silencioso en la cuenta corriente de alguien.
  */
 export function parseNumeroEscrito(raw: string, campo: string): Prisma.Decimal {
+  const decimal = parseNumeroSuave(raw);
+  if (decimal === null) throw new UserError(errorDeFormato(raw, campo));
+  return decimal;
+}
+
+/**
+ * La misma lectura que `parseNumeroEscrito`, pero devuelve `null` en vez de tirar error.
+ *
+ * Es para los cálculos en vivo del navegador —"12 pallets son 23.328 unidades"— donde el texto está
+ * a medio escribir todo el tiempo y romper sería absurdo. Nunca para guardar: ahí se usa la versión
+ * que tira error, porque un monto ilegible que entra como cero no se ve hasta que alguien concilia.
+ */
+export function parseNumeroSuave(raw: string): Prisma.Decimal | null {
   const limpio = raw.trim().replace(/\s/g, "");
   const signo = limpio.startsWith("-") ? -1 : 1;
   const cuerpo = limpio.replace(/^[+-]/, "");
@@ -44,21 +57,18 @@ export function parseNumeroEscrito(raw: string, campo: string): Prisma.Decimal {
     // La parte entera se valida ANTES de sacarle los puntos: si no, "1.50,5" pasaría como 150,5
     // en vez de ser el error de tipeo que es.
     const enteraValida = entera === "" || /^\d+$/.test(entera) || MILES.test(entera);
-    if (!enteraValida || !/^\d+$/.test(decimales)) {
-      throw new UserError(errorDeFormato(raw, campo));
-    }
+    if (!enteraValida || !/^\d+$/.test(decimales)) return null;
     normalizado = `${entera.replace(/\./g, "") || "0"}.${decimales}`;
   } else if (MILES.test(cuerpo)) {
     normalizado = cuerpo.replace(/\./g, "");
   } else if (/^\d+(\.\d+)?$/.test(cuerpo)) {
     normalizado = cuerpo;
   } else {
-    throw new UserError(errorDeFormato(raw, campo));
+    return null;
   }
 
   const decimal = new Prisma.Decimal(normalizado).times(signo);
-  if (decimal.isNaN()) throw new UserError(errorDeFormato(raw, campo));
-  return decimal;
+  return decimal.isNaN() ? null : decimal;
 }
 
 function errorDeFormato(raw: string, campo: string): string {
@@ -70,17 +80,18 @@ export function parseNumeroOpcional(raw: string, campo: string): Prisma.Decimal 
   return raw.trim() ? parseNumeroEscrito(raw, campo) : ZERO;
 }
 
-const FORMATO_EDITABLE = new Intl.NumberFormat("es-AR", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
-
 /**
  * Un número guardado, escrito como lo escribiría una persona, para prellenar un campo de texto:
  * `-25000.5` sale `-25.000,50`. Vuelve a entrar por `parseNumeroEscrito` sin perder nada.
+ *
+ * `decimales` sube para los precios chicos: un soplado de U$S 0,0425 con dos decimales sería 0,04 y
+ * el remito daría cualquier cosa.
  */
-export function formatNumeroEditable(value: Prisma.Decimal | number | string): string {
-  return FORMATO_EDITABLE.format(Number(value.toString()));
+export function formatNumeroEditable(value: Prisma.Decimal | number | string, decimales = 2): string {
+  return new Intl.NumberFormat("es-AR", {
+    minimumFractionDigits: decimales,
+    maximumFractionDigits: decimales,
+  }).format(Number(value.toString()));
 }
 
 export function sumDecimals(values: (Prisma.Decimal | number | string | null | undefined)[]) {

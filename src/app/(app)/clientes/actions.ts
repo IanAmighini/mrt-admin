@@ -38,6 +38,7 @@ export async function createEntity(formData: FormData) {
   const address = String(formData.get("address") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
+  const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
   const supplierCategoryRaw = String(formData.get("supplierCategory") || "").trim();
@@ -59,7 +60,10 @@ export async function createEntity(formData: FormData) {
       "entidad"
     );
     const entity = await tx.entity.create({
-      data: { name, slug, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
+      data: {
+        name, slug, type, taxId, email, phone, address, notes, supplierCategory,
+        isWithholdingAgent, llevaCuentaPreformas,
+      },
     });
     const [blanco, negro] = await Promise.all([
       tx.account.create({ data: { entityId: entity.id, circuit: "BLANCO" } }),
@@ -98,6 +102,7 @@ export async function updateEntity(formData: FormData) {
   const address = String(formData.get("address") || "").trim() || null;
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
+  const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
   const supplierCategoryRaw = String(formData.get("supplierCategory") || "").trim();
   const supplierCategory = SUPPLIER_CATEGORIES.includes(supplierCategoryRaw as SupplierCategory)
     ? (supplierCategoryRaw as SupplierCategory)
@@ -115,7 +120,10 @@ export async function updateEntity(formData: FormData) {
   const entity = await prisma.$transaction(async (tx) => {
     const entity = await tx.entity.update({
       where: { id: entityId },
-      data: { name, type, taxId, email, phone, address, notes, supplierCategory, isWithholdingAgent },
+      data: {
+        name, type, taxId, email, phone, address, notes, supplierCategory,
+        isWithholdingAgent, llevaCuentaPreformas,
+      },
       include: { accounts: true },
     });
 

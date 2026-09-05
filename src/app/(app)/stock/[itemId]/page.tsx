@@ -26,7 +26,13 @@ export default async function ItemDetailPage({
   if (!item) notFound();
   if (itemId !== item.slug) redirect(`/stock/${item.slug}`);
 
-  const [stock, movements] = await Promise.all([getItemStock(item.id), getItemMovements(item.id)]);
+  const [stock, movements, preformas] = await Promise.all([
+    getItemStock(item.id),
+    getItemMovements(item.id),
+    // Sólo se usa en el formulario de envases, pero pedirla siempre evita una consulta condicional
+    // por tres filas.
+    prisma.preforma.findMany({ orderBy: { name: "asc" } }),
+  ]);
   const movementsDesc = movements.slice().reverse();
 
   return (
@@ -77,6 +83,54 @@ export default async function ItemDetailPage({
               className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
+          {item.category === "ENVASES" && (
+            <>
+              <div className="space-y-1">
+                <label className="text-sm" htmlFor="preformaId">
+                  Preforma
+                </label>
+                <select
+                  id="preformaId"
+                  name="preformaId"
+                  defaultValue={item.preformaId ?? ""}
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                >
+                  <option value="">— Sin preforma —</option>
+                  {preformas.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm" htmlFor="unitsPerPallet">
+                  Unidades por pallet
+                </label>
+                <input
+                  id="unitsPerPallet"
+                  name="unitsPerPallet"
+                  inputMode="numeric"
+                  placeholder="1.944"
+                  defaultValue={item.unitsPerPallet?.toString() ?? ""}
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm" htmlFor="precioSopladoUsd">
+                  Soplado (U$S por unidad)
+                </label>
+                <input
+                  id="precioSopladoUsd"
+                  name="precioSopladoUsd"
+                  inputMode="decimal"
+                  placeholder="0,0425"
+                  defaultValue={item.precioSopladoUsd?.toString() ?? ""}
+                  className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+                />
+              </div>
+            </>
+          )}
           <button
             type="submit"
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
@@ -85,6 +139,8 @@ export default async function ItemDetailPage({
           </button>
           <p className="w-full text-xs text-foreground/50">
             Dejá el mínimo vacío para que este insumo no aparezca en el control de faltantes.
+            {item.category === "ENVASES" &&
+              " Las unidades por pallet son las del pallet descartable con el que llega, y sirven para cargar el remito; ese pallet no entra a stock."}
           </p>
         </form>
       )}

@@ -33,6 +33,7 @@ model User {
   prices           Price[]
   pedidos          Pedido[]
   auditLogs        AuditLog[]
+  entregasPreforma EntregaPreforma[]
 }
 
 enum AuditAction {
@@ -107,12 +108,16 @@ model Entity {
   notes              String?
   supplierCategory   SupplierCategory?
   isWithholdingAgent Boolean           @default(false)
+  /// Si es true, la ficha muestra la cuenta de preformas: este proveedor fía la preforma y cobra
+  /// sólo el soplado, así que además de la cuenta en pesos se le deben preformas en unidades.
+  llevaCuentaPreformas Boolean         @default(false)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   accounts           Account[]
   prices             Price[]
   pedidos            Pedido[]
   treasuryPayments   Payment[]
+  entregasPreforma   EntregaPreforma[]
 }
 
 enum Circuit {
@@ -222,7 +227,12 @@ model PurchaseLine {
   itemId     String
   item       Item     @relation(fields: [itemId], references: [id])
   quantity   Decimal  @db.Decimal(14, 3)
-  unitPrice  Decimal  @db.Decimal(14, 2)
+  /// Cuatro decimales y no dos: cuando el precio se pacta en U$S, 0,1483 x 1.481,50 = 219,7065 y
+  /// redondear a 219,71 corre el total del remito varios pesos.
+  unitPrice  Decimal  @db.Decimal(14, 4)
+  /// Precio pactado en U$S por unidad, cuando lo hay. `unitPrice` es este por la cotización del
+  /// remito; se guarda el original porque es el que no se mueve y con el que se controla la cuenta.
+  unitPriceUsd Decimal? @db.Decimal(14, 6)
   subtotal   Decimal  @db.Decimal(14, 2)
 
   @@index([documentId])
@@ -295,12 +305,24 @@ model Item {
   isResellable Boolean          @default(false)
   minStock     Decimal?         @db.Decimal(14, 3)
   unitCost     Decimal?         @db.Decimal(14, 2)
+  /// Sólo envases: qué preforma consume. De acá sale a qué cuenta de preformas suma cada unidad
+  /// recibida del proveedor que las fía.
+  preformaId   String?
+  preforma     Preforma?        @relation(fields: [preformaId], references: [id])
+  /// Sólo envases: cuántas unidades trae el pallet descartable con el que los entrega el proveedor.
+  /// Es un factor para cargar el remito — ese pallet no es el normalizado y no entra a stock.
+  unitsPerPallet Int?
+  /// Último precio de soplado pactado, en U$S por unidad. Lo propone el formulario de compra y se
+  /// actualiza con lo que se cargue: los envases lo tienen fijo, las tapas lo mueven seguido.
+  precioSopladoUsd Decimal?      @db.Decimal(14, 6)
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
   movements     ItemMovement[]
   recipeLines   RecipeItem[]
   purchaseLines PurchaseLine[]
+
+  @@index([preformaId])
 }
 
 enum ItemMovementType {
@@ -509,4 +531,35 @@ model PedidoLine {
 
   @@index([pedidoId])
   @@index([productId])
+}
+
+/// Tipo de preforma PET. Agrupa formatos que usan la misma: 850 y 900 comparten una, 4000 y 5000
+/// otra. La deuda con el proveedor que las fía se lleva por tipo, no por formato.
+model Preforma {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  items    Item[]
+  entregas EntregaPreforma[]
+}
+
+/// Preformas entregadas al proveedor que las fía, para bajar lo que se le debe. Se compran a otro
+/// proveedor y se entregan directo, sin pasar por el depósito, así que no hay movimiento de stock.
+model EntregaPreforma {
+  id          String   @id @default(cuid())
+  entityId    String
+  entity      Entity   @relation(fields: [entityId], references: [id])
+  preformaId  String
+  preforma    Preforma @relation(fields: [preformaId], references: [id])
+  date        DateTime
+  quantity    Decimal  @db.Decimal(14, 3)
+  comprobante String?
+  notes       String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([entityId])
+  @@index([preformaId])
 }

@@ -130,6 +130,23 @@ export function EntityFormFields({
           : "El saldo inicial es lo que el cliente nos debe. Si tiene saldo a favor, cargalo con signo menos: −25.000."}
         {isEdit && " Vaciá el campo para borrarlo. No afecta al resto de los movimientos de la cuenta."}
       </p>
+      {esProveedor && (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="llevaCuentaPreformas"
+            defaultChecked={entity?.llevaCuentaPreformas ?? false}
+            className="mt-0.5"
+          />
+          <span>
+            Lleva cuenta de preformas
+            <span className="block text-xs text-foreground/50">
+              Para el proveedor que fía la preforma y cobra sólo el soplado. Suma a su ficha una
+              segunda cuenta, en unidades, con lo que se le debe de cada tipo de preforma.
+            </span>
+          </span>
+        </label>
+      )}
       <div className="space-y-1">
         <label className="text-sm" htmlFor="address">
           Dirección

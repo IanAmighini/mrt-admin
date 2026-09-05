@@ -27,6 +27,8 @@ import { EntitySummaryCards } from "@/components/EntitySummaryCards";
 import { EntregasPanel } from "@/components/EntregasPanel";
 import { ComprasPanel } from "@/components/ComprasPanel";
 import { CuentaCorrientePanel } from "@/components/CuentaCorrientePanel";
+import { PreformasPanel } from "@/components/PreformasPanel";
+import { getDeudaPreformas } from "@/lib/preformas";
 
 export default async function EntityLedgerPage({
   params,
@@ -66,6 +68,20 @@ export default async function EntityLedgerPage({
     blanco: saldoInicialDe(blancoAccount.id),
     negro: saldoInicialDe(negroAccount.id),
   };
+
+  // Sólo para el proveedor que fía la preforma: la segunda cuenta, la que va en unidades.
+  const [deudasPreforma, preformas, entregasPreforma] = entity.llevaCuentaPreformas
+    ? await Promise.all([
+        getDeudaPreformas(entity.id),
+        prisma.preforma.findMany({ orderBy: { name: "asc" } }),
+        prisma.entregaPreforma.findMany({
+          where: { entityId: entity.id },
+          include: { preforma: { select: { name: true } } },
+          orderBy: { date: "desc" },
+          take: 5,
+        }),
+      ])
+    : [[], [], []];
 
   const isCliente = entity.type !== "PROVEEDOR";
   const isProveedor = entity.type !== "CLIENTE";
@@ -172,6 +188,16 @@ export default async function EntityLedgerPage({
         card4Label={card4Label}
         card4Value={card4Value}
       />
+
+      {entity.llevaCuentaPreformas && (
+        <PreformasPanel
+          entityId={entity.id}
+          deudas={deudasPreforma}
+          preformas={preformas}
+          entregas={entregasPreforma}
+          canEdit={canEdit}
+        />
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">

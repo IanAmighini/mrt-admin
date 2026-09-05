@@ -2,7 +2,7 @@
 
 import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
-import type { SupplierCategory } from "@prisma/client";
+import type { Prisma, SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
@@ -84,10 +84,13 @@ export async function createItem(formData: FormData) {
 }
 
 /**
- * Costo unitario y stock mínimo de un insumo. Van juntos porque son los dos parámetros de la
- * ficha; el costo es obligatorio, pero el **mínimo se puede vaciar**: dejarlo en blanco es la
- * forma de decir "no me avises más por este insumo", y sin eso no habría manera de sacarlo del
- * control de faltantes.
+ * Los parámetros de la ficha de un insumo. El costo es obligatorio, pero el **mínimo se puede
+ * vaciar**: dejarlo en blanco es la forma de decir "no me avises más por este insumo", y sin eso no
+ * habría manera de sacarlo del control de faltantes.
+ *
+ * Los tres campos de envase (preforma, unidades por pallet y soplado) sólo aparecen en el
+ * formulario para la categoría ENVASES, y vaciarlos también los limpia — es lo que permite dar de
+ * alta un formato nuevo sin una migración.
  */
 export async function updateItemAjustes(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
@@ -103,9 +106,30 @@ export async function updateItemAjustes(formData: FormData) {
     throw new UserError("El stock mínimo no puede ser negativo.");
   }
 
+  // `null` en el FormData significa que el formulario no traía el campo (no es un envase), y ahí no
+  // hay que tocar el valor guardado. Un string vacío sí es "borralo".
+  const datosDeEnvase: Prisma.ItemUpdateInput = {};
+  const preformaRaw = formData.get("preformaId");
+  if (preformaRaw !== null) {
+    const id = String(preformaRaw).trim();
+    datosDeEnvase.preforma = id ? { connect: { id } } : { disconnect: true };
+  }
+  const unitsPerPalletRaw = formData.get("unitsPerPallet");
+  if (unitsPerPalletRaw !== null) {
+    const raw = String(unitsPerPalletRaw).trim();
+    const n = raw ? parseNumeroEscrito(raw, "unidades por pallet") : null;
+    if (n && !n.greaterThan(0)) throw new UserError("Las unidades por pallet tienen que ser mayores a cero.");
+    datosDeEnvase.unitsPerPallet = n ? n.toNumber() : null;
+  }
+  const sopladoRaw = formData.get("precioSopladoUsd");
+  if (sopladoRaw !== null) {
+    const raw = String(sopladoRaw).trim();
+    datosDeEnvase.precioSopladoUsd = raw ? parseNumeroEscrito(raw, "soplado en U$S") : null;
+  }
+
   const item = await prisma.item.update({
     where: { id: itemId },
-    data: { unitCost, minStock },
+    data: { unitCost, minStock, ...datosDeEnvase },
   });
 
   await logAudit(prisma, {

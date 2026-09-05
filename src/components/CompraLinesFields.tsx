@@ -15,16 +15,25 @@ type Row = {
   itemId: string;
   quantity: string;
   unitPrice: string;
+  /** Si la compra tiene cotización cargada, el servidor calcula el precio en pesos con esto. */
+  unitPriceUsd: string;
   circuit: Circuit;
 };
+
+const filaVacia = (key: number): Row => ({
+  key,
+  itemId: "",
+  quantity: "",
+  unitPrice: "",
+  unitPriceUsd: "",
+  circuit: "BLANCO",
+});
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-2 text-sm";
 const selectClass = inputClass;
 
 export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
-  const [rows, setRows] = useState<Row[]>([
-    { key: 0, itemId: "", quantity: "", unitPrice: "", circuit: "BLANCO" },
-  ]);
+  const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
   const [nextKey, setNextKey] = useState(1);
 
   function updateRow(key: number, patch: Partial<Row>) {
@@ -32,10 +41,7 @@ export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
   }
 
   function addRow() {
-    setRows((prev) => [
-      ...prev,
-      { key: nextKey, itemId: "", quantity: "", unitPrice: "", circuit: "BLANCO" },
-    ]);
+    setRows((prev) => [...prev, filaVacia(nextKey)]);
     setNextKey((k) => k + 1);
   }
 
@@ -63,9 +69,9 @@ export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
         return (
           <div
             key={row.key}
-            className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
+            className="flex flex-wrap items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
           >
-            <div className="col-span-3">
+            <div className="min-w-0 flex-[2] basis-[200px]">
               <label className="text-xs text-foreground/60">Insumo</label>
               <select
                 name="lineItemId"
@@ -81,7 +87,7 @@ export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
                 ))}
               </select>
             </div>
-            <div className="col-span-2">
+            <div className="min-w-0 flex-1 basis-[120px]">
               <label className="text-xs text-foreground/60">Cantidad {item ? `(${item.unit})` : ""}</label>
               <input
                 name="lineQuantity"
@@ -91,7 +97,7 @@ export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
                 className={inputClass}
               />
             </div>
-            <div className="col-span-2">
+            <div className="min-w-0 flex-1 basis-[120px]">
               <label className="text-xs text-foreground/60">Precio unit.</label>
               <input
                 name="lineUnitPrice"
@@ -101,7 +107,18 @@ export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
                 className={inputClass}
               />
             </div>
-            <div className="col-span-2">
+            <div className="min-w-0 flex-1 basis-[110px]">
+              <label className="text-xs text-foreground/60">Precio U$S</label>
+              <input
+                name="lineUnitPriceUsd"
+                value={row.unitPriceUsd}
+                onChange={(e) => updateRow(row.key, { unitPriceUsd: e.target.value })}
+                inputMode="decimal"
+                placeholder="opcional"
+                className={inputClass}
+              />
+            </div>
+            <div className="min-w-0 flex-1 basis-[160px]">
               <label className="text-xs text-foreground/60">Circuito</label>
               <select
                 name="lineCircuit"
@@ -113,11 +130,11 @@ export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
                 <option value="NEGRO">Negro (sin facturar)</option>
               </select>
             </div>
-            <div className="col-span-2">
+            <div className="min-w-0 flex-1 basis-[120px]">
               <label className="text-xs text-foreground/60">Subtotal</label>
               <p className="px-2 py-2 text-sm">{subtotal.toFixed(2)}</p>
             </div>
-            <div className="col-span-1">
+            <div className="flex justify-end pb-2">
               {rows.length > 1 && (
                 <button
                   type="button"
