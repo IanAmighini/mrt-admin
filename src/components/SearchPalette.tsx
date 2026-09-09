@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -45,15 +45,24 @@ export function SearchPalette() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
 
-  // No hay estado `open`: la fuente de verdad es el <dialog>, y onClose limpia todo — mismo rol
-  // que el resetKey de FormModal.
+  // No hay estado `open`: la fuente de verdad es el <dialog>. Lo que había quedado de la búsqueda
+  // anterior se limpia al ABRIR y no al cerrar, porque el evento `close` del <dialog> no llega
+  // (comprobado con un listener nativo) — mismo motivo que el resetKey de FormModal.
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Atajo global. Las dependencias vacías son seguras porque el handler solo lee dialogRef (un ref,
-  // que se resuelve al invocarse); por eso las flechas y Enter van en el input y no acá.
+  const abrir = useCallback(() => {
+    setQuery("");
+    setResults([]);
+    setStatus("idle");
+    setActiveIndex(0);
+    dialogRef.current?.showModal();
+  }, []);
+
+  // Atajo global. El handler solo lee dialogRef (un ref, que se resuelve al invocarse) y `abrir`,
+  // que es estable; por eso las flechas y Enter van en el input y no acá.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.repeat || event.defaultPrevented) return;
@@ -62,12 +71,12 @@ export function SearchPalette() {
         const dialog = dialogRef.current;
         if (!dialog) return;
         if (dialog.open) dialog.close();
-        else dialog.showModal();
+        else abrir();
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [abrir]);
 
   // Las transiciones que dispara el usuario al tipear viven acá, no en el efecto: el efecto solo
   // se sincroniza con la red.
@@ -139,7 +148,7 @@ export function SearchPalette() {
       const result = results[activeIndex];
       if (result) go(result);
     }
-    // Escape no se toca: lo maneja el <dialog> nativo, que además dispara onClose.
+    // Escape no se toca: lo maneja el <dialog> nativo.
   }
 
   const term = query.trim();
@@ -149,7 +158,7 @@ export function SearchPalette() {
     <>
       <button
         type="button"
-        onClick={() => dialogRef.current?.showModal()}
+        onClick={abrir}
         title="Buscar (⌘K / Ctrl K)"
         aria-label="Buscar"
         className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
@@ -163,12 +172,6 @@ export function SearchPalette() {
         aria-label="Búsqueda"
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
-        }}
-        onClose={() => {
-          setQuery("");
-          setResults([]);
-          setStatus("idle");
-          setActiveIndex(0);
         }}
         className="fixed inset-x-0 top-[10vh] mx-auto w-[calc(100%-2rem)] max-w-xl rounded-xl border border-foreground/10 bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50"
       >

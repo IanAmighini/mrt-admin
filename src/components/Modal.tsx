@@ -26,9 +26,14 @@ export function FormModal({
 }) {
   const TriggerIcon = TRIGGER_ICONS[iconName];
   const dialogRef = useRef<HTMLDialogElement>(null);
-  // Se incrementa cada vez que el <dialog> se cierra (submit exitoso, X, click afuera, Escape) —
-  // al usarlo como key del <form> se fuerza a remontar los campos, así el próximo "Nuevo X" no
-  // arranca con los valores/líneas que habían quedado cargados la vez anterior.
+  // Se incrementa cada vez que se ABRE el diálogo — al usarlo como key del <form> se fuerza a
+  // remontar los campos, así el próximo "Nuevo X" no arranca con los valores que habían quedado
+  // cargados la vez anterior.
+  //
+  // Antes se incrementaba al cerrarlo, con `onClose`, y no funcionaba: el evento `close` del
+  // <dialog> no llega (comprobado con un listener nativo, no es cosa de React), así que el reseteo
+  // no ocurría nunca y el formulario conservaba lo tipeado. Al abrir siempre se ejecuta, sin
+  // importar cómo se haya cerrado antes — con la X, con Escape o clickeando afuera.
   const [resetKey, setResetKey] = useState(0);
   const [error, formAction, pending] = useActionState<string | null, FormData>(
     async (_prevState, formData) => {
@@ -57,7 +62,10 @@ export function FormModal({
     <>
       <button
         type="button"
-        onClick={() => dialogRef.current?.showModal()}
+        onClick={() => {
+          setResetKey((k) => k + 1);
+          dialogRef.current?.showModal();
+        }}
         className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
       >
         <TriggerIcon size={16} />
@@ -69,7 +77,6 @@ export function FormModal({
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}
-        onClose={() => setResetKey((k) => k + 1)}
       >
         <div className="space-y-4 p-6">
           <div className="flex items-center justify-between">
