@@ -187,7 +187,7 @@ export default async function EntregasPage({
                         action={deleteRemito}
                         hiddenName="documentId"
                         hiddenValue={doc.id}
-                        confirmMessage="¿Borrar este remito? Esta acción no se puede deshacer."
+                        nombre={`el remito #${doc.number}`}
                       />
                     </div>
                   </td>

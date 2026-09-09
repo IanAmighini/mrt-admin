@@ -136,7 +136,8 @@ export default async function ProduccionPage() {
                       action={deleteProductionRun}
                       hiddenName="runId"
                       hiddenValue={run.id}
-                      confirmMessage="¿Borrar esta carga de producción? Revierte el stock de producto e insumos que generó."
+                      nombre={`la producción del ${run.date.toLocaleDateString("es-AR")}`}
+                      consecuencia="Revierte el stock de producto e insumos que generó."
                     />
                   </div>
                 )}

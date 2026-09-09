@@ -127,7 +127,7 @@ export default async function AccountLedgerPage({
             action={deletePayment}
             hiddenName="paymentId"
             hiddenValue={payment.id}
-            confirmMessage="¿Borrar este pago? Esta acción no se puede deshacer."
+            nombre={`el pago de ${formatMoney(payment.amount, payment.currency)} del ${payment.date.toLocaleDateString("es-AR")}`}
           />
         </div>
       );
@@ -179,7 +179,7 @@ export default async function AccountLedgerPage({
             action={deleteRemito}
             hiddenName="documentId"
             hiddenValue={doc.id}
-            confirmMessage="¿Borrar este remito? Esta acción no se puede deshacer."
+            nombre={`el remito #${doc.number}`}
           />
           {moveToBlanco}
         </div>
@@ -201,7 +201,8 @@ export default async function AccountLedgerPage({
             action={deleteCompra}
             hiddenName="documentId"
             hiddenValue={doc.id}
-            confirmMessage="¿Borrar esta compra? El stock que sumó se revierte. Esta acción no se puede deshacer."
+            nombre={`la compra #${doc.number}`}
+            consecuencia="El stock que sumó se revierte."
           />
           {moveToBlanco}
         </div>
@@ -227,7 +228,8 @@ export default async function AccountLedgerPage({
             action={deleteFactura}
             hiddenName="documentId"
             hiddenValue={doc.id}
-            confirmMessage="¿Borrar esta factura? Los remitos vinculados vuelven a quedar pendientes de facturar."
+            nombre={`la factura #${doc.number}`}
+            consecuencia="Los remitos vinculados vuelven a quedar pendientes de facturar."
           />
         </div>
       );
@@ -251,7 +253,7 @@ export default async function AccountLedgerPage({
           action={deleteDocument}
           hiddenName="documentId"
           hiddenValue={doc.id}
-          confirmMessage="¿Borrar este movimiento? Esta acción no se puede deshacer."
+          nombre={`el movimiento #${doc.number}`}
         />
       </div>
     );

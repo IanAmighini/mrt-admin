@@ -159,7 +159,8 @@ export default async function CatalogoPage() {
                           action={deleteMarca}
                           hiddenName="marcaId"
                           hiddenValue={marca.id}
-                          confirmMessage={`¿Borrar la marca "${marca.name} ${marca.oilType}"? No afecta a los productos que ya existan con ese nombre.`}
+                          nombre={`la marca ${marca.name} ${marca.oilType}`}
+                          consecuencia="No afecta a los productos que ya existan con ese nombre."
                         />
                       </div>
                     </td>
@@ -337,7 +338,8 @@ export default async function CatalogoPage() {
                           action={deleteFormato}
                           hiddenName="formatoId"
                           hiddenValue={formato.id}
-                          confirmMessage={`¿Borrar el formato "${formato.presentation}"? No afecta a los productos que ya existan con esa presentación.`}
+                          nombre={`el formato ${formato.presentation}`}
+                          consecuencia="No afecta a los productos que ya existan con esa presentación."
                         />
                       </div>
                     </td>

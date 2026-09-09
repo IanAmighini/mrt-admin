@@ -200,7 +200,9 @@ export default async function UsuariosPage({
                           hiddenName="id"
                           hiddenValue={u.id}
                           label="Eliminar"
-                          confirmMessage="¿Eliminar este usuario? No va a poder iniciar sesión, pero se conserva todo lo que cargó en el sistema."
+                          nombre={`a ${u.name}`}
+                          consecuencia="No va a poder iniciar sesión, pero se conserva todo lo que cargó en el sistema, y se lo puede reactivar."
+                          irreversible={false}
                         >
                           <input type="hidden" name="active" value="true" />
                         </DeleteButton>

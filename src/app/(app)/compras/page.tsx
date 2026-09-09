@@ -166,7 +166,8 @@ export default async function ComprasPage({
                         action={deleteCompra}
                         hiddenName="documentId"
                         hiddenValue={doc.id}
-                        confirmMessage="¿Borrar esta compra? El stock que sumó se revierte. Esta acción no se puede deshacer."
+                        nombre={`la compra #${doc.number}`}
+                        consecuencia="El stock que sumó se revierte."
                       />
                     </div>
                   </td>

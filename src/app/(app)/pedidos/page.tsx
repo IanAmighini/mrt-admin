@@ -202,7 +202,7 @@ export default async function PedidosPage({
                                 action={deletePedido}
                                 hiddenName="pedidoId"
                                 hiddenValue={pedido.id}
-                                confirmMessage="¿Borrar este pedido? Esta acción no se puede deshacer."
+                                nombre={`el pedido #${pedido.orderNumber}`}
                               />
                             </div>
                           </td>

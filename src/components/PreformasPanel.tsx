@@ -175,7 +175,8 @@ export function PreformasPanel({
                   action={deleteEntregaPreforma}
                   hiddenName="entregaId"
                   hiddenValue={e.id}
-                  confirmMessage="¿Borrar esta entrega? Vuelve a subir lo que se le debe."
+                  nombre={`la entrega de ${formatQuantity(e.quantity)} preformas ${e.preforma.name}`}
+                  consecuencia="Vuelve a subir lo que se le debe."
                 />
               )}
             </div>

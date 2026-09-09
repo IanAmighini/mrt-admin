@@ -182,8 +182,8 @@ export default async function EntityLedgerPage({
               action={deleteEntity}
               hiddenName="entityId"
               hiddenValue={entity.id}
-              label="Eliminar"
-              confirmMessage={`¿Eliminar a "${entity.name}"? Solo se puede si no tiene movimientos cargados.`}
+              nombre={`a ${entity.name}`}
+              consecuencia="Solo se puede si no tiene movimientos cargados."
             />
           </div>
         )}

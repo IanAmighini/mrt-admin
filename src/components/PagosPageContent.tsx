@@ -143,7 +143,7 @@ export async function PagosPageContent({
                             action={deletePayment}
                             hiddenName="paymentId"
                             hiddenValue={payment.id}
-                            confirmMessage="¿Borrar este pago? Esta acción no se puede deshacer."
+                            nombre={`el pago de ${formatMoney(payment.amount, payment.currency)} del ${payment.date.toLocaleDateString("es-AR")}`}
                           />
                         </div>
                       </td>
