@@ -1,6 +1,6 @@
 "use client";
 
-import { userErrorMessage } from "@/lib/user-error";
+import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Pencil, Plus, X, type LucideIcon } from "lucide-react";
 
@@ -36,6 +36,9 @@ export function FormModal({
         await action(formData);
         return null;
       } catch (e) {
+        // Un redirect no es un error: si se lo traga el catch, la acción parece fallar y la
+        // navegación nunca ocurre.
+        if (esSenalDeNavegacion(e)) throw e;
         return userErrorMessage(e);
       }
     },

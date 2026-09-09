@@ -42,3 +42,16 @@ export function userErrorMessage(e: unknown, fallback = "Ocurrió un error."): s
   }
   return fallback;
 }
+
+/**
+ * Si el "error" es en realidad la señal con la que Next implementa `redirect()` o `notFound()`.
+ *
+ * Los formularios de la app envuelven la acción en un try/catch para mostrar el mensaje, y eso se
+ * come la señal: una acción que redirige después de guardar terminaba mostrando "Ocurrió un error"
+ * y quedándose en la página. Hay que dejarla pasar.
+ */
+export function esSenalDeNavegacion(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const { digest } = e as { digest?: unknown };
+  return typeof digest === "string" && (digest.startsWith("NEXT_REDIRECT") || digest === "NEXT_NOT_FOUND");
+}

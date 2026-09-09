@@ -2,11 +2,12 @@
 
 import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
 import { generateUniqueSlug } from "@/lib/slug";
-import { aplicarSaldoInicial } from "@/lib/saldo-inicial";
+import { aplicarSaldoInicial, NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 import type { EntityType, SupplierCategory } from "@prisma/client";
 
 const ENTITY_TYPES: EntityType[] = ["CLIENTE", "PROVEEDOR", "AMBOS"];
@@ -150,4 +151,77 @@ export async function updateEntity(formData: FormData) {
   revalidatePath("/clientes");
   revalidatePath("/proveedores");
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);
+}
+
+/**
+ * Borra un cliente o proveedor **solo si no tiene historial**. Si tiene, no se borra: sus
+ * comprobantes y pagos son la cuenta corriente, y hacerlos desaparecer descuadraría la contabilidad
+ * sin dejar rastro. El error dice exactamente qué lo está reteniendo.
+ *
+ * La excepción es el saldo inicial, que se borra junto con la entidad: no es un movimiento real,
+ * es el número con el que arrancó la cuenta, y ya se puede vaciar desde el formulario de edición.
+ * Si tiene pagos imputados encima, deja de ser una excepción y frena como cualquier otro.
+ */
+export async function deleteEntity(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new UserError("Falta la entidad.");
+
+  const entity = await prisma.entity.findUnique({
+    where: { id: entityId },
+    include: {
+      accounts: {
+        include: {
+          documents: { select: { id: true, number: true, _count: { select: { allocations: true } } } },
+          payments: { select: { id: true } },
+        },
+      },
+      prices: { select: { id: true } },
+      pedidos: { select: { id: true } },
+      entregasPreforma: { select: { id: true } },
+      treasuryPayments: { select: { id: true } },
+    },
+  });
+  if (!entity) throw new UserError("El cliente o proveedor ya no existe.");
+
+  const documentos = entity.accounts.flatMap((a) => a.documents);
+  const saldosIniciales = documentos.filter(
+    (d) => d.number === NUMERO_SALDO_INICIAL && d._count.allocations === 0
+  );
+  const otrosDocumentos = documentos.length - saldosIniciales.length;
+  const pagos = entity.accounts.reduce((n, a) => n + a.payments.length, 0);
+
+  const retenido = [
+    otrosDocumentos > 0 && `${otrosDocumentos} comprobante(s)`,
+    pagos > 0 && `${pagos} pago(s)`,
+    entity.prices.length > 0 && `${entity.prices.length} precio(s)`,
+    entity.pedidos.length > 0 && `${entity.pedidos.length} pedido(s)`,
+    entity.entregasPreforma.length > 0 && `${entity.entregasPreforma.length} entrega(s) de preformas`,
+    entity.treasuryPayments.length > 0 && `${entity.treasuryPayments.length} cobro/pago(s) que lo usan como destino`,
+  ].filter(Boolean) as string[];
+
+  if (retenido.length > 0) {
+    throw new UserError(
+      `No se puede borrar "${entity.name}": tiene ${retenido.join(", ")}. Borrá primero esos movimientos, o dejalo como está — su cuenta corriente es parte de la contabilidad.`
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.deleteMany({ where: { id: { in: saldosIniciales.map((d) => d.id) } } });
+    await tx.account.deleteMany({ where: { entityId } });
+    await tx.entity.delete({ where: { id: entityId } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: ENTITY_TYPE_LABELS[entity.type],
+      entityId,
+      summary: entity.name,
+    });
+  });
+
+  revalidatePath("/clientes");
+  revalidatePath("/proveedores");
+  redirect(entity.type === "PROVEEDOR" ? "/proveedores" : "/clientes");
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { userErrorMessage } from "@/lib/user-error";
+import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { useActionState } from "react";
 import { Trash2 } from "lucide-react";
 
@@ -27,6 +27,9 @@ export function DeleteButton({
         await action(formData);
         return null;
       } catch (e) {
+        // Un redirect no es un error: si se lo traga el catch, la acción parece fallar y la
+        // navegación nunca ocurre.
+        if (esSenalDeNavegacion(e)) throw e;
         return userErrorMessage(e);
       }
     },

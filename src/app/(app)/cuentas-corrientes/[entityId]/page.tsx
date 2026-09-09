@@ -20,9 +20,10 @@ import { formatMoney, formatNumeroEditable, formatQuantity, toDecimal } from "@/
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
 import { createPrice } from "./actions";
-import { updateEntity } from "@/app/(app)/clientes/actions";
+import { deleteEntity, updateEntity } from "@/app/(app)/clientes/actions";
 import { FormModal } from "@/components/Modal";
 import { EntityFormFields } from "@/components/EntityFormFields";
+import { DeleteButton } from "@/components/DeleteButton";
 import { EntitySummaryCards } from "@/components/EntitySummaryCards";
 import { EntregasPanel } from "@/components/EntregasPanel";
 import { ComprasPanel } from "@/components/ComprasPanel";
@@ -168,14 +169,23 @@ export default async function EntityLedgerPage({
           <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
         </div>
         {canEdit && (
-          <FormModal triggerLabel="Editar" iconName="edit" title="Editar cliente/proveedor" action={updateEntity}>
-            <EntityFormFields
-              defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
-              showSupplierCategory={entity.type !== "CLIENTE"}
-              entity={entity}
-              saldosIniciales={saldosIniciales}
+          <div className="flex items-center gap-3">
+            <FormModal triggerLabel="Editar" iconName="edit" title="Editar cliente/proveedor" action={updateEntity}>
+              <EntityFormFields
+                defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
+                showSupplierCategory={entity.type !== "CLIENTE"}
+                entity={entity}
+                saldosIniciales={saldosIniciales}
+              />
+            </FormModal>
+            <DeleteButton
+              action={deleteEntity}
+              hiddenName="entityId"
+              hiddenValue={entity.id}
+              label="Eliminar"
+              confirmMessage={`¿Eliminar a "${entity.name}"? Solo se puede si no tiene movimientos cargados.`}
             />
-          </FormModal>
+          </div>
         )}
       </div>
 

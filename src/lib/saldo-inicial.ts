@@ -4,7 +4,7 @@ import { formatMoney, parseNumeroEscrito, sumDecimals, ZERO } from "@/lib/money"
 import { UserError } from "@/lib/user-error";
 
 /** Marca el AJUSTE que representa el saldo con el que arrancó la cuenta. */
-const NUMERO_SALDO_INICIAL = "SALDO-INICIAL";
+export const NUMERO_SALDO_INICIAL = "SALDO-INICIAL";
 
 /**
  * Deja el saldo inicial de una cuenta en lo que dice el formulario: lo crea, lo corrige o lo borra.
