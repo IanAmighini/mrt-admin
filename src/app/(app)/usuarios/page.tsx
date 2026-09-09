@@ -2,7 +2,7 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { ROLE_LABELS } from "@/lib/nav";
+import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/nav";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { createUser, toggleUserActive, updateUser } from "./actions";
@@ -70,9 +70,11 @@ export default async function UsuariosPage({
                 Rol
               </label>
               <select id="role" name="role" required defaultValue="SECRETARIA" className={selectClass}>
-                <option value="ADMIN">Admin</option>
-                <option value="SOLO_LECTURA">Solo lectura</option>
-                <option value="SECRETARIA">Secretaria</option>
+                {ASSIGNABLE_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
               </select>
             </div>
           </div>
@@ -176,9 +178,11 @@ export default async function UsuariosPage({
                             Rol
                           </label>
                           <select id={`role-${u.id}`} name="role" required defaultValue={u.role} className={selectClass}>
-                            <option value="ADMIN">Admin</option>
-                            <option value="SOLO_LECTURA">Solo lectura</option>
-                            <option value="SECRETARIA">Secretaria</option>
+                            {ASSIGNABLE_ROLES.map((r) => (
+                              <option key={r} value={r}>
+                                {ROLE_LABELS[r]}
+                              </option>
+                            ))}
                           </select>
                         </div>
                       </div>

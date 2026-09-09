@@ -86,9 +86,10 @@ type Scored = { result: SearchResult; score: number };
  * (texto y ruta incluidos) para que el cliente no tenga que saber nada de rutas ni volver a
  * formatear decimales y fechas del otro lado del límite JSON.
  *
- * `role` solo se usa para ocultarle las tesorerías a Secretaria, mismo criterio que el menú. Ojo:
- * eso es ocultar, no bloquear — /cuentas-corrientes no tiene gate de rol, así que quien sepa el
- * slug ya entra igual.
+ * `role` recorta lo que se devuelve con el mismo criterio que el menú: a Secretaria se le ocultan
+ * las tesorerías, y al encargado de producción se le devuelven **solo insumos y productos**, que son
+ * las páginas a las que puede entrar. Acá sí es bloquear y no solo ocultar: desde que
+ * /cuentas-corrientes está en NAV_ITEMS, el middleware le corta la entrada aunque tenga el link.
  */
 export async function searchAll(rawTerm: string, role: UserRole): Promise<SearchResult[]> {
   const term = rawTerm.trim().toLowerCase();
@@ -98,17 +99,23 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
   const numeroTerm = term.replace(/^#/, "");
   const contains = { contains: term, mode: "insensitive" } as const;
   const ocultarTesorerias = role === "SECRETARIA";
+  // El encargado no tiene acceso a clientes, proveedores ni comprobantes: devolverle resultados que
+  // no puede abrir sería mandarlo a un redirect, y de paso le mostraría nombres y números que no le
+  // corresponden.
+  const soloProduccion = role === "ENCARGADO_PRODUCCION";
 
   const [entidades, insumos, productos, documentos, porCuit] = await Promise.all([
-    prisma.entity.findMany({
-      where: {
-        OR: [{ name: contains }, { taxId: contains }],
-        ...(ocultarTesorerias ? { type: { not: "TESORERIA" as const } } : {}),
-      },
-      select: { id: true, slug: true, name: true, taxId: true, type: true, supplierCategory: true },
-      orderBy: { name: "asc" },
-      take: TAKE_POR_TIPO,
-    }),
+    soloProduccion
+      ? Promise.resolve([])
+      : prisma.entity.findMany({
+          where: {
+            OR: [{ name: contains }, { taxId: contains }],
+            ...(ocultarTesorerias ? { type: { not: "TESORERIA" as const } } : {}),
+          },
+          select: { id: true, slug: true, name: true, taxId: true, type: true, supplierCategory: true },
+          orderBy: { name: "asc" },
+          take: TAKE_POR_TIPO,
+        }),
     prisma.item.findMany({
       where: { name: contains },
       select: { id: true, slug: true, name: true, unit: true, category: true },
@@ -130,7 +137,9 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
       orderBy: [{ name: "asc" }, { oilType: "asc" }],
       take: TAKE_POR_TIPO,
     }),
-    prisma.document.findMany({
+    soloProduccion
+      ? Promise.resolve([])
+      : prisma.document.findMany({
       where: {
         type: "REMITO",
         number: { contains: numeroTerm, mode: "insensitive" },
@@ -148,7 +157,7 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
       // Se pide de más para poder deduplicar remitos mixtos Blanco+Negro antes de recortar.
       take: TAKE_POR_TIPO * 4,
     }),
-    pareceCuit(term)
+    pareceCuit(term) && !soloProduccion
       ? prisma.entity.findMany({
           where: {
             taxId: { not: null },

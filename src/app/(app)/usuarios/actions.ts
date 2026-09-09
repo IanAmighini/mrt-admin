@@ -7,8 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { hashPassword } from "@/lib/password";
 import { logAudit } from "@/lib/audit";
+import { ASSIGNABLE_ROLES } from "@/lib/nav";
 
-const ROLES: UserRole[] = ["ADMIN", "SOLO_LECTURA", "SECRETARIA"];
+// Misma lista que ofrecen los desplegables: un rol nuevo se agrega en un solo lugar.
+const ROLES: UserRole[] = ASSIGNABLE_ROLES;
 
 export async function createUser(formData: FormData) {
   const admin = await requireRole(["ADMIN"]);

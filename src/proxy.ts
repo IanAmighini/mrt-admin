@@ -19,12 +19,26 @@ export default auth((req) => {
     return NextResponse.redirect(loginUrl);
   }
 
+  // Inicio lo ve todo el mundo, y hay que atajarlo antes del control de abajo: se excluye del
+  // match por prefijo (si no, "/" sería prefijo de todo), así que sin este return se redirigiría
+  // a sí misma en un loop infinito.
+  if (pathname === "/") return NextResponse.next();
+
+  // Las rutas de API resuelven sus permisos por su cuenta (/api/buscar filtra por rol lo que
+  // devuelve), y ningún href de NAV_ITEMS es prefijo suyo, así que quedan afuera de este control.
+  if (pathname.startsWith("/api/")) return NextResponse.next();
+
   // El item de nav más específico que matchea esta ruta manda qué roles pueden entrar — mismo
   // NAV_ITEMS que decide qué se muestra en el menú, así no hay que mantener una lista aparte acá.
   const matchedItem = NAV_ITEMS.filter(
     (item) => item.href !== "/" && pathname.startsWith(item.href)
   ).sort((a, b) => b.href.length - a.href.length)[0];
-  if (matchedItem && !matchedItem.roles.includes(req.auth!.user.role)) {
+
+  // Sin item que la reclame, la ruta se niega. Antes se dejaba pasar, y eso alcanzaba mientras
+  // todos los roles veían todo: /cuentas-corrientes no está en el menú y quedaba abierta a
+  // cualquiera con sesión. Con un rol que no debe ver saldos eso pasa a ser una filtración, así
+  // que ahora una página nueva nace cerrada hasta que alguien la liste en NAV_ITEMS.
+  if (!matchedItem || !matchedItem.roles.includes(req.auth!.user.role)) {
     return NextResponse.redirect(new URL("/", req.url));
   }
 

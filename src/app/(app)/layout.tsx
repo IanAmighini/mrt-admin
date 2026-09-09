@@ -1,6 +1,6 @@
 import { LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth-helpers";
-import { NAV_ITEMS, ROLE_LABELS } from "@/lib/nav";
+import { navItemsForRole, ROLE_LABELS } from "@/lib/nav";
 import { SidebarNav } from "@/components/SidebarNav";
 import { SearchPalette } from "@/components/SearchPalette";
 import { signOut } from "@/auth";
@@ -11,7 +11,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const user = await requireUser();
-  const items = NAV_ITEMS.filter((item) => item.roles.includes(user.role));
+  const items = navItemsForRole(user.role);
 
   return (
     <div className="flex min-h-screen flex-col">

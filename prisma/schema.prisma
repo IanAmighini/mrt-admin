@@ -12,6 +12,8 @@ enum UserRole {
   ADMIN
   SOLO_LECTURA
   SECRETARIA
+  /// Solo mira: stock, pedidos y producción. La carga la hace Secretaria.
+  ENCARGADO_PRODUCCION
 }
 
 model User {
