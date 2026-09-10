@@ -92,7 +92,10 @@ export async function buildRecipeTemplate(
   ];
 
   const items = await tx.item.findMany({
-    where: { name: { in: nombres } },
+    // `llevaStock` acota a los que se pueden consumir: si alguien nombrara igual a un consumible
+    // que no lleva stock, la receta anotaría un consumo que no descuenta de ningún lado. Al no
+    // encontrarlo, `exigir()` avisa con nombre en vez de dejarlo pasar.
+    where: { name: { in: nombres }, llevaStock: true },
     select: { id: true, name: true, category: true },
   });
   const porNombre = new Map(items.map((i) => [i.name, i]));

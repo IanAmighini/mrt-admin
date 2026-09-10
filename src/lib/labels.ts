@@ -67,7 +67,10 @@ export const SUPPLIER_CATEGORY_ORDER: SupplierCategory[] = [
   "CAJAS",
   "ETIQUETAS",
   "CINTA",
+  "PEGAMENTO",
+  "STRETCH",
   "PALLET_NORMALIZADO",
+  "PALLET_DESCARTABLE",
   "OTRO",
 ];
 
@@ -77,8 +80,11 @@ export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
   CAJAS: "Cajas",
   TAPAS: "Tapas",
   CINTA: "Cinta",
+  PEGAMENTO: "Pegamento",
+  STRETCH: "Stretch",
   ETIQUETAS: "Etiquetas",
   PALLET_NORMALIZADO: "Pallet normalizado",
+  PALLET_DESCARTABLE: "Pallet descartable",
   OTRO: "Otro",
 };
 

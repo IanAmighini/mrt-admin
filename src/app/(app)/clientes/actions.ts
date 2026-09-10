@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
 import { generateUniqueSlug } from "@/lib/slug";
+import { SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 import { aplicarSaldoInicial, NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 import type { EntityType, SupplierCategory } from "@prisma/client";
 
@@ -17,16 +18,8 @@ const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   AMBOS: "Cliente/Proveedor",
   TESORERIA: "Tesorería",
 };
-const SUPPLIER_CATEGORIES: SupplierCategory[] = [
-  "ACEITE",
-  "ENVASES",
-  "CAJAS",
-  "TAPAS",
-  "CINTA",
-  "ETIQUETAS",
-  "PALLET_NORMALIZADO",
-  "OTRO",
-];
+// Misma lista que el resto de la app, para que no se desincronicen.
+const SUPPLIER_CATEGORIES: SupplierCategory[] = SUPPLIER_CATEGORY_ORDER;
 
 export async function createEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);

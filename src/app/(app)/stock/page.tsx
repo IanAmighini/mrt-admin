@@ -20,7 +20,10 @@ const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
   CAJAS: Archive,
   ETIQUETAS: Tag,
   CINTA: Scissors,
+  PEGAMENTO: Droplet,
+  STRETCH: Scissors,
   PALLET_NORMALIZADO: Layers,
+  PALLET_DESCARTABLE: Layers,
   OTRO: HelpCircle,
 };
 
@@ -54,8 +57,10 @@ export default async function StockPage({
         product.presentation.toLowerCase().includes(searchTerm)
     );
 
+  // Los insumos que no llevan stock no tienen nada que mostrar acá: su número no significa nada
+  // porque nada los consume. El gasto queda igual en la cuenta corriente del proveedor.
   const itemsByCategory = new Map<SupplierCategory, typeof items>();
-  for (const item of items) {
+  for (const item of items.filter((i) => i.llevaStock)) {
     const list = itemsByCategory.get(item.category) ?? [];
     list.push(item);
     itemsByCategory.set(item.category, list);
@@ -213,9 +218,16 @@ export default async function StockPage({
                   />
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="isResellable" />
-                Es revendible
+              <label className="flex items-start gap-2 text-sm">
+                <input type="checkbox" name="llevaStock" defaultChecked />
+                <span>
+                  Lleva stock
+                  <span className="block text-xs text-foreground/50">
+                    Destildalo para los consumibles que se compran y no se cuentan, como el
+                    pegamento: el gasto va a la cuenta corriente pero no genera movimiento ni
+                    aparece en esta pantalla.
+                  </span>
+                </span>
               </label>
               <button
                 type="submit"

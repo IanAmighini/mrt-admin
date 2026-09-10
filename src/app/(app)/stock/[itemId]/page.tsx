@@ -6,7 +6,9 @@ import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getItemMovements, getItemStock } from "@/lib/stock";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
-import { createItemMovement } from "./actions";
+import { createItemMovement, venderInsumo } from "./actions";
+import { FormModal } from "@/components/Modal";
+import { toDateInputValue } from "@/lib/period";
 import { updateItemAjustes } from "../actions";
 
 export default async function ItemDetailPage({
@@ -26,12 +28,19 @@ export default async function ItemDetailPage({
   if (!item) notFound();
   if (itemId !== item.slug) redirect(`/stock/${item.slug}`);
 
-  const [stock, movements, preformas] = await Promise.all([
+  const [stock, movements, preformas, entidades] = await Promise.all([
     getItemStock(item.id),
     getItemMovements(item.id),
     // Sólo se usa en el formulario de envases, pero pedirla siempre evita una consulta condicional
     // por tres filas.
     prisma.preforma.findMany({ orderBy: { name: "asc" } }),
+    prisma.entity.findMany({
+      // "Ambos" queda afuera a propósito: en ese caso no se puede deducir si la venta se cobra o
+      // se descuenta, y hoy no existe ninguna. La acción tira un error claro si llegara a pasar.
+      where: { type: { in: ["CLIENTE", "PROVEEDOR"] } },
+      select: { id: true, name: true, type: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
   const movementsDesc = movements.slice().reverse();
 
@@ -41,9 +50,90 @@ export default async function ItemDetailPage({
         <Link href="/stock" className="text-sm underline underline-offset-2">
           ← Stock de insumos
         </Link>
-        <div className="mt-2 flex items-baseline justify-between">
+        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
           <h1 className="text-xl font-semibold">{item.name}</h1>
-          <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
+          <div className="flex items-center gap-4">
+            <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
+            {canEdit && item.llevaStock && (
+              <FormModal triggerLabel="Vender" title={`Vender ${item.name}`} action={venderInsumo}>
+                <input type="hidden" name="itemId" value={item.id} />
+                <p className="text-xs text-foreground/50">
+                  Descuenta el stock y carga la plata en la cuenta corriente de quien lo recibe. Si
+                  es un proveedor se le descuenta de lo que se le debe; si es un cliente, se le
+                  suma a lo que nos debe.
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <label className="text-sm" htmlFor="venta-fecha">
+                      Fecha
+                    </label>
+                    <input
+                      id="venta-fecha"
+                      type="date"
+                      name="date"
+                      required
+                      defaultValue={toDateInputValue(new Date())}
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm" htmlFor="venta-entidad">
+                      A quién
+                    </label>
+                    <select id="venta-entidad" name="entityId" required defaultValue="" className={inputClass}>
+                      <option value="" disabled>
+                        — Elegir —
+                      </option>
+                      {entidades.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm" htmlFor="venta-cantidad">
+                      Cantidad ({item.unit})
+                    </label>
+                    <input id="venta-cantidad" name="quantity" required inputMode="decimal" className={inputClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm" htmlFor="venta-precio">
+                      Precio unitario
+                    </label>
+                    <input id="venta-precio" name="unitPrice" required inputMode="decimal" className={inputClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm" htmlFor="venta-circuito">
+                      Circuito
+                    </label>
+                    <select id="venta-circuito" name="circuit" defaultValue="BLANCO" className={inputClass}>
+                      <option value="BLANCO">Blanco (facturado)</option>
+                      <option value="NEGRO">Negro (sin facturar)</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-sm" htmlFor="venta-numero">
+                      Comprobante (opcional)
+                    </label>
+                    <input id="venta-numero" name="number" className={inputClass} />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm" htmlFor="venta-notas">
+                    Notas
+                  </label>
+                  <input id="venta-notas" name="notes" className={inputClass} />
+                </div>
+                <button
+                  type="submit"
+                  className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+                >
+                  Registrar venta
+                </button>
+              </FormModal>
+            )}
+          </div>
         </div>
         <p className="mt-1 text-sm text-foreground/60">
           Costo unitario: {item.unitCost ? formatMoney(item.unitCost) : "sin cargar"} · Stock mínimo:{" "}
@@ -131,6 +221,10 @@ export default async function ItemDetailPage({
               </div>
             </>
           )}
+          <label className="flex items-center gap-2 self-center text-sm">
+            <input type="checkbox" name="llevaStock" defaultChecked={item.llevaStock} />
+            Lleva stock
+          </label>
           <button
             type="submit"
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
@@ -303,3 +397,6 @@ export default async function ItemDetailPage({
     </div>
   );
 }
+
+const inputClass =
+  "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";

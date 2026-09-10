@@ -7,18 +7,12 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
 import { parseNumeroEscrito } from "@/lib/money";
+import { SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 import { generateUniqueSlug } from "@/lib/slug";
 
-const CATEGORIES: SupplierCategory[] = [
-  "ACEITE",
-  "ENVASES",
-  "CAJAS",
-  "TAPAS",
-  "ETIQUETAS",
-  "CINTA",
-  "PALLET_NORMALIZADO",
-  "OTRO",
-];
+// Misma lista y mismo orden que el resto de la app: una categoría nueva se agrega en
+// SUPPLIER_CATEGORY_ORDER y aparece acá sola.
+const CATEGORIES: SupplierCategory[] = SUPPLIER_CATEGORY_ORDER;
 
 export async function createItem(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
@@ -26,7 +20,8 @@ export async function createItem(formData: FormData) {
   const name = String(formData.get("name") || "").trim();
   const unit = String(formData.get("unit") || "").trim();
   const category = String(formData.get("category") || "") as SupplierCategory;
-  const isResellable = formData.get("isResellable") === "on";
+  // Un checkbox sin tildar no viaja: ausente = no lleva stock.
+  const llevaStock = formData.get("llevaStock") !== null;
   const minStockRaw = String(formData.get("minStock") || "").trim();
   const unitCostRaw = String(formData.get("unitCost") || "").trim();
   const stockInicialRaw = String(formData.get("stockInicial") || "").trim();
@@ -52,7 +47,7 @@ export async function createItem(formData: FormData) {
         slug,
         unit,
         category,
-        isResellable,
+        llevaStock,
         minStock,
         unitCost,
       },
@@ -109,6 +104,8 @@ export async function updateItemAjustes(formData: FormData) {
   // `null` en el FormData significa que el formulario no traía el campo (no es un envase), y ahí no
   // hay que tocar el valor guardado. Un string vacío sí es "borralo".
   const datosDeEnvase: Prisma.ItemUpdateInput = {};
+  // El tilde está en el mismo formulario, así que si el campo no vino es porque no se tildó.
+  datosDeEnvase.llevaStock = formData.get("llevaStock") !== null;
   const preformaRaw = formData.get("preformaId");
   if (preformaRaw !== null) {
     const id = String(preformaRaw).trim();

@@ -47,7 +47,9 @@ export default async function ProductDetailPage({
    * producir y la limpieza de la receta deciden por categoría, así que una caja archivada bajo
    * TAPAS por un mal clic haría fallar las dos en silencio. */
   function itemsPorCategoria(category: SupplierCategory) {
-    return items.filter((item) => item.category === category);
+    // Los que no llevan stock quedan afuera: consumirlos no descontaría de ningún lado, así que
+    // ponerlos en una receta sería anotar un consumo que no existe.
+    return items.filter((item) => item.category === category && item.llevaStock);
   }
 
   return (

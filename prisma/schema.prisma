@@ -93,8 +93,13 @@ enum SupplierCategory {
   CAJAS
   TAPAS
   CINTA
+  PEGAMENTO
+  STRETCH
   ETIQUETAS
   PALLET_NORMALIZADO
+  /// El pallet en el que llegan los insumos comprados. Va aparte del normalizado a propósito: el
+  /// desplegable de la receta filtra por PALLET_NORMALIZADO y este no es una opción válida ahí.
+  PALLET_DESCARTABLE
   OTRO
 }
 
@@ -304,7 +309,10 @@ model Item {
   name         String
   unit         String
   category     SupplierCategory @default(OTRO)
-  isResellable Boolean          @default(false)
+  /// En false el insumo no mueve stock: la compra le carga el gasto a la cuenta corriente pero no
+  /// genera movimiento, no aparece en la lista de stock ni en el control de faltantes, y no se
+  /// puede poner en una receta. Es para los consumibles que se compran y no se cuentan.
+  llevaStock   Boolean          @default(true)
   minStock     Decimal?         @db.Decimal(14, 3)
   unitCost     Decimal?         @db.Decimal(14, 2)
   /// Sólo envases: qué preforma consume. De acá sale a qué cuenta de preformas suma cada unidad

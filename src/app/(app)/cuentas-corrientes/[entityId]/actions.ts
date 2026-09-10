@@ -147,6 +147,10 @@ export async function deleteDocument(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    // Una venta de insumo cuelga su movimiento de stock de este documento: son un solo hecho, así
+    // que borrar el comprobante devuelve el stock. Sin esto la FK bloquea el borrado con un error
+    // de Prisma en crudo.
+    await tx.itemMovement.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
 
     await logAudit(tx, {
@@ -266,7 +270,10 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
       unitPrice: parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario"),
       circuit: circuits[i] as "BLANCO" | "NEGRO",
     }))
-    .filter((l) => l.productId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
+    // Sin exigir precio > 0: una línea sin cargo es legítima (una muestra) y descartarla en
+    // silencio es peor que cobrarla mal. Lo que distingue una línea cargada de una vacía es la
+    // cantidad.
+    .filter((l) => l.productId && l.quantity.greaterThan(0));
 
   if (lines.length === 0) {
     throw new UserError("Cargá al menos una línea con producto, cantidad y precio.");
@@ -496,7 +503,9 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
         circuit: circuits[i] as "BLANCO" | "NEGRO",
       };
     })
-    .filter((l) => l.itemId && l.quantity.greaterThan(0) && l.unitPrice.greaterThan(0));
+    // Sin exigir precio > 0: el pallet descartable entra gratis con la compra, y descartar esa
+    // línea en silencio dejaba el remito incompleto sin que nadie se entere.
+    .filter((l) => l.itemId && l.quantity.greaterThan(0));
 
   if (lines.length === 0) {
     throw new UserError("Cargá al menos una línea con insumo, cantidad y precio.");
@@ -536,6 +545,15 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
   const entity = await prisma.entity.findUnique({ where: { id: entityId } });
   if (!entity) throw new UserError("Entidad inexistente.");
 
+  const llevaStockPorItem = new Map(
+    (
+      await prisma.item.findMany({
+        where: { id: { in: lines.map((l) => l.itemId) } },
+        select: { id: true, llevaStock: true },
+      })
+    ).map((i) => [i.id, i.llevaStock])
+  );
+
   let combinedTotal = toDecimal(0);
 
   await prisma.$transaction(async (tx) => {
@@ -572,8 +590,11 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
         data: lineData.map((l) => ({ ...l, documentId: document.id })),
       });
 
+      // Los insumos que no llevan stock quedan fuera: su gasto ya entró en el documento de arriba,
+      // que es lo único que interesa de ellos. Generarles un ingreso sería inflar un número que
+      // nada consume.
       await tx.itemMovement.createMany({
-        data: lineData.map((l) => ({
+        data: lineData.filter((l) => llevaStockPorItem.get(l.itemId) !== false).map((l) => ({
           itemId: l.itemId,
           date,
           quantity: l.quantity,
