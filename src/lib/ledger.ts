@@ -352,3 +352,49 @@ export async function getTreasuries() {
     include: { accounts: true },
   });
 }
+
+/**
+ * La última cotización del dólar que se cargó en la app, mirando pagos y comprobantes.
+ *
+ * Sirve para valuar en pesos los saldos de las cuentas que se llevan en dólares, sin obligar a
+ * mantener un número aparte que se olvidaría de actualizar: la cotización sale de la última vez que
+ * alguien la usó de verdad. Devuelve `null` si todavía no se cargó ninguna, y ahí lo que
+ * corresponde es mostrar los dólares aparte en vez de inventar una conversión.
+ */
+export async function getUltimaCotizacion(): Promise<Prisma.Decimal | null> {
+  const [pago, documento] = await Promise.all([
+    prisma.payment.findFirst({
+      where: { exchangeRate: { not: null } },
+      orderBy: { date: "desc" },
+      select: { exchangeRate: true, date: true },
+    }),
+    prisma.document.findFirst({
+      where: { exchangeRate: { not: null } },
+      orderBy: { date: "desc" },
+      select: { exchangeRate: true, date: true },
+    }),
+  ]);
+  if (!pago && !documento) return null;
+  if (!pago) return documento!.exchangeRate;
+  if (!documento) return pago.exchangeRate;
+  return pago.date >= documento.date ? pago.exchangeRate : documento.exchangeRate;
+}
+
+/**
+ * Suma saldos de cuentas que pueden estar en monedas distintas, valuando los dólares con la última
+ * cotización cargada. Sumarlos crudos daría un número sin sentido.
+ */
+export function sumarSaldosEnPesos(
+  filas: { entity: { moneda: Currency }; total: number }[],
+  cotizacion: Prisma.Decimal | null
+): { total: Prisma.Decimal; dolaresSinValuar: Prisma.Decimal } {
+  let pesos = ZERO;
+  let dolares = ZERO;
+  for (const f of filas) {
+    if (f.entity.moneda === "USD") dolares = dolares.plus(f.total);
+    else pesos = pesos.plus(f.total);
+  }
+  return cotizacion
+    ? { total: pesos.plus(dolares.times(cotizacion)), dolaresSinValuar: ZERO }
+    : { total: pesos, dolaresSinValuar: dolares };
+}

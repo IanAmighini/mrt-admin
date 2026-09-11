@@ -1,5 +1,9 @@
-import type { Entity, PaymentMethod } from "@prisma/client";
+"use client";
+
+import { useState } from "react";
+import type { Currency, Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -14,12 +18,15 @@ export function PaymentFormFields({
   entities,
   entityNoun,
   fixedEntityId,
+  moneda,
   treasuries,
   proveedores,
 }: {
   entities?: Entity[];
   entityNoun?: string;
   fixedEntityId?: string;
+  /** Moneda de la cuenta cuando la entidad viene fija. Con desplegable sale de la elegida. */
+  moneda?: Currency;
   /** Las 2 entidades TESORERIA (Banco Galicia, Caja Bufano) — para el selector de destino/origen. */
   treasuries: Entity[];
   /** Solo para cobros de clientes: lista de proveedores, para la opción "directo a un proveedor". */
@@ -27,6 +34,22 @@ export function PaymentFormFields({
 }) {
   const isCobro = entityNoun === "Cliente";
   const defaultTreasuryId = treasuries.find((t) => t.name === "Banco Galicia")?.id ?? treasuries[0]?.id ?? "";
+
+  // La moneda de la cuenta cambia qué se pide: en dólares se cargan los pesos que salieron y la
+  // cotización, y se acredita la división.
+  const [entityId, setEntityId] = useState(fixedEntityId ?? "");
+  const [monto, setMonto] = useState("");
+  const [cotizacion, setCotizacion] = useState("");
+  const monedaCuenta: Currency =
+    moneda ?? entities?.find((e) => e.id === entityId)?.moneda ?? "ARS";
+  const enDolares = monedaCuenta === "USD";
+
+  const montoNum = parseNumeroSuave(monto);
+  const cotizacionNum = parseNumeroSuave(cotizacion);
+  const acreditado =
+    enDolares && montoNum && cotizacionNum?.greaterThan(0)
+      ? montoNum.dividedBy(cotizacionNum)
+      : null;
 
   return (
     <>
@@ -38,7 +61,14 @@ export function PaymentFormFields({
           <label className="text-sm" htmlFor="entityId">
             {entityNoun} *
           </label>
-          <select id="entityId" name="entityId" required defaultValue="" className={inputClass}>
+          <select
+            id="entityId"
+            name="entityId"
+            required
+            value={entityId}
+            onChange={(e) => setEntityId(e.target.value)}
+            className={inputClass}
+          >
             <option value="" disabled>
               Seleccionar {entityNoun?.toLowerCase()}...
             </option>
@@ -92,7 +122,7 @@ export function PaymentFormFields({
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="amount">
-            Monto *
+            {enDolares ? "Monto en pesos *" : "Monto *"}
           </label>
           <input
             id="amount"
@@ -100,10 +130,38 @@ export function PaymentFormFields({
             required
             inputMode="decimal"
             placeholder="0.00"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
             className={inputClass}
           />
         </div>
       </div>
+
+      {enDolares && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="exchangeRate">
+              Cotización *
+            </label>
+            <input
+              id="exchangeRate"
+              name="exchangeRate"
+              required
+              inputMode="decimal"
+              placeholder="1.512"
+              value={cotizacion}
+              onChange={(e) => setCotizacion(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm">Se acredita</p>
+            <p className="px-3 py-2 text-sm font-semibold tabular-nums">
+              {acreditado ? formatMoney(acreditado, "USD") : "—"}
+            </p>
+          </div>
+        </div>
+      )}
 
       <PaymentDestinoField
         isCobro={isCobro}

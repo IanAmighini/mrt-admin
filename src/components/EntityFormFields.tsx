@@ -130,6 +130,21 @@ export function EntityFormFields({
           : "El saldo inicial es lo que el cliente nos debe. Si tiene saldo a favor, cargalo con signo menos: −25.000."}
         {isEdit && " Vaciá el campo para borrarlo. No afecta al resto de los movimientos de la cuenta."}
       </p>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          name="cuentaEnDolares"
+          defaultChecked={entity?.moneda === "USD"}
+          className="mt-0.5"
+        />
+        <span>
+          La cuenta se lleva en dólares
+          <span className="block text-xs text-foreground/50">
+            Los comprobantes se cargan con el precio en dólares y los pagos en pesos con su
+            cotización, que se convierten. El saldo queda en dólares.
+          </span>
+        </span>
+      </label>
       {esProveedor && (
         <label className="flex items-start gap-2 text-sm">
           <input

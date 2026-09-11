@@ -118,6 +118,10 @@ model Entity {
   /// Si es true, la ficha muestra la cuenta de preformas: este proveedor fía la preforma y cobra
   /// sólo el soplado, así que además de la cuenta en pesos se le deben preformas en unidades.
   llevaCuentaPreformas Boolean         @default(false)
+  /// Moneda en la que se lleva la cuenta corriente. En USD, los montos de sus comprobantes y pagos
+  /// **son dólares**: el saldo sale en dólares sin convertir nada, y lo que se guarda de cada pago
+  /// es la cotización con la que se hizo.
+  moneda             Currency          @default(ARS)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   accounts           Account[]
@@ -263,8 +267,12 @@ model Payment {
   accountId   String
   account     Account       @relation(fields: [accountId], references: [id])
   date        DateTime
+  /// En la moneda de la cuenta. Si la cuenta va en dólares, esto son dólares.
   amount      Decimal       @db.Decimal(14, 2)
   currency    Currency      @default(ARS)
+  /// Con qué cotización se pagó, cuando el pago se hizo en pesos contra una cuenta en dólares.
+  /// Guardarla es lo que deja reconstruir cuántos pesos salieron del banco.
+  exchangeRate Decimal?     @db.Decimal(12, 4)
   method      PaymentMethod
   reference   String?
   createdById String

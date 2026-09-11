@@ -16,6 +16,7 @@ import { FacturaFormFields } from "./FacturaFormFields";
 export function CuentaCorrientePanel({
   entityId,
   entityType,
+  moneda,
   movements,
   canEdit,
   factura,
@@ -24,6 +25,8 @@ export function CuentaCorrientePanel({
 }: {
   entityId: string;
   entityType: Entity["type"];
+  /** Moneda de la cuenta: en dólares el pago se carga en pesos y se convierte. */
+  moneda: Entity["moneda"];
   movements: RecentMovement[];
   canEdit: boolean;
   /** Si viene, se muestra el botón "+ Factura" (solo aplica a clientes, cuenta Blanco). */
@@ -49,6 +52,7 @@ export function CuentaCorrientePanel({
               <FormModal triggerLabel="Registrar pago" title="Registrar pago" action={createPaymentForEntity}>
                 <PaymentFormFields
                   fixedEntityId={entityId}
+                  moneda={moneda}
                   entityNoun={isCliente ? "Cliente" : "Proveedor"}
                   treasuries={treasuries}
                   proveedores={isCliente ? proveedores : undefined}

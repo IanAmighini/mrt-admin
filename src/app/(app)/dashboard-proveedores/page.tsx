@@ -2,14 +2,20 @@ import Link from "next/link";
 import { Banknote, Building2, Package, ShoppingCart } from "lucide-react";
 import type { Prisma, Currency } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
-import { getEntitySaldos, getRecentCompras, getRecentPayments } from "@/lib/ledger";
+import {
+  getEntitySaldos,
+  getRecentCompras,
+  getRecentPayments,
+  getUltimaCotizacion,
+  sumarSaldosEnPesos,
+} from "@/lib/ledger";
 import {
   getCompras,
   getCostoInsumos,
   getPagos,
   getValuacionInsumos,
 } from "@/lib/dashboard-kpis";
-import { formatMoney, sumDecimals, ZERO } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { TopDeudaSection } from "@/components/TopDeudaSection";
@@ -27,16 +33,20 @@ export default async function DashboardProveedoresPage() {
   const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
 
-  const [compras, pagos, saldos, comprasDelMes, pagosDelMes, valuacion] = await Promise.all([
+  const [compras, pagos, saldos, comprasDelMes, pagosDelMes, valuacion, cotizacion] = await Promise.all([
     getRecentCompras(5),
     getRecentPayments(["PROVEEDOR", "AMBOS"], 5),
     getEntitySaldos(["PROVEEDOR", "AMBOS"]),
     getCompras(),
     getPagos(["PROVEEDOR", "AMBOS"]),
     getValuacionInsumos(),
+    getUltimaCotizacion(),
   ]);
 
-  const deudaTotal = sumDecimals(saldos.map((s) => s.total));
+  // No se pueden sumar pesos con dólares: los saldos en dólares se valúan con la última cotización
+  // cargada, y si todavía no hay ninguna se muestran aparte en vez de inventar una.
+  const { total: deudaTotal, dolaresSinValuar } = sumarSaldosEnPesos(saldos, cotizacion);
+  const hayCuentasEnDolares = saldos.some((s) => s.entity.moneda === "USD");
   const compraKpi = primaryAndExtra(comprasDelMes);
   const pagoKpi = primaryAndExtra(pagosDelMes);
 
@@ -57,7 +67,21 @@ export default async function DashboardProveedoresPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Deuda total a proveedores" value={formatMoney(deudaTotal)} icon={Building2} color="red" />
+        <KpiCard
+          label="Deuda total a proveedores"
+          value={
+            dolaresSinValuar.isZero()
+              ? formatMoney(deudaTotal)
+              : `${formatMoney(deudaTotal)} + ${formatMoney(dolaresSinValuar, "USD")}`
+          }
+          caption={
+            hayCuentasEnDolares && cotizacion
+              ? `dólares valuados a ${formatMoney(cotizacion)}`
+              : undefined
+          }
+          icon={Building2}
+          color="red"
+        />
         <KpiCard
           label="Compras del mes"
           value={compraKpi.primary}

@@ -193,6 +193,7 @@ export default async function EntityLedgerPage({
         entitySlug={entity.slug}
         blancoSaldo={blancoSaldo}
         negroSaldo={negroSaldo}
+        moneda={entity.moneda}
         card3Label={card3Label}
         card3Value={card3Value}
         card4Label={card4Label}
@@ -219,6 +220,7 @@ export default async function EntityLedgerPage({
         <CuentaCorrientePanel
           entityId={entity.id}
           entityType={entity.type}
+          moneda={entity.moneda}
           movements={recentMovements}
           canEdit={canEdit}
           treasuries={treasuries}

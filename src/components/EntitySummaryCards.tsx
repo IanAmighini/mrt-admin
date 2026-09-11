@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatMoney } from "@/lib/money";
-import type { Prisma } from "@prisma/client";
+import type { Currency, Prisma } from "@prisma/client";
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">{children}</div>;
@@ -10,6 +10,7 @@ export function EntitySummaryCards({
   entitySlug,
   blancoSaldo,
   negroSaldo,
+  moneda = "ARS",
   card3Label,
   card3Value,
   card4Label,
@@ -18,6 +19,8 @@ export function EntitySummaryCards({
   entitySlug: string;
   blancoSaldo: Prisma.Decimal;
   negroSaldo: Prisma.Decimal;
+  /** Los saldos están en esta moneda: en una cuenta en dólares, son dólares. */
+  moneda?: Currency;
   card3Label: string;
   card3Value: string;
   card4Label: string;
@@ -28,13 +31,13 @@ export function EntitySummaryCards({
       <Link href={`/cuentas-corrientes/${entitySlug}/blanco`}>
         <Card>
           <p className="text-sm text-foreground/60">Cuenta 1 (c/factura)</p>
-          <p className="text-2xl font-semibold">{formatMoney(blancoSaldo)}</p>
+          <p className="text-2xl font-semibold">{formatMoney(blancoSaldo, moneda)}</p>
         </Card>
       </Link>
       <Link href={`/cuentas-corrientes/${entitySlug}/negro`}>
         <Card>
           <p className="text-sm text-foreground/60">Cuenta 2 (s/factura)</p>
-          <p className="text-2xl font-semibold">{formatMoney(negroSaldo)}</p>
+          <p className="text-2xl font-semibold">{formatMoney(negroSaldo, moneda)}</p>
         </Card>
       </Link>
       <Card>

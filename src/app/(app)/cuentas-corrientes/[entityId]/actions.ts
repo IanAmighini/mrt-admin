@@ -59,6 +59,29 @@ function parseAmount(value: FormDataEntryValue | null, field: string): Prisma.De
   return parseNumeroEscrito(str, field);
 }
 
+/**
+ * El monto de un pago, en la moneda de la cuenta.
+ *
+ * En pesos es directo. En una cuenta en dólares se cargan los pesos que salieron y la cotización,
+ * y se acredita la división: es lo que el usuario hace a mano y así queda registrado con qué
+ * cotización, que si no se pierde.
+ */
+function montoDelPago(
+  formData: FormData,
+  moneda: Currency
+): { amount: Prisma.Decimal; exchangeRate: Prisma.Decimal | null } {
+  if (moneda === "ARS") {
+    return { amount: parseAmount(formData.get("amount"), "monto del pago"), exchangeRate: null };
+  }
+
+  const enPesos = parseAmount(formData.get("amount"), "monto del pago en pesos");
+  const exchangeRate = parseAmount(formData.get("exchangeRate"), "cotización");
+  if (!exchangeRate.greaterThan(0)) {
+    throw new UserError("La cotización tiene que ser mayor a cero.");
+  }
+  return { amount: enPesos.dividedBy(exchangeRate), exchangeRate };
+}
+
 async function getAccountOrThrow(accountId: string) {
   const account = await prisma.account.findUnique({
     where: { id: accountId },
@@ -977,13 +1000,16 @@ export async function createPaymentForEntity(formData: FormData) {
   if (!account) throw new UserError("No se encontró la cuenta de esta entidad.");
 
   const date = parseFormDate(formData.get("date"));
-  const amount = parseAmount(formData.get("amount"), "monto del pago");
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
   const destino = String(formData.get("destino") || "");
   const proveedorId = String(formData.get("proveedorId") || "");
 
-  const allocations = await allocateFifo(account.id, amount, "ARS");
+  // En una cuenta en dólares se escribe lo que realmente salió del banco —pesos— y la cotización,
+  // y el pago se acredita en dólares. Es la cuenta que hoy se hace a mano; guardarla acá deja
+  // reconstruir después cuántos pesos fueron y a cuánto.
+  const { amount, exchangeRate } = montoDelPago(formData, account.entity.moneda);
+  const allocations = await allocateFifo(account.id, amount, account.entity.moneda);
 
   const payment = await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.create({
@@ -991,7 +1017,8 @@ export async function createPaymentForEntity(formData: FormData) {
         accountId: account.id,
         date,
         amount,
-        currency: "ARS",
+        currency: account.entity.moneda,
+        exchangeRate,
         method,
         reference,
         createdById: user.id,
