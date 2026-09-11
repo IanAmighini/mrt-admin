@@ -1,5 +1,9 @@
-import type { Entity, PaymentMethod } from "@prisma/client";
+"use client";
+
+import { useState } from "react";
+import type { Currency, Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -13,15 +17,20 @@ const PAYMENT_METHODS: PaymentMethod[] = ["EFECTIVO", "TRANSFERENCIA", "CHEQUE",
 export function EditPaymentFields({
   paymentId,
   defaultValues,
+  moneda = "ARS",
   treasuries,
   proveedores,
 }: {
   paymentId: string;
+  /** Moneda de la cuenta del pago: en dólares se edita en pesos y se convierte, igual que al crear. */
+  moneda?: Currency;
   defaultValues: {
     circuit: "BLANCO" | "NEGRO";
     method: PaymentMethod;
     date: string;
     amount: string;
+    /** La cotización con la que se hizo, si la cuenta va en dólares. */
+    exchangeRate?: string;
     reference?: string;
     /** Id de tesorería, PROVEEDOR_DIRECTO_VALUE, o "" si no tiene destino asignado. */
     destino?: string;
@@ -32,6 +41,17 @@ export function EditPaymentFields({
   proveedores?: Entity[];
 }) {
   const isCobro = proveedores !== undefined;
+
+  // Mismo comportamiento que el alta: en una cuenta en dólares se escriben los pesos y la
+  // cotización. Al editar se arranca de lo guardado, que ya está en dólares.
+  const enDolares = moneda === "USD";
+  const [monto, setMonto] = useState(defaultValues.amount);
+  const [cotizacion, setCotizacion] = useState(defaultValues.exchangeRate ?? "");
+  const montoNum = parseNumeroSuave(monto);
+  const cotizacionNum = parseNumeroSuave(cotizacion);
+  const acreditado =
+    enDolares && montoNum && cotizacionNum?.greaterThan(0) ? montoNum.dividedBy(cotizacionNum) : null;
+
   return (
     <>
       <input type="hidden" name="paymentId" value={paymentId} />
@@ -90,18 +110,44 @@ export function EditPaymentFields({
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="amount">
-            Monto *
+            {enDolares ? "Monto en pesos *" : "Monto *"}
           </label>
           <input
             id="amount"
             name="amount"
             required
             inputMode="decimal"
-            defaultValue={defaultValues.amount}
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
             className={inputClass}
           />
         </div>
       </div>
+
+      {enDolares && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="exchangeRate">
+              Cotización *
+            </label>
+            <input
+              id="exchangeRate"
+              name="exchangeRate"
+              required
+              inputMode="decimal"
+              value={cotizacion}
+              onChange={(e) => setCotizacion(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm">Se acredita</p>
+            <p className="px-3 py-2 text-sm font-semibold tabular-nums">
+              {acreditado ? formatMoney(acreditado, "USD") : "—"}
+            </p>
+          </div>
+        </div>
+      )}
 
       <PaymentDestinoField
         isCobro={isCobro}
@@ -109,6 +155,7 @@ export function EditPaymentFields({
         proveedores={proveedores}
         defaultDestino={defaultValues.destino ?? ""}
         defaultProveedorId={defaultValues.proveedorId}
+        montoDelCobro={monto}
       />
 
       <div className="space-y-1">

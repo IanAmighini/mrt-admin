@@ -1181,7 +1181,9 @@ export async function updatePayment(formData: FormData) {
   if (!account) throw new UserError("No se encontró la cuenta de esta entidad.");
 
   const date = parseFormDate(formData.get("date"));
-  const amount = parseAmount(formData.get("amount"), "monto del pago");
+  // Misma conversión que al crear: en una cuenta en dólares se edita en pesos y se guarda la
+  // división. Sin esto, editar un pago de esa cuenta guardaba los pesos como si fueran dólares.
+  const { amount, exchangeRate } = montoDelPago(formData, account.entity.moneda);
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
   const destino = String(formData.get("destino") || "");
@@ -1214,6 +1216,8 @@ export async function updatePayment(formData: FormData) {
         accountId: account.id,
         date,
         amount,
+        currency: account.entity.moneda,
+        exchangeRate,
         method,
         reference,
         treasuryId: null,
@@ -1222,7 +1226,7 @@ export async function updatePayment(formData: FormData) {
     });
   });
 
-  const allocations = await allocateFifo(account.id, amount, "ARS");
+  const allocations = await allocateFifo(account.id, amount, account.entity.moneda);
   if (allocations.length > 0) {
     await prisma.paymentAllocation.createMany({
       data: allocations.map((a) => ({ paymentId, documentId: a.documentId, amount: a.amount })),

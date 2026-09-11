@@ -126,13 +126,20 @@ export async function PagosPageContent({
                           >
                             <EditPaymentFields
                               paymentId={payment.id}
+                              moneda={payment.account.entity.moneda}
                               treasuries={treasuries}
                               proveedores={isCobro ? proveedores : undefined}
                               defaultValues={{
                                 circuit: payment.account.circuit,
                                 method: payment.method,
                                 date: toDateInputValue(payment.date),
-                                amount: payment.amount.toString(),
+                                // En una cuenta en dólares se edita en pesos, igual que se cargó:
+                                // se rehace la multiplicación para prellenar lo que salió del banco.
+                                amount: (payment.exchangeRate
+                                  ? payment.amount.times(payment.exchangeRate)
+                                  : payment.amount
+                                ).toString(),
+                                exchangeRate: payment.exchangeRate?.toString(),
                                 reference: payment.reference ?? undefined,
                                 destino: defaultDestino,
                                 proveedorId: linkedPayment?.account.entityId,

@@ -60,6 +60,7 @@ export default async function AccountLedgerPage({
   if (!entity) notFound();
   if (entityParam !== entity.slug) redirect(`/cuentas-corrientes/${entity.slug}/${circuitSlug}`);
   const entityId = entity.id;
+  const monedaCuenta = entity.moneda;
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
@@ -110,13 +111,19 @@ export default async function AccountLedgerPage({
           <FormModal triggerLabel="Editar" iconName="edit" title="Editar pago" action={updatePayment}>
             <EditPaymentFields
               paymentId={payment.id}
+              moneda={monedaCuenta}
               treasuries={treasuries}
               proveedores={isClienteEntity ? proveedores : undefined}
               defaultValues={{
                 circuit,
                 method: payment.method,
                 date: toDateInputValue(payment.date),
-                amount: payment.amount.toString(),
+                // En una cuenta en dólares se edita en pesos, igual que se cargó.
+                amount: (payment.exchangeRate
+                  ? payment.amount.times(payment.exchangeRate)
+                  : payment.amount
+                ).toString(),
+                exchangeRate: payment.exchangeRate?.toString(),
                 reference: payment.reference ?? undefined,
                 destino: defaultDestino,
                 proveedorId: linkedPayment?.account.entityId,
