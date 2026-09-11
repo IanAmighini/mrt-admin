@@ -4,6 +4,7 @@ import { ZERO } from "@/lib/money";
 import {
   CIRCUIT_LABELS,
   DOCUMENT_TYPE_LABELS,
+  EXPENSE_CATEGORY_LABELS,
   PAYMENT_METHOD_LABELS,
   SUPPLIER_CATEGORY_LABELS,
 } from "@/lib/labels";
@@ -15,6 +16,7 @@ import {
   REPORT_LABELS,
   type CobranzasReport,
   type ComprasReport,
+  type GastosReport,
   type InsumosMinimoReport,
   type ProduccionReport,
   type ReportKey,
@@ -385,6 +387,74 @@ function produccionSheets(report: ProduccionReport, generatedAt: Date): ExcelShe
 
 // ---------------------------------------------------------------------------
 
+function gastosSheets(report: GastosReport, generatedAt: Date): ExcelSheet<never>[] {
+  const subtitle = periodSubtitle(report.period, generatedAt);
+
+  return [
+    sheet<GastosReport["porRubro"][number]>({
+      name: "Por rubro",
+      title: "Gastos por rubro",
+      subtitle,
+      columns: [
+        { header: "Rubro", value: (r) => EXPENSE_CATEGORY_LABELS[r.category], width: 32 },
+        { header: "Comprobantes", value: (r) => r.count, format: "integer", width: 14 },
+        { header: "Importe ARS", value: (r) => ars(r.byCurrency), format: "money", width: 16 },
+        { header: "Otras monedas", value: (r) => otrasMonedas(r.byCurrency), width: 18 },
+      ],
+      rows: report.porRubro,
+      totals: ["Totales", null, ars(report.totales), otrasMonedas(report.totales)],
+    }),
+    sheet<GastosReport["porProveedor"][number]>({
+      name: "Por proveedor",
+      title: "Gastos por proveedor",
+      subtitle,
+      columns: [
+        { header: "Proveedor", value: (r) => r.entityName, width: 32 },
+        { header: "Comprobantes", value: (r) => r.count, format: "integer", width: 14 },
+        { header: "Importe ARS", value: (r) => ars(r.byCurrency), format: "money", width: 16 },
+        { header: "Otras monedas", value: (r) => otrasMonedas(r.byCurrency), width: 18 },
+      ],
+      rows: report.porProveedor,
+      totals: ["Totales", null, ars(report.totales), otrasMonedas(report.totales)],
+    }),
+    sheet<GastosReport["porAlicuota"][number]>({
+      name: "Por alícuota",
+      title: "Neto gravado e IVA por alícuota",
+      subtitle,
+      columns: [
+        { header: "Alícuota %", value: (r) => r.rate, format: "number", width: 12 },
+        { header: "Neto gravado", value: (r) => r.neto, format: "money", width: 16 },
+        { header: "IVA", value: (r) => r.iva, format: "money", width: 16 },
+      ],
+      rows: report.porAlicuota,
+    }),
+    // Las columnas del libro de IVA compras, para poder pasárselo al contador tal cual.
+    sheet<GastosReport["detalle"][number]>({
+      name: "Detalle",
+      title: "Detalle de gastos",
+      subtitle,
+      columns: [
+        { header: "Fecha", value: (r) => r.date, format: "date" },
+        { header: "Comprobante", value: (r) => r.number, width: 18 },
+        { header: "Proveedor", value: (r) => r.entityName, width: 32 },
+        { header: "CUIT", value: (r) => r.taxId ?? "", width: 16 },
+        { header: "Rubro", value: (r) => (r.category ? EXPENSE_CATEGORY_LABELS[r.category] : ""), width: 24 },
+        { header: "Concepto", value: (r) => r.reason ?? "", width: 32 },
+        { header: "Circuito", value: (r) => CIRCUIT_LABELS[r.circuit], width: 10 },
+        { header: "Neto", value: (r) => r.neto, format: "money" },
+        { header: "IVA", value: (r) => r.iva, format: "money" },
+        { header: "Percepciones", value: (r) => r.percepciones, format: "money" },
+        { header: "Retención", value: (r) => r.retencion, format: "money" },
+        { header: "Total", value: (r) => r.total, format: "money" },
+        { header: "Moneda", value: (r) => r.currency, width: 10 },
+      ],
+      rows: report.detalle,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+
 export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
   | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
@@ -392,6 +462,7 @@ export type ReportData =
   /** Los dos lados, igual que la pantalla: cobranzas a clientes y pagos a proveedores. */
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
   | { key: "compras"; report: ComprasReport }
+  | { key: "gastos"; report: GastosReport }
   | { key: "produccion"; report: ProduccionReport };
 
 export function buildReportSheets(data: ReportData, generatedAt = new Date()): ExcelSheet<never>[] {
@@ -409,6 +480,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       ];
     case "compras":
       return comprasSheets(data.report, generatedAt);
+    case "gastos":
+      return gastosSheets(data.report, generatedAt);
     case "produccion":
       return produccionSheets(data.report, generatedAt);
   }

@@ -9,17 +9,20 @@ import { getAccountStatement, type StatementEntry } from "@/lib/account-statemen
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
+import { ALICUOTAS_IVA, OTROS_TRIBUTOS } from "@/lib/gasto";
 import {
   createDocumentForEntity,
   deleteCompra,
   deleteDocument,
   deleteFactura,
+  deleteGasto,
   deletePayment,
   deleteRemito,
   moveRemitoToBlanco,
   updateCompra,
   updateDocument,
   updateFactura,
+  updateGasto,
   updatePayment,
   updateRemito,
 } from "../actions";
@@ -29,6 +32,7 @@ import { RemitoFormFields } from "@/components/RemitoForm";
 import { CompraFormFields } from "@/components/CompraForm";
 import { EditFacturaFields } from "@/components/EditFacturaFields";
 import { EditDocumentFields } from "@/components/EditDocumentFields";
+import { GastoFormFields } from "@/components/GastoFormFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
@@ -237,6 +241,53 @@ export default async function AccountLedgerPage({
             hiddenValue={doc.id}
             nombre={`la factura #${doc.number}`}
             consecuencia="Los remitos vinculados vuelven a quedar pendientes de facturar."
+          />
+        </div>
+      );
+    }
+
+    if (doc.type === "GASTO") {
+      // El desglose vuelve al formulario con las mismas claves con las que se cargó, para que
+      // editar sea reabrir lo mismo y no rearmarlo de memoria.
+      const tributos: Record<string, string> = {};
+      for (const tax of doc.taxes) {
+        if (tax.kind === "IVA") {
+          const alicuota = ALICUOTAS_IVA.find((a) => tax.rate?.equals(a.replace(",", ".")));
+          if (alicuota) tributos[`ivaBase_${alicuota}`] = tax.base?.toString() ?? "";
+        } else {
+          const campo = OTROS_TRIBUTOS.find((t) => t.kind === tax.kind);
+          if (campo) tributos[campo.name] = tax.amount.toString();
+        }
+      }
+
+      return (
+        <div className="flex items-center gap-2">
+          <FormModal
+            triggerLabel="Editar"
+            iconName="edit"
+            title="Editar gasto"
+            action={updateGasto}
+            maxWidthClass="max-w-xl"
+          >
+            <GastoFormFields
+              entityId={entityId}
+              editingDocumentId={doc.id}
+              defaultValues={{
+                ...headerDefaults,
+                circuit,
+                expenseCategory: doc.expenseCategory ?? undefined,
+                reason: doc.reason ?? undefined,
+                amount: doc.totalAmount.toString(),
+                retentionAmount: doc.retentionAmount?.toString(),
+                tributos,
+              }}
+            />
+          </FormModal>
+          <DeleteButton
+            action={deleteGasto}
+            hiddenName="documentId"
+            hiddenValue={doc.id}
+            nombre={`el gasto #${doc.number}`}
           />
         </div>
       );

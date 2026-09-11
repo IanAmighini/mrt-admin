@@ -4,6 +4,7 @@ import {
   type Circuit,
   type Currency,
   type DocumentType,
+  type ExpenseCategory,
   type PaymentMethod,
   type SupplierCategory,
 } from "@prisma/client";
@@ -21,6 +22,7 @@ export const REPORT_KEYS = [
   "ventas",
   "cobranzas",
   "compras",
+  "gastos",
   "produccion",
 ] as const;
 
@@ -32,6 +34,7 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
   ventas: "Ventas / entregas",
   cobranzas: "Cobranzas y pagos",
   compras: "Compras de insumos",
+  gastos: "Gastos",
   produccion: "Producción",
 };
 
@@ -590,7 +593,115 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Producción del período
+// 6. Gastos del período — el esqueleto del libro de IVA compras
+// ---------------------------------------------------------------------------
+
+export type GastosReport = {
+  period: Period;
+  porRubro: { category: ExpenseCategory; count: number; byCurrency: Map<Currency, Prisma.Decimal> }[];
+  porProveedor: { entityName: string; entitySlug: string; count: number; byCurrency: Map<Currency, Prisma.Decimal> }[];
+  /** Un renglón por comprobante, con las columnas que pide el libro de IVA compras. */
+  detalle: {
+    date: Date;
+    number: string;
+    entityName: string;
+    taxId: string | null;
+    circuit: Circuit;
+    category: ExpenseCategory | null;
+    reason: string | null;
+    neto: Prisma.Decimal;
+    iva: Prisma.Decimal;
+    percepciones: Prisma.Decimal;
+    retencion: Prisma.Decimal;
+    total: Prisma.Decimal;
+    currency: Currency;
+  }[];
+  /** Neto gravado e IVA abiertos por alícuota, que es lo que se declara. */
+  porAlicuota: { rate: Prisma.Decimal; neto: Prisma.Decimal; iva: Prisma.Decimal }[];
+  totales: Map<Currency, Prisma.Decimal>;
+};
+
+export async function getGastosReport(period: Period): Promise<GastosReport> {
+  const documents = await prisma.document.findMany({
+    where: { type: "GASTO", date: { gte: period.from, lt: period.to } },
+    include: { account: { include: { entity: true } }, taxes: true },
+    orderBy: { date: "asc" },
+  });
+
+  const porRubro = new Map<ExpenseCategory, { category: ExpenseCategory; count: number; byCurrency: Map<Currency, Prisma.Decimal> }>();
+  const porProveedor = new Map<string, { entityName: string; entitySlug: string; count: number; byCurrency: Map<Currency, Prisma.Decimal> }>();
+  const porAlicuota = new Map<string, { rate: Prisma.Decimal; neto: Prisma.Decimal; iva: Prisma.Decimal }>();
+  const totales = new Map<Currency, Prisma.Decimal>();
+  const detalle: GastosReport["detalle"] = [];
+
+  for (const doc of documents) {
+    const { entity, circuit } = doc.account;
+    const total = toDecimal(doc.totalAmount);
+
+    if (doc.expenseCategory) {
+      const rubro = porRubro.get(doc.expenseCategory) ?? {
+        category: doc.expenseCategory,
+        count: 0,
+        byCurrency: new Map(),
+      };
+      rubro.count++;
+      addByCurrency(rubro.byCurrency, doc.currency, total);
+      porRubro.set(doc.expenseCategory, rubro);
+    }
+
+    const proveedor = porProveedor.get(entity.slug) ?? {
+      entityName: entity.name,
+      entitySlug: entity.slug,
+      count: 0,
+      byCurrency: new Map(),
+    };
+    proveedor.count++;
+    addByCurrency(proveedor.byCurrency, doc.currency, total);
+    porProveedor.set(entity.slug, proveedor);
+
+    for (const tax of doc.taxes) {
+      if (tax.kind !== "IVA" || !tax.rate) continue;
+      const clave = tax.rate.toString();
+      const fila = porAlicuota.get(clave) ?? { rate: tax.rate, neto: ZERO, iva: ZERO };
+      fila.neto = fila.neto.plus(toDecimal(tax.base));
+      fila.iva = fila.iva.plus(toDecimal(tax.amount));
+      porAlicuota.set(clave, fila);
+    }
+
+    addByCurrency(totales, doc.currency, total);
+
+    detalle.push({
+      date: doc.date,
+      number: doc.number,
+      entityName: entity.name,
+      taxId: entity.taxId,
+      circuit,
+      category: doc.expenseCategory,
+      reason: doc.reason,
+      neto: toDecimal(doc.netAmount),
+      iva: toDecimal(doc.ivaAmount),
+      percepciones: toDecimal(doc.perceptionAmount),
+      retencion: toDecimal(doc.retentionAmount),
+      total,
+      currency: doc.currency,
+    });
+  }
+
+  const byArs = (a: { byCurrency: Map<Currency, Prisma.Decimal> }, b: { byCurrency: Map<Currency, Prisma.Decimal> }) =>
+    (b.byCurrency.get("ARS") ?? ZERO).comparedTo(a.byCurrency.get("ARS") ?? ZERO);
+
+  return {
+    period,
+    porRubro: Array.from(porRubro.values()).sort(byArs),
+    porProveedor: Array.from(porProveedor.values()).sort(byArs),
+    detalle,
+    porAlicuota: Array.from(porAlicuota.values()).sort((a, b) => b.rate.comparedTo(a.rate)),
+    totales,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 7. Producción del período
 // ---------------------------------------------------------------------------
 
 export type ProduccionReport = {

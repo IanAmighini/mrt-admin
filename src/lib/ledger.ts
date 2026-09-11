@@ -21,6 +21,7 @@ export type DocumentWithRelations = Prisma.DocumentGetPayload<{
     allocations: true;
     lines: { include: { product: true } };
     purchaseLines: { include: { item: true } };
+    taxes: true;
   };
 }>;
 
@@ -29,6 +30,8 @@ const DOCUMENT_QUERY_INCLUDE = {
   allocations: true,
   lines: { include: { product: true } },
   purchaseLines: { include: { item: true } },
+  // El desglose impositivo de un GASTO: lo necesita el formulario de edición para prellenarse.
+  taxes: true,
 } satisfies Prisma.DocumentInclude;
 
 /**
@@ -37,7 +40,11 @@ const DOCUMENT_QUERY_INCLUDE = {
  * que absorbió una Factura puntual — se resta del total (facturación parcial: lo no facturado
  * sigue pendiente; si se facturó todo, el resultado es cero) para no duplicar saldo.
  */
-export function getDocumentEffect(document: DocumentWithRelations): Prisma.Decimal {
+export function getDocumentEffect(
+  // Solo lo que realmente lee, y no `DocumentWithRelations` entero, para que también sirva desde
+  // consultas que no traen las relaciones que no hacen falta acá.
+  document: Pick<DocumentWithRelations, "type" | "totalAmount" | "remitoLinks">
+): Prisma.Decimal {
   const total = toDecimal(document.totalAmount);
 
   switch (document.type as DocumentType) {
@@ -47,6 +54,8 @@ export function getDocumentEffect(document: DocumentWithRelations): Prisma.Decim
       return total.negated();
     case "FACTURA":
     case "NOTA_DEBITO":
+    // Un gasto suma lo que se le debe al proveedor, igual que una factura.
+    case "GASTO":
       return total;
     case "REMITO": {
       const invoiced = sumDecimals(document.remitoLinks.map((l) => l.amount));

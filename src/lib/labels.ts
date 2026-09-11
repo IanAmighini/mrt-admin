@@ -2,6 +2,8 @@ import type {
   Circuit,
   Currency,
   DocumentType,
+  ExpenseCategory,
+  TaxKind,
   ItemMovementType,
   PaymentMethod,
   PedidoStatus,
@@ -26,6 +28,47 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   NOTA_CREDITO: "Nota de crédito",
   NOTA_DEBITO: "Nota de débito",
   AJUSTE: "Ajuste",
+  GASTO: "Gasto",
+};
+
+/** Orden en que se ofrecen los rubros de gasto: primero los que se cargan todos los meses. */
+export const EXPENSE_CATEGORY_ORDER: ExpenseCategory[] = [
+  "FLETE",
+  "ALQUILER",
+  "SERVICIOS",
+  "REPARACIONES",
+  "FERRETERIA",
+  "COMBUSTIBLE",
+  "IMPUESTOS",
+  "HONORARIOS",
+  "SEGUROS",
+  "FUMIGACION",
+  "OTRO",
+];
+
+export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+  FLETE: "Flete",
+  ALQUILER: "Alquiler",
+  SERVICIOS: "Servicios (luz, gas, agua, internet)",
+  REPARACIONES: "Reparaciones y mantenimiento",
+  FERRETERIA: "Ferretería",
+  COMBUSTIBLE: "Combustible",
+  IMPUESTOS: "Impuestos y tasas",
+  HONORARIOS: "Honorarios",
+  SEGUROS: "Seguros",
+  FUMIGACION: "Fumigación",
+  OTRO: "Otro",
+};
+
+export const TAX_KIND_LABELS: Record<TaxKind, string> = {
+  IVA: "IVA",
+  NO_GRAVADO: "No gravado",
+  EXENTO: "Exento",
+  PERCEPCION_IVA: "Percepción IVA",
+  PERCEPCION_IIBB: "Percepción IIBB",
+  PERCEPCION_MUNICIPAL: "Percepción municipal",
+  IMPUESTO_INTERNO: "Impuestos internos",
+  OTRO_TRIBUTO: "Otro tributo",
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

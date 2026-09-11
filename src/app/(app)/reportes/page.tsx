@@ -15,6 +15,7 @@ import { InsumosSection } from "./sections/InsumosSection";
 import { VentasSection } from "./sections/VentasSection";
 import { CobranzasSection } from "./sections/CobranzasSection";
 import { ComprasSection } from "./sections/ComprasSection";
+import { GastosSection } from "./sections/GastosSection";
 import { ProduccionSection } from "./sections/ProduccionSection";
 
 const inputClass =
@@ -32,6 +33,7 @@ const USA_PERIODO: Record<ReportKey, boolean> = {
   ventas: true,
   cobranzas: true,
   compras: true,
+  gastos: true,
   produccion: true,
 };
 
@@ -42,6 +44,7 @@ const USA_CIRCUITO: Record<ReportKey, boolean> = {
   ventas: true,
   cobranzas: false,
   compras: false,
+  gastos: false,
   produccion: false,
 };
 
@@ -205,6 +208,7 @@ export default async function ReportesPage({
       {report === "ventas" && <VentasSection period={period} circuit={circuit} />}
       {report === "cobranzas" && <CobranzasSection period={period} />}
       {report === "compras" && <ComprasSection period={period} />}
+      {report === "gastos" && <GastosSection period={period} />}
       {report === "produccion" && <ProduccionSection period={period} />}
     </div>
   );

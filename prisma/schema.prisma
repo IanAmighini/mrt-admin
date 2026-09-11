@@ -104,31 +104,31 @@ enum SupplierCategory {
 }
 
 model Entity {
-  id                 String            @id @default(cuid())
-  slug               String            @unique
-  name               String
-  type               EntityType
-  taxId              String?
-  email              String?
-  phone              String?
-  address            String?
-  notes              String?
-  supplierCategory   SupplierCategory?
-  isWithholdingAgent Boolean           @default(false)
+  id                   String            @id @default(cuid())
+  slug                 String            @unique
+  name                 String
+  type                 EntityType
+  taxId                String?
+  email                String?
+  phone                String?
+  address              String?
+  notes                String?
+  supplierCategory     SupplierCategory?
+  isWithholdingAgent   Boolean           @default(false)
   /// Si es true, la ficha muestra la cuenta de preformas: este proveedor fía la preforma y cobra
   /// sólo el soplado, así que además de la cuenta en pesos se le deben preformas en unidades.
-  llevaCuentaPreformas Boolean         @default(false)
+  llevaCuentaPreformas Boolean           @default(false)
   /// Moneda en la que se lleva la cuenta corriente. En USD, los montos de sus comprobantes y pagos
   /// **son dólares**: el saldo sale en dólares sin convertir nada, y lo que se guarda de cada pago
   /// es la cotización con la que se hizo.
-  moneda             Currency          @default(ARS)
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  accounts           Account[]
-  prices             Price[]
-  pedidos            Pedido[]
-  treasuryPayments   Payment[]
-  entregasPreforma   EntregaPreforma[]
+  moneda               Currency          @default(ARS)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  accounts             Account[]
+  prices               Price[]
+  pedidos              Pedido[]
+  treasuryPayments     Payment[]
+  entregasPreforma     EntregaPreforma[]
 }
 
 enum Circuit {
@@ -155,6 +155,36 @@ enum DocumentType {
   NOTA_CREDITO
   NOTA_DEBITO
   AJUSTE
+  /// Factura de gasto de un proveedor que no es compra de insumos: flete, alquiler, luz, ferretería.
+  GASTO
+}
+
+/// Rubro de un GASTO, para poder sumar después "cuánto gastamos en flete este mes".
+enum ExpenseCategory {
+  FLETE
+  ALQUILER
+  SERVICIOS
+  REPARACIONES
+  FERRETERIA
+  COMBUSTIBLE
+  IMPUESTOS
+  HONORARIOS
+  SEGUROS
+  FUMIGACION
+  OTRO
+}
+
+/// Qué es cada renglón del desglose impositivo de un comprobante.
+enum TaxKind {
+  /// Lleva `base` (neto gravado) y `rate` (alícuota %).
+  IVA
+  NO_GRAVADO
+  EXENTO
+  PERCEPCION_IVA
+  PERCEPCION_IIBB
+  PERCEPCION_MUNICIPAL
+  IMPUESTO_INTERNO
+  OTRO_TRIBUTO
 }
 
 enum Currency {
@@ -199,6 +229,10 @@ model Document {
    */
   treasuryCategory TreasuryMovementCategory?
   /**
+   * Solo para GASTO: de qué es el gasto. El detalle en palabras va en `reason`.
+   */
+  expenseCategory  ExpenseCategory?
+  /**
    * Si este AJUSTE se generó solo a partir de un cobro/pago (no cargado a mano), el Payment que
    * lo originó — con cascade, al borrar ese Payment este Document se borra solo.
    */
@@ -211,8 +245,26 @@ model Document {
   lines         DocumentLine[]
   purchaseLines PurchaseLine[]
   itemMovements ItemMovement[]
+  taxes         DocumentTax[]
 
   @@index([accountId])
+}
+
+/// Desglose impositivo de un comprobante: un renglón por alícuota de IVA y uno por cada percepción.
+/// Las columnas `netAmount`/`ivaAmount`/`perceptionAmount` del Document son el resumen de esto, para
+/// que el saldo y las pantallas viejas no dependan de esta tabla.
+model DocumentTax {
+  id         String   @id @default(cuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  kind       TaxKind
+  /// Neto gravado. Solo para IVA; las percepciones se cargan por monto.
+  base       Decimal? @db.Decimal(14, 2)
+  /// Alícuota en porcentaje (21, 10.5, 27). Solo para IVA.
+  rate       Decimal? @db.Decimal(5, 2)
+  amount     Decimal  @db.Decimal(14, 2)
+
+  @@index([documentId])
 }
 
 model DocumentLine {
@@ -232,19 +284,19 @@ model DocumentLine {
 }
 
 model PurchaseLine {
-  id         String   @id @default(cuid())
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  itemId     String
-  item       Item     @relation(fields: [itemId], references: [id])
-  quantity   Decimal  @db.Decimal(14, 3)
+  id           String   @id @default(cuid())
+  documentId   String
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  itemId       String
+  item         Item     @relation(fields: [itemId], references: [id])
+  quantity     Decimal  @db.Decimal(14, 3)
   /// Cuatro decimales y no dos: cuando el precio se pacta en U$S, 0,1483 x 1.481,50 = 219,7065 y
   /// redondear a 219,71 corre el total del remito varios pesos.
-  unitPrice  Decimal  @db.Decimal(14, 4)
+  unitPrice    Decimal  @db.Decimal(14, 4)
   /// Precio pactado en U$S por unidad, cuando lo hay. `unitPrice` es este por la cotización del
   /// remito; se guarda el original porque es el que no se mueve y con el que se controla la cuenta.
   unitPriceUsd Decimal? @db.Decimal(14, 6)
-  subtotal   Decimal  @db.Decimal(14, 2)
+  subtotal     Decimal  @db.Decimal(14, 2)
 
   @@index([documentId])
   @@index([itemId])
@@ -263,21 +315,21 @@ model DocumentLink {
 }
 
 model Payment {
-  id          String        @id @default(cuid())
-  accountId   String
-  account     Account       @relation(fields: [accountId], references: [id])
-  date        DateTime
+  id           String        @id @default(cuid())
+  accountId    String
+  account      Account       @relation(fields: [accountId], references: [id])
+  date         DateTime
   /// En la moneda de la cuenta. Si la cuenta va en dólares, esto son dólares.
-  amount      Decimal       @db.Decimal(14, 2)
-  currency    Currency      @default(ARS)
+  amount       Decimal       @db.Decimal(14, 2)
+  currency     Currency      @default(ARS)
   /// Con qué cotización se pagó, cuando el pago se hizo en pesos contra una cuenta en dólares.
   /// Guardarla es lo que deja reconstruir cuántos pesos salieron del banco.
-  exchangeRate Decimal?     @db.Decimal(12, 4)
-  method      PaymentMethod
-  reference   String?
-  createdById String
-  createdBy   User          @relation(fields: [createdById], references: [id])
-  createdAt   DateTime      @default(now())
+  exchangeRate Decimal?      @db.Decimal(12, 4)
+  method       PaymentMethod
+  reference    String?
+  createdById  String
+  createdBy    User          @relation(fields: [createdById], references: [id])
+  createdAt    DateTime      @default(now())
 
   /**
    * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.
@@ -312,29 +364,29 @@ model PaymentAllocation {
 }
 
 model Item {
-  id           String           @id @default(cuid())
-  slug         String           @unique
-  name         String
-  unit         String
-  category     SupplierCategory @default(OTRO)
+  id               String           @id @default(cuid())
+  slug             String           @unique
+  name             String
+  unit             String
+  category         SupplierCategory @default(OTRO)
   /// En false el insumo no mueve stock: la compra le carga el gasto a la cuenta corriente pero no
   /// genera movimiento, no aparece en la lista de stock ni en el control de faltantes, y no se
   /// puede poner en una receta. Es para los consumibles que se compran y no se cuentan.
-  llevaStock   Boolean          @default(true)
-  minStock     Decimal?         @db.Decimal(14, 3)
-  unitCost     Decimal?         @db.Decimal(14, 2)
+  llevaStock       Boolean          @default(true)
+  minStock         Decimal?         @db.Decimal(14, 3)
+  unitCost         Decimal?         @db.Decimal(14, 2)
   /// Sólo envases: qué preforma consume. De acá sale a qué cuenta de preformas suma cada unidad
   /// recibida del proveedor que las fía.
-  preformaId   String?
-  preforma     Preforma?        @relation(fields: [preformaId], references: [id])
+  preformaId       String?
+  preforma         Preforma?        @relation(fields: [preformaId], references: [id])
   /// Sólo envases: cuántas unidades trae el pallet descartable con el que los entrega el proveedor.
   /// Es un factor para cargar el remito — ese pallet no es el normalizado y no entra a stock.
-  unitsPerPallet Int?
+  unitsPerPallet   Int?
   /// Último precio de soplado pactado, en U$S por unidad. Lo propone el formulario de compra y se
   /// actualiza con lo que se cargue: los envases lo tienen fijo, las tapas lo mueven seguido.
-  precioSopladoUsd Decimal?      @db.Decimal(14, 6)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  precioSopladoUsd Decimal?         @db.Decimal(14, 6)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   movements     ItemMovement[]
   recipeLines   RecipeItem[]
@@ -400,13 +452,13 @@ model Product {
  * Marca (nombre + tipo de aceite), sin formato — catálogo reutilizable al crear productos.
  */
 model Marca {
-  id      String @id @default(cuid())
-  name    String
-  oilType String
+  id          String   @id @default(cuid())
+  name        String
+  oilType     String
   /// Si es false, la receta que se arma sola no lleva línea de etiqueta. Es el caso de "Sin
   /// etiqueta", que es producto terminado sin etiquetar. Para el resto, que falte la etiqueta es
   /// un error que hay que avisar, no algo que se pueda ignorar en silencio.
-  usaEtiqueta Boolean @default(true)
+  usaEtiqueta Boolean  @default(true)
   createdAt   DateTime @default(now())
 
   @@unique([name, oilType])

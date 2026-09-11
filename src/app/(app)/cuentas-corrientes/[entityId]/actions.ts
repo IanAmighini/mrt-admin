@@ -14,8 +14,9 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal } from "@/lib/money";
+import { leerGastoDelForm } from "@/lib/gasto";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
-import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { logAudit } from "@/lib/audit";
 import type { AuditAction } from "@prisma/client";
@@ -1331,4 +1332,148 @@ export async function createPrice(formData: FormData) {
   });
 
   revalidatePath(`/cuentas-corrientes/${entity?.slug ?? entityId}`);
+}
+
+/* ─────────────────────────── Facturas de gasto ───────────────────────────
+ * Un gasto es lo que factura un proveedor y no es una compra de insumos: el flete, el alquiler,
+ * la luz, la ferretería. Usa el tipo GASTO, que en `getDocumentEffect` suma igual que una factura.
+ */
+
+/** Resuelve la cuenta y deja el gasto listo para escribir. El parseo del formulario vive en
+ * `lib/gasto.ts`, que no toca la base y se puede probar solo. */
+async function parseGasto(formData: FormData) {
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new UserError("Falta el proveedor.");
+
+  const gasto = leerGastoDelForm(formData);
+
+  const account = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId, circuit: gasto.circuit } },
+    include: { entity: true },
+  });
+  if (!account) throw new UserError("No se encontró la cuenta de esta entidad.");
+  if (account.entity.type !== "PROVEEDOR" && account.entity.type !== "AMBOS") {
+    throw new UserError("Los gastos se cargan en la cuenta de un proveedor.");
+  }
+
+  const date = parseFormDate(formData.get("date"));
+  const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, gasto.circuit);
+
+  return { account, date, dueDate, ...gasto };
+}
+
+export async function createGasto(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  const g = await parseGasto(formData);
+
+  await prisma.$transaction(async (tx) => {
+    const gasto = await tx.document.create({
+      data: {
+        accountId: g.account.id,
+        type: "GASTO",
+        number: g.number,
+        date: g.date,
+        dueDate: g.dueDate,
+        currency: g.currency,
+        exchangeRate: g.exchangeRate,
+        expenseCategory: g.expenseCategory,
+        reason: g.reason,
+        ...g.totals,
+        createdById: user.id,
+      },
+    });
+
+    if (g.taxRows.length > 0) {
+      await tx.documentTax.createMany({
+        data: g.taxRows.map((row) => ({ ...row, documentId: gasto.id })),
+      });
+    }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Gasto",
+      entityId: g.account.entityId,
+      summary: `#${g.number} — ${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
+    });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${g.account.entity.slug}`);
+}
+
+/** Edita un gasto ya cargado. El desglose se borra y se vuelve a escribir entero — es más corto que
+ * conciliar fila por fila y no hay nada colgando de esas filas. Las imputaciones de pagos no se
+ * tocan: el pendiente sale de totalAmount, igual que en updateFactura. */
+export async function updateGasto(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const existente = await prisma.document.findUnique({ where: { id: documentId } });
+  if (!existente) throw new UserError("El gasto ya no existe.");
+  if (existente.type !== "GASTO") throw new UserError("Este comprobante no es un gasto.");
+
+  const g = await parseGasto(formData);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.documentTax.deleteMany({ where: { documentId } });
+
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        accountId: g.account.id,
+        number: g.number,
+        date: g.date,
+        dueDate: g.dueDate,
+        currency: g.currency,
+        exchangeRate: g.exchangeRate,
+        expenseCategory: g.expenseCategory,
+        reason: g.reason,
+        ...g.totals,
+      },
+    });
+
+    if (g.taxRows.length > 0) {
+      await tx.documentTax.createMany({
+        data: g.taxRows.map((row) => ({ ...row, documentId })),
+      });
+    }
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Gasto",
+      entityId: g.account.entityId,
+      summary: `#${g.number} — ${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
+    });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${g.account.entity.slug}`);
+}
+
+export async function deleteGasto(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const gasto = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { account: { include: { entity: true } } },
+  });
+  if (!gasto) throw new UserError("El gasto ya no existe.");
+  if (gasto.type !== "GASTO") throw new UserError("Este comprobante no es un gasto.");
+
+  await prisma.$transaction(async (tx) => {
+    // Las filas de DocumentTax se van solas por el cascade; las imputaciones no tienen cascade.
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Gasto",
+      entityId: gasto.account.entityId,
+      summary: `#${gasto.number} — ${gasto.account.entity.name} — ${formatMoney(gasto.totalAmount, gasto.currency)}`,
+    });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${gasto.account.entity.slug}`);
 }

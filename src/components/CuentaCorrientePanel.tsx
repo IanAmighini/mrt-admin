@@ -6,12 +6,14 @@ import { DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import {
   createDocumentForEntity,
   createFactura,
+  createGasto,
   createPaymentForEntity,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { FormModal } from "./Modal";
 import { PaymentFormFields } from "./PaymentFormFields";
 import { DocumentFormFields } from "./DocumentFormFields";
 import { FacturaFormFields } from "./FacturaFormFields";
+import { GastoFormFields } from "./GastoFormFields";
 
 export function CuentaCorrientePanel({
   entityId,
@@ -41,6 +43,8 @@ export function CuentaCorrientePanel({
 }) {
   const isTreasury = entityType === "TESORERIA";
   const isCliente = entityType !== "PROVEEDOR";
+  // El botón de gasto es el simétrico del de factura: lo ven los proveedores, no los clientes.
+  const isProveedor = entityType === "PROVEEDOR" || entityType === "AMBOS";
 
   return (
     <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
@@ -62,6 +66,16 @@ export function CuentaCorrientePanel({
             <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
               <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
             </FormModal>
+            {isProveedor && (
+              <FormModal
+                triggerLabel="Gasto"
+                title="Nueva factura de gasto"
+                action={createGasto}
+                maxWidthClass="max-w-xl"
+              >
+                <GastoFormFields entityId={entityId} />
+              </FormModal>
+            )}
             {factura && (
               <FormModal triggerLabel="Factura" title="Nueva factura" action={createFactura}>
                 <FacturaFormFields
