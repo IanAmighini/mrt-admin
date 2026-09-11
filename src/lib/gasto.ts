@@ -1,6 +1,13 @@
 import { Prisma, type Circuit, type Currency, type ExpenseCategory, type TaxKind } from "@prisma/client";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
-import { parseNumeroEscrito, parseNumeroOpcional, parseNumeroSuave, sumDecimals, ZERO } from "@/lib/money";
+import {
+  DEFAULT_IVA_RATE,
+  parseNumeroEscrito,
+  parseNumeroOpcional,
+  parseNumeroSuave,
+  sumDecimals,
+  ZERO,
+} from "@/lib/money";
 import { UserError } from "@/lib/user-error";
 
 /**
@@ -171,4 +178,74 @@ export function leerGastoDelForm(formData: FormData) {
   }
 
   return { circuit, expenseCategory, number, currency, exchangeRate, reason, taxRows, totals };
+}
+
+/**
+ * Los tributos que puede traer una compra de insumos, además del IVA. A diferencia de un gasto no
+ * lleva "no gravado" ni "exento": el neto de una compra sale de las líneas, no se escribe a mano.
+ */
+export const PERCEPCIONES_COMPRA = OTROS_TRIBUTOS.filter((t) => t.name.startsWith("percepcion"));
+
+/**
+ * El desglose impositivo de una compra en Blanco. El neto no se escribe: es la suma de las líneas,
+ * y sobre eso se aplica la alícuota. En Negro no hay factura, así que el neto ES el total.
+ */
+export function impuestosDeCompra(
+  formData: FormData,
+  neto: Prisma.Decimal,
+  circuit: Circuit
+): { taxRows: GastoTaxRow[]; totals: GastoTotals } {
+  if (circuit === "NEGRO") {
+    return {
+      taxRows: [],
+      totals: {
+        netAmount: neto,
+        ivaRate: null,
+        ivaAmount: ZERO,
+        perceptionAmount: ZERO,
+        retentionAmount: ZERO,
+        totalAmount: neto,
+      },
+    };
+  }
+
+  const rate = parseNumeroEscrito(String(formData.get("ivaRate") || DEFAULT_IVA_RATE), "alícuota de IVA");
+  const taxRows: GastoTaxRow[] = [
+    { kind: "IVA", base: neto, rate, amount: neto.times(rate).dividedBy(100) },
+  ];
+
+  for (const tributo of PERCEPCIONES_COMPRA) {
+    const amount = parseNumeroOpcional(String(formData.get(tributo.name) || ""), tributo.label);
+    if (amount.isZero()) continue;
+    taxRows.push({ kind: tributo.kind, base: null, rate: null, amount });
+  }
+
+  const retentionAmount = parseNumeroOpcional(
+    String(formData.get("retentionAmount") || ""),
+    "retención"
+  );
+
+  return { taxRows, totals: computeGastoTotals(taxRows, retentionAmount) };
+}
+
+/**
+ * Devuelve los tributos de una compra con las mismas claves con las que los manda el formulario,
+ * para que editarla sea reabrir lo que se cargó y no rearmarlo de memoria.
+ */
+export function impuestosDesdeDocumento(doc: {
+  ivaRate: Prisma.Decimal | null;
+  retentionAmount: Prisma.Decimal | null;
+  taxes: { kind: TaxKind; amount: Prisma.Decimal }[];
+}): Record<string, string> {
+  const valores: Record<string, string> = {
+    ivaRate: (doc.ivaRate ?? DEFAULT_IVA_RATE).toString(),
+  };
+  if (doc.retentionAmount && !doc.retentionAmount.isZero()) {
+    valores.retentionAmount = doc.retentionAmount.toString();
+  }
+  for (const tax of doc.taxes) {
+    const campo = PERCEPCIONES_COMPRA.find((t) => t.kind === tax.kind);
+    if (campo) valores[campo.name] = tax.amount.toString();
+  }
+  return valores;
 }

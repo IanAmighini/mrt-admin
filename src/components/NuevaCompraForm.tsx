@@ -4,6 +4,11 @@ import { useMemo, useState } from "react";
 import type { SupplierCategory } from "@prisma/client";
 import { formatMoney, formatNumeroEditable, formatQuantity, parseNumeroSuave } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
+import {
+  ImpuestosCompraFields,
+  impuestosIniciales,
+  type ImpuestosCompra,
+} from "./ImpuestosCompraFields";
 
 type Circuit = "BLANCO" | "NEGRO";
 
@@ -60,6 +65,7 @@ export function NuevaCompraForm({
   // La cotización deja de ser un dato suelto del encabezado: con ella cargada, las líneas piden el
   // precio en U$S y el de pesos pasa a ser derivado.
   const [cotizacion, setCotizacion] = useState("");
+  const [impuestos, setImpuestos] = useState<ImpuestosCompra>(() => impuestosIniciales());
   const cotizacionNum = parseNumeroSuave(cotizacion);
   const enDolares = cotizacionNum !== null && cotizacionNum.greaterThan(0);
 
@@ -137,14 +143,29 @@ export function NuevaCompraForm({
     return { row, item, precio, subtotal };
   });
 
-  const totals = computedRows.reduce(
+  const netos = computedRows.reduce(
     (acc, r) => {
       acc[r.row.circuit] += r.subtotal;
-      acc.total += r.subtotal;
       return acc;
     },
-    { BLANCO: 0, NEGRO: 0, total: 0 }
+    { BLANCO: 0, NEGRO: 0 }
   );
+
+  // Mismo cálculo que hace `impuestosDeCompra` en el servidor, sólo para mostrarlo mientras se
+  // carga: el IVA y las percepciones van sobre la parte facturada, la de Negro queda como está.
+  // Sin líneas en Blanco no hay documento facturado, así que no hay sobre qué aplicar tributos:
+  // sin este corte, mover la última línea a Negro dejaba un "Total Blanco" con la percepción suelta.
+  const hayBlanco = netos.BLANCO > 0;
+  const alicuota = hayBlanco ? (parseNumeroSuave(impuestos.ivaRate ?? "")?.toNumber() ?? 0) : 0;
+  const iva = (netos.BLANCO * alicuota) / 100;
+  const sumaCampos = (campos: string[]) =>
+    hayBlanco
+      ? campos.reduce((acc, campo) => acc + (parseNumeroSuave(impuestos[campo] ?? "")?.toNumber() ?? 0), 0)
+      : 0;
+  const percepciones = sumaCampos(["percepcionIva", "percepcionIibb", "percepcionMunicipal"]);
+  const retencion = sumaCampos(["retentionAmount"]);
+  const totalBlanco = netos.BLANCO + iva + percepciones - retencion;
+  const totals = { BLANCO: totalBlanco, NEGRO: netos.NEGRO, total: totalBlanco + netos.NEGRO };
 
   return (
     <form action={action} className="space-y-6">
@@ -368,7 +389,17 @@ export function NuevaCompraForm({
           ))}
         </div>
 
+        {netos.BLANCO > 0 && <ImpuestosCompraFields onChange={setImpuestos} />}
+
         <div className="flex flex-wrap justify-end gap-6 border-t border-foreground/10 pt-3 text-sm">
+          <div className="text-right">
+            <p className="text-xs text-foreground/50">Neto Blanco</p>
+            <p className="font-semibold">{formatMoney(netos.BLANCO)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-xs text-foreground/50">{alicuota ? `IVA ${impuestos.ivaRate}%` : "IVA"}</p>
+            <p className="font-semibold">{formatMoney(iva)}</p>
+          </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">Total Blanco</p>
             <p className="font-semibold">{formatMoney(totals.BLANCO)}</p>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Package, ShoppingCart } from "lucide-react";
+import { Building2, Percent, ShoppingCart, Wallet } from "lucide-react";
 import { Prisma, type Currency } from "@prisma/client";
 import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
@@ -16,10 +16,13 @@ export async function ComprasSection({ period }: { period: Period }) {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard label="Comprado en el período" value={formatMoney(ars(report.totales))} icon={ShoppingCart} color="red" />
-        <KpiCard label="Proveedores" value={String(report.porProveedor.length)} icon={Building2} color="blue" />
-        <KpiCard label="Insumos distintos" value={String(report.porInsumo.length)} icon={Package} color="amber" />
+      <div className="grid gap-4 sm:grid-cols-4">
+        {/* Las tablas de abajo van todas por neto, que es la base de costo. El total con IVA es lo
+            que se le debe al proveedor, y por eso se muestran los dos. */}
+        <KpiCard label="Comprado (neto)" value={formatMoney(ars(report.totales))} icon={ShoppingCart} color="red" />
+        <KpiCard label="IVA crédito fiscal" value={formatMoney(ars(report.iva))} icon={Percent} color="blue" />
+        <KpiCard label="Total con impuestos" value={formatMoney(ars(report.totalesConIva))} icon={Wallet} color="amber" />
+        <KpiCard label="Proveedores" value={String(report.porProveedor.length)} icon={Building2} color="green" />
       </div>
 
       <section>

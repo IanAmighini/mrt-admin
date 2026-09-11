@@ -7,6 +7,7 @@ import { formatMoney, formatQuantity } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CompraFormFields } from "@/components/CompraForm";
+import { impuestosDesdeDocumento } from "@/lib/gasto";
 import { deleteCompra, updateCompra } from "../cuentas-corrientes/[entityId]/actions";
 import { toDateInputValue } from "@/lib/period";
 
@@ -160,6 +161,7 @@ export default async function ComprasPage({
                             currency: doc.currency,
                             exchangeRate: doc.exchangeRate?.toString(),
                           }}
+                          impuestos={impuestosDesdeDocumento(doc)}
                         />
                       </FormModal>
                       <DeleteButton

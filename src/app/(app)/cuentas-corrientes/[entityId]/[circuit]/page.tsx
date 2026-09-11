@@ -9,7 +9,7 @@ import { getAccountStatement, type StatementEntry } from "@/lib/account-statemen
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
-import { ALICUOTAS_IVA, OTROS_TRIBUTOS } from "@/lib/gasto";
+import { ALICUOTAS_IVA, OTROS_TRIBUTOS, impuestosDesdeDocumento } from "@/lib/gasto";
 import {
   createDocumentForEntity,
   deleteCompra,
@@ -206,6 +206,7 @@ export default async function AccountLedgerPage({
               items={items}
               editingDocumentId={doc.id}
               defaultValues={headerDefaults}
+              impuestos={impuestosDesdeDocumento(doc)}
             />
           </FormModal>
           <DeleteButton

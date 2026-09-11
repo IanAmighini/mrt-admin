@@ -502,7 +502,12 @@ export type ComprasReport = {
     subtotal: Prisma.Decimal;
     currency: Currency;
   }[];
+  /** Suma de los netos de las líneas: es la base de costo, sin IVA. */
   totales: Map<Currency, Prisma.Decimal>;
+  /** El IVA de las compras facturadas, que es crédito fiscal y no costo. */
+  iva: Map<Currency, Prisma.Decimal>;
+  /** Lo que efectivamente se le debe al proveedor: neto + IVA + percepciones − retenciones. */
+  totalesConIva: Map<Currency, Prisma.Decimal>;
 };
 
 export async function getComprasReport(period: Period): Promise<ComprasReport> {
@@ -523,10 +528,14 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
   const porCategoria = new Map<SupplierCategory, { category: SupplierCategory; byCurrency: Map<Currency, Prisma.Decimal>; qtyByUnit: Map<string, Prisma.Decimal> }>();
   const porInsumo = new Map<string, { itemSlug: string; itemName: string; unit: string; quantity: Prisma.Decimal; byCurrency: Map<Currency, Prisma.Decimal> }>();
   const totales = new Map<Currency, Prisma.Decimal>();
+  const iva = new Map<Currency, Prisma.Decimal>();
+  const totalesConIva = new Map<Currency, Prisma.Decimal>();
   const detalle: ComprasReport["detalle"] = [];
 
   for (const doc of documents) {
     const { entity, circuit } = doc.account;
+    addByCurrency(iva, doc.currency, toDecimal(doc.ivaAmount));
+    addByCurrency(totalesConIva, doc.currency, toDecimal(doc.totalAmount));
 
     const proveedor = porProveedor.get(entity.slug) ?? {
       entityName: entity.name,
@@ -589,6 +598,8 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
     porInsumo: Array.from(porInsumo.values()).sort(byArs),
     detalle,
     totales,
+    iva,
+    totalesConIva,
   };
 }
 

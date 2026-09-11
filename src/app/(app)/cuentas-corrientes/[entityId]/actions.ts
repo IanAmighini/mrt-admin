@@ -14,7 +14,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal } from "@/lib/money";
-import { leerGastoDelForm } from "@/lib/gasto";
+import { impuestosDeCompra, leerGastoDelForm } from "@/lib/gasto";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
@@ -619,8 +619,11 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
         unitPriceUsd: l.unitPriceUsd,
         subtotal: l.quantity.times(l.unitPrice),
       }));
-      const totalAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
-      combinedTotal = combinedTotal.plus(totalAmount);
+      // El neto sale de las líneas; en Blanco el IVA y las percepciones se suman encima, igual que
+      // en un remito de venta. El desglose se guarda en DocumentTax, como en las facturas de gasto.
+      const neto = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
+      const { taxRows, totals } = impuestosDeCompra(formData, neto, circuit);
+      combinedTotal = combinedTotal.plus(totals.totalAmount);
 
       const document = await tx.document.create({
         data: {
@@ -631,8 +634,7 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
           dueDate,
           currency,
           exchangeRate,
-          netAmount: totalAmount,
-          totalAmount,
+          ...totals,
           createdById: user.id,
         },
       });
@@ -640,6 +642,12 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
       await tx.purchaseLine.createMany({
         data: lineData.map((l) => ({ ...l, documentId: document.id })),
       });
+
+      if (taxRows.length > 0) {
+        await tx.documentTax.createMany({
+          data: taxRows.map((row) => ({ ...row, documentId: document.id })),
+        });
+      }
 
       // Los insumos que no llevan stock quedan fuera: su gasto ya entró en el documento de arriba,
       // que es lo único que interesa de ellos. Generarles un ingreso sería inflar un número que

@@ -1,16 +1,20 @@
 import type { Item } from "@prisma/client";
 import { CompraLinesFields } from "./CompraLinesFields";
+import { ImpuestosCompraFields, type ImpuestosCompra } from "./ImpuestosCompraFields";
 
 export function CompraFormFields({
   entityId,
   items,
   editingDocumentId,
   defaultValues,
+  impuestos,
 }: {
   entityId: string;
   items: Item[];
   editingDocumentId?: string;
   defaultValues?: { number?: string; date?: string; dueDate?: string; currency?: string; exchangeRate?: string };
+  /** Los tributos ya cargados, al editar: alícuota, percepciones y retención. */
+  impuestos?: ImpuestosCompra;
 }) {
   return (
     <>
@@ -42,6 +46,7 @@ export function CompraFormFields({
         </Field>
       </div>
       <CompraLinesFields items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))} />
+      <ImpuestosCompraFields defaults={impuestos} />
       <button type="submit" className={submitClass}>
         {editingDocumentId ? "Guardar cambios" : "Crear compra"}
       </button>
