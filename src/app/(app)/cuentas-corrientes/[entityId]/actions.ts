@@ -82,6 +82,33 @@ function montoDelPago(
   return { amount: enPesos.dividedBy(exchangeRate), exchangeRate };
 }
 
+/**
+ * Pasa un monto de la moneda de una cuenta a la de otra. Devuelve también la cotización usada, para
+ * guardarla en el pago: sin eso no se puede reconstruir de dónde salió el número.
+ */
+function convertirEntreCuentas(
+  monto: Prisma.Decimal,
+  desde: Currency,
+  hacia: Currency,
+  cotizacionRaw: string,
+  nombreDestino: string
+): { monto: Prisma.Decimal; cotizacion: Prisma.Decimal | null } {
+  if (desde === hacia) return { monto, cotizacion: null };
+
+  if (!cotizacionRaw.trim()) {
+    throw new UserError(
+      `La cuenta de ${nombreDestino} se lleva en ${hacia === "USD" ? "dólares" : "pesos"}: hace falta la cotización para convertir el monto.`
+    );
+  }
+  const cotizacion = parseNumeroEscrito(cotizacionRaw, "cotización");
+  if (!cotizacion.greaterThan(0)) throw new UserError("La cotización tiene que ser mayor a cero.");
+
+  return {
+    monto: hacia === "USD" ? monto.dividedBy(cotizacion) : monto.times(cotizacion),
+    cotizacion,
+  };
+}
+
 async function getAccountOrThrow(accountId: string) {
   const account = await prisma.account.findUnique({
     where: { id: accountId },
@@ -914,8 +941,13 @@ async function applyPaymentDestino(params: {
   isCobro: boolean;
   destino: string;
   proveedorId: string;
+  /** Moneda de la cuenta desde la que se cobró. */
+  monedaOrigen: Currency;
+  /** Cotización tipeada en el formulario, si las dos cuentas van en monedas distintas. */
+  cotizacionProveedor: string;
 }) {
-  const { userId, payment, entity, isCobro, destino, proveedorId } = params;
+  const { userId, payment, entity, isCobro, destino, proveedorId, monedaOrigen, cotizacionProveedor } =
+    params;
   if (!destino) return;
 
   if (destino === PROVEEDOR_DIRECTO_VALUE) {
@@ -924,16 +956,29 @@ async function applyPaymentDestino(params: {
 
     const proveedorAccount = await prisma.account.findUnique({
       where: { entityId_circuit: { entityId: proveedorId, circuit: payment.circuit } },
+      include: { entity: { select: { name: true, moneda: true } } },
     });
     if (!proveedorAccount) throw new UserError("No se encontró la cuenta del proveedor elegido.");
 
-    const proveedorAllocations = await allocateFifo(proveedorAccount.id, payment.amount, "ARS");
+    // El monto no se puede copiar tal cual si las dos cuentas van en monedas distintas: un cobro de
+    // $1.512.000 a un proveedor que lleva la cuenta en dólares son U$S 1.000, no U$S 1.512.000.
+    const monedaProveedor = proveedorAccount.entity.moneda;
+    const { monto: montoProveedor, cotizacion } = convertirEntreCuentas(
+      payment.amount,
+      monedaOrigen,
+      monedaProveedor,
+      cotizacionProveedor,
+      proveedorAccount.entity.name
+    );
+
+    const proveedorAllocations = await allocateFifo(proveedorAccount.id, montoProveedor, monedaProveedor);
     const linkedPayment = await prisma.payment.create({
       data: {
         accountId: proveedorAccount.id,
         date: payment.date,
-        amount: payment.amount,
-        currency: "ARS",
+        amount: montoProveedor,
+        currency: monedaProveedor,
+        exchangeRate: cotizacion,
         method: payment.method,
         reference: `Cobro directo de ${entity.name}`,
         linkedPaymentId: payment.id,
@@ -1045,6 +1090,8 @@ export async function createPaymentForEntity(formData: FormData) {
     payment: { id: payment.id, date, amount, method, circuit },
     entity: account.entity,
     isCobro,
+    monedaOrigen: account.entity.moneda,
+    cotizacionProveedor: String(formData.get("cotizacionProveedor") || ""),
     destino,
     proveedorId,
   });
@@ -1187,6 +1234,8 @@ export async function updatePayment(formData: FormData) {
     payment: { id: paymentId, date, amount, method, circuit },
     entity: account.entity,
     isCobro,
+    monedaOrigen: account.entity.moneda,
+    cotizacionProveedor: String(formData.get("cotizacionProveedor") || ""),
     destino,
     proveedorId,
   });

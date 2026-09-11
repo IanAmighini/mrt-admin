@@ -168,6 +168,7 @@ export function PaymentFormFields({
         treasuries={treasuries}
         proveedores={proveedores}
         defaultDestino={defaultTreasuryId}
+        montoDelCobro={monto}
       />
 
       <div className="space-y-1">
