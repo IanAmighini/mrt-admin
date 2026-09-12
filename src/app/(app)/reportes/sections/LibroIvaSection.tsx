@@ -51,17 +51,17 @@ export async function LibroIvaSection({ period }: { period: Period }) {
           <p className="flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
             <AlertTriangle className="h-4 w-4" />
             {libro.remitosSinFacturar.length === 1
-              ? "Hay un remito en Blanco sin facturar en este período"
-              : `Hay ${libro.remitosSinFacturar.length} remitos en Blanco sin facturar en este período`}
+              ? "Hay un comprobante en Blanco sin facturar en este período"
+              : `Hay ${libro.remitosSinFacturar.length} comprobantes en Blanco sin facturar en este período`}
           </p>
           <p className="mt-1 text-amber-800 dark:text-amber-300">
-            No entran al libro porque un remito no es comprobante fiscal, pero esa venta no está
-            declarada hasta que se le cargue la factura.
+            Ni un remito ni una compra son comprobantes fiscales, así que no entran al libro. Esa
+            venta —o ese crédito fiscal— no está declarada hasta que se cargue la factura.
           </p>
           <ul className="mt-2 space-y-0.5 text-amber-900 dark:text-amber-200">
             {libro.remitosSinFacturar.map((r) => (
               <li key={`${r.number}-${r.date.toISOString()}`}>
-                #{r.number} — {r.entityName} — {r.date.toLocaleDateString("es-AR")} —{" "}
+                {r.sustantivo} #{r.number} — {r.entityName} — {r.date.toLocaleDateString("es-AR")} —{" "}
                 {formatMoney(r.pendiente)} sin facturar
               </li>
             ))}
@@ -104,7 +104,7 @@ export async function LibroIvaSection({ period }: { period: Period }) {
 
       <Planilla
         titulo="I.V.A. Compras"
-        aclaracion="Compras de insumos y facturas de gasto de la cuenta Blanco."
+        aclaracion="Las facturas de los proveedores y las facturas de gasto, de la cuenta Blanco."
         columnaEntidad="Proveedor"
         columnaPercepcion="Percepciones"
         conConcepto

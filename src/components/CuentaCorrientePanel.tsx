@@ -1,5 +1,5 @@
 import type { Entity } from "@prisma/client";
-import type { getInvoiceableRemitos, RecentMovement } from "@/lib/ledger";
+import type { RecentMovement } from "@/lib/ledger";
 import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
@@ -12,7 +12,7 @@ import {
 import { FormModal } from "./Modal";
 import { PaymentFormFields } from "./PaymentFormFields";
 import { DocumentFormFields } from "./DocumentFormFields";
-import { FacturaFormFields } from "./FacturaFormFields";
+import { FacturaFormFields, type ComprobanteFacturable } from "./FacturaFormFields";
 import { GastoFormFields } from "./GastoFormFields";
 
 export function CuentaCorrientePanel({
@@ -31,11 +31,13 @@ export function CuentaCorrientePanel({
   moneda: Entity["moneda"];
   movements: RecentMovement[];
   canEdit: boolean;
-  /** Si viene, se muestra el botón "+ Factura" (solo aplica a clientes, cuenta Blanco). */
+  /** Si viene, se muestra el botón "Factura" (siempre sobre la cuenta Blanco). */
   factura?: {
     blancoAccountId: string;
     isWithholdingAgent: boolean;
-    invoiceableRemitos: Awaited<ReturnType<typeof getInvoiceableRemitos>>;
+    comprobantes: ComprobanteFacturable[];
+    /** "Remito" del lado de ventas, "Compra" del de proveedores. */
+    sustantivo: string;
   };
   treasuries: Entity[];
   /** Solo si esta ficha es de un cliente: lista de proveedores, para "directo a un proveedor". */
@@ -77,11 +79,17 @@ export function CuentaCorrientePanel({
               </FormModal>
             )}
             {factura && (
-              <FormModal triggerLabel="Factura" title="Nueva factura" action={createFactura}>
+              <FormModal
+                triggerLabel="Factura"
+                title={isCliente ? "Nueva factura" : "Factura del proveedor"}
+                action={createFactura}
+                maxWidthClass="max-w-xl"
+              >
                 <FacturaFormFields
                   accountId={factura.blancoAccountId}
                   isWithholdingAgent={factura.isWithholdingAgent}
-                  invoiceableRemitos={factura.invoiceableRemitos}
+                  comprobantes={factura.comprobantes}
+                  sustantivo={factura.sustantivo}
                 />
               </FormModal>
             )}

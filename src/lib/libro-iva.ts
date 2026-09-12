@@ -65,7 +65,14 @@ export type LibroIva = {
    * Remitos en Blanco del período que todavía no tienen factura. No entran al libro —no son
    * comprobantes fiscales— pero si quedan sin facturar, esa venta falta en la declaración.
    */
-  remitosSinFacturar: { number: string; date: Date; entityName: string; pendiente: Prisma.Decimal }[];
+  remitosSinFacturar: {
+    number: string;
+    date: Date;
+    entityName: string;
+    pendiente: Prisma.Decimal;
+    /** "Remito" si es una entrega a un cliente, "Compra" si es un ingreso de un proveedor. */
+    sustantivo: string;
+  }[];
   /**
    * Notas en Blanco de entidades marcadas como "Ambos": no se sabe si la emitimos o la recibimos,
    * así que no se puede decidir de qué lado del libro van. Se avisan en vez de adivinar.
@@ -151,9 +158,10 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
   const enElPeriodo = { date: { gte: period.from, lt: period.to } };
   const enBlanco = { account: { circuit: "BLANCO" as const } };
 
-  const [contribuyente, facturas, gastos, compras, remitos, notas] = await Promise.all([
+  const [contribuyente, facturas, gastos, remitos, notas] = await Promise.all([
     getContribuyente(),
-    // Ventas: sólo las facturas. Un remito no es comprobante fiscal.
+    // Las facturas de los dos lados: la que le emitimos a un cliente y la que nos emite un
+    // proveedor. Ni el remito de entrega ni la compra son comprobantes fiscales.
     prisma.document.findMany({
       where: { type: "FACTURA", ...enBlanco, ...enElPeriodo },
       include: { account: { include: { entity: true } }, taxes: true },
@@ -164,15 +172,11 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       include: { account: { include: { entity: true } }, taxes: true },
       orderBy: [{ date: "asc" }, { number: "asc" }],
     }),
+    // Remitos en Blanco de los dos lados: no entran al libro, sirven para avisar de los que
+    // quedaron sin facturar — esa venta o esa compra todavía no está declarada.
     prisma.document.findMany({
-      where: { type: "REMITO", purchaseLines: { some: {} }, ...enBlanco, ...enElPeriodo },
-      include: { account: { include: { entity: true } }, taxes: true },
-      orderBy: [{ date: "asc" }, { number: "asc" }],
-    }),
-    // Remitos de venta en Blanco: sirven sólo para avisar de los que quedaron sin facturar.
-    prisma.document.findMany({
-      where: { type: "REMITO", lines: { some: {} }, ...enBlanco, ...enElPeriodo },
-      include: { account: { include: { entity: true } }, remitoLinks: true },
+      where: { type: "REMITO", ...enBlanco, ...enElPeriodo },
+      include: { account: { include: { entity: true } }, remitoLinks: true, purchaseLines: { select: { id: true } } },
       orderBy: { date: "asc" },
     }),
     // Notas de crédito y débito: van al lado del libro que corresponda según con quién sea la
@@ -221,20 +225,20 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
   const porFecha = (a: RenglonIva, b: RenglonIva) =>
     a.date.getTime() - b.date.getTime() || a.number.localeCompare(b.number);
 
-  const notasDe = (tipoEntidad: "CLIENTE" | "PROVEEDOR") =>
-    notas.filter((n) => n.account.entity.type === tipoEntidad);
+  const deCliente = <T extends { account: { entity: { type: string } } }>(docs: T[]) =>
+    docs.filter((d) => d.account.entity.type === "CLIENTE");
+  const deProveedor = <T extends { account: { entity: { type: string } } }>(docs: T[]) =>
+    docs.filter((d) => d.account.entity.type === "PROVEEDOR");
 
   const ventas = [
-    ...facturas.map((d) => renglon(d, null)),
-    ...notasDe("CLIENTE").map((d) => renglon(d, d.reason)),
+    ...deCliente(facturas).map((d) => renglon(d, null)),
+    ...deCliente(notas).map((d) => renglon(d, d.reason)),
   ].sort(porFecha);
 
   const comprasRenglones = [
-    // Una compra se guarda como REMITO, pero en un libro de IVA esa palabra despista: lo que
-    // respalda el crédito fiscal es la factura del proveedor, cuyo número es el que se carga.
-    ...compras.map((d) => renglon(d, "Insumos", "Compra")),
-    ...gastos.map((d) => renglon(d, d.reason, "Gasto")),
-    ...notasDe("PROVEEDOR").map((d) => renglon(d, d.reason)),
+    ...deProveedor(facturas).map((d) => renglon(d, d.reason)),
+    ...deProveedor(gastos).map((d) => renglon(d, d.reason, "Gasto")),
+    ...deProveedor(notas).map((d) => renglon(d, d.reason)),
   ].sort(porFecha);
 
   const totalesVentas = sumarTotales(ventas);
@@ -245,6 +249,7 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       number: r.number,
       date: r.date,
       entityName: r.account.entity.name,
+      sustantivo: r.purchaseLines.length > 0 ? "Compra" : "Remito",
       pendiente: toDecimal(r.totalAmount).minus(sumDecimals(r.remitoLinks.map((l) => l.amount))),
     }))
     .filter((r) => r.pendiente.greaterThan(0));
@@ -259,10 +264,10 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
     totalesVentas,
     totalesCompras,
     saldoIva: totalesVentas.iva.minus(totalesCompras.iva),
-    alicuotasVentas: abrirPorAlicuota([...facturas, ...notasDe("CLIENTE")]),
-    alicuotasCompras: abrirPorAlicuota([...compras, ...gastos, ...notasDe("PROVEEDOR")]),
+    alicuotasVentas: abrirPorAlicuota([...deCliente(facturas), ...deCliente(notas)]),
+    alicuotasCompras: abrirPorAlicuota([...deProveedor(facturas), ...deProveedor(gastos), ...deProveedor(notas)]),
     remitosSinFacturar,
-    notasSinClasificar: notas
+    notasSinClasificar: [...notas, ...facturas]
       .filter((n) => n.account.entity.type !== "CLIENTE" && n.account.entity.type !== "PROVEEDOR")
       .map((n) => ({
         number: n.number,

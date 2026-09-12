@@ -226,13 +226,23 @@ export default async function EntityLedgerPage({
           treasuries={treasuries}
           proveedores={proveedores}
           factura={
-            isCliente
-              ? {
+            // Los proveedores también facturan: del lado de compras el comprobante que va al libro
+            // de IVA es su factura, no el remito con el que entregaron.
+            entity.type === "TESORERIA"
+              ? undefined
+              : {
                   blancoAccountId: blancoAccount.id,
                   isWithholdingAgent: entity.isWithholdingAgent,
-                  invoiceableRemitos,
+                  sustantivo: entity.type === "PROVEEDOR" ? "Compra" : "Remito",
+                  comprobantes: invoiceableRemitos.map((doc) => ({
+                    id: doc.id,
+                    number: doc.number,
+                    date: doc.date.toLocaleDateString("es-AR"),
+                    // En formato argentino, que es el que el formulario vuelve a leer al guardar.
+                    pending: formatNumeroEditable(doc.pending),
+                    neto: formatNumeroEditable(doc.netAmount),
+                  })),
                 }
-              : undefined
           }
         />
       </div>

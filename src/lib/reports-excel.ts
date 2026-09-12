@@ -504,7 +504,7 @@ function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
     sheet<RenglonIva>({
       name: "IVA Compras",
       title: "PLANILLA DETALLE DE I.V.A. COMPRAS",
-      subtitle: encabezado("Compras de insumos y facturas de gasto de la cuenta Blanco."),
+      subtitle: encabezado("Facturas de proveedores y facturas de gasto de la cuenta Blanco."),
       columns: [
         { header: "Fecha", value: (r) => r.date, format: "date" },
         { header: "Comprobante", value: (r) => r.tipo, width: 16 },

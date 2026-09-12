@@ -737,11 +737,16 @@ export async function createCompra(formData: FormData) {
 async function getCompraOrThrow(documentId: string) {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { purchaseLines: true, account: { include: { entity: true } } },
+    include: { purchaseLines: true, remitoLinks: true, account: { include: { entity: true } } },
   });
   if (!document) throw new UserError("La compra ya no existe.");
   if (document.type !== "REMITO" || document.purchaseLines.length === 0) {
     throw new UserError("Este comprobante no es una compra.");
+  }
+  // Misma guarda que en un remito de venta: borrarla o reescribirla dejaría el DocumentLink
+  // apuntando a un comprobante que ya no existe, y la FK no tiene cascade.
+  if (document.remitoLinks.length > 0) {
+    throw new UserError("Esta compra ya está facturada — hay que borrar la factura primero.");
   }
   return document;
 }
