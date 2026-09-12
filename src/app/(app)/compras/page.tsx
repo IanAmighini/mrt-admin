@@ -7,7 +7,7 @@ import { formatMoney, formatQuantity } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CompraFormFields } from "@/components/CompraForm";
-import { impuestosDesdeDocumento } from "@/lib/gasto";
+import { impuestosDesdeDocumento } from "@/lib/impuestos";
 import { deleteCompra, updateCompra } from "../cuentas-corrientes/[entityId]/actions";
 import { toDateInputValue } from "@/lib/period";
 

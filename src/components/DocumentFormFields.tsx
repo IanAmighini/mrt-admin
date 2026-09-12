@@ -1,4 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import { TREASURY_MOVEMENT_CATEGORY_LABELS } from "@/lib/labels";
+import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
+import { ImpuestosCompraFields, impuestosIniciales, type ImpuestosCompra } from "./ImpuestosCompraFields";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
@@ -8,36 +13,112 @@ const toggleClass =
 
 const MANUAL_TREASURY_CATEGORIES = ["GASTO_BANCARIO", "IMPUESTO", "RETIRO", "DEPOSITO", "AJUSTE_ARQUEO", "OTRO"] as const;
 
+type TipoMovimiento = "NOTA_CREDITO" | "NOTA_DEBITO" | "AJUSTE";
+type CircuitoMovimiento = "BLANCO" | "NEGRO";
+
+export type DocumentDefaults = {
+  type?: TipoMovimiento;
+  number?: string;
+  date?: string;
+  dueDate?: string;
+  currency?: string;
+  exchangeRate?: string;
+  /** El neto en Blanco, el monto en Negro y en los ajustes. */
+  amount?: string;
+  ajusteEffect?: "SUMA" | "RESTA";
+  reason?: string;
+  impuestos?: ImpuestosCompra;
+};
+
+/**
+ * Alta y edición de una nota de crédito/débito o un ajuste. Un mismo componente para las dos cosas
+ * porque los campos son los mismos: tenerlos separados ya hizo que se desincronizaran.
+ *
+ * Una nota en Blanco es un comprobante fiscal y lleva el IVA discriminado, así que entra al libro.
+ * En Negro, y los ajustes en cualquier circuito, van por monto y quedan fuera.
+ */
 export function DocumentFormFields({
   fixedEntityId,
   isTreasury,
+  editingDocumentId,
+  circuitoFijo,
+  defaultValues,
 }: {
-  fixedEntityId: string;
+  fixedEntityId?: string;
   isTreasury?: boolean;
+  /** Si viene, el formulario edita ese comprobante en vez de crear uno nuevo. */
+  editingDocumentId?: string;
+  /** Al editar: el circuito de la cuenta, que no se puede cambiar desde acá. */
+  circuitoFijo?: CircuitoMovimiento;
+  defaultValues?: DocumentDefaults;
 }) {
+  const esEdicion = Boolean(editingDocumentId);
+  const [type, setType] = useState<TipoMovimiento>(defaultValues?.type ?? "NOTA_CREDITO");
+  const [circuit, setCircuit] = useState<CircuitoMovimiento>(circuitoFijo ?? "BLANCO");
+  const [currency, setCurrency] = useState(defaultValues?.currency ?? "ARS");
+  const [monto, setMonto] = useState(defaultValues?.amount ?? "");
+  const [impuestos, setImpuestos] = useState<ImpuestosCompra>(() => impuestosIniciales(defaultValues?.impuestos));
+
+  const esNota = type !== "AJUSTE";
+  const conIva = esNota && circuit === "BLANCO";
+
+  const neto = parseNumeroSuave(monto) ?? ZERO;
+  const alicuota = parseNumeroSuave(impuestos.ivaRate ?? "") ?? ZERO;
+  const iva = neto.times(alicuota).dividedBy(100);
+  const percepciones = ["percepcionIva", "percepcionIibb", "percepcionMunicipal"].reduce(
+    (acc, campo) => acc.plus(parseNumeroSuave(impuestos[campo] ?? "") ?? ZERO),
+    ZERO
+  );
+  const retencion = parseNumeroSuave(impuestos.retentionAmount ?? "") ?? ZERO;
+  const total = conIva ? neto.plus(iva).plus(percepciones).minus(retencion) : neto;
+
   return (
     <>
-      <input type="hidden" name="entityId" value={fixedEntityId} />
+      {fixedEntityId && <input type="hidden" name="entityId" value={fixedEntityId} />}
+      {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
 
-      <div className="space-y-1">
-        <p className="text-sm">Cuenta</p>
-        <div className="grid grid-cols-2 gap-2">
-          <label className={toggleClass}>
-            <input type="radio" name="circuit" value="BLANCO" defaultChecked className="sr-only" />
-            Blanco (con factura)
-          </label>
-          <label className={toggleClass}>
-            <input type="radio" name="circuit" value="NEGRO" className="sr-only" />
-            Negro (sin factura)
-          </label>
+      {!esEdicion && (
+        <div className="space-y-1">
+          <p className="text-sm">Cuenta</p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className={toggleClass}>
+              <input
+                type="radio"
+                name="circuit"
+                value="BLANCO"
+                checked={circuit === "BLANCO"}
+                onChange={() => setCircuit("BLANCO")}
+                className="sr-only"
+              />
+              Blanco (con factura)
+            </label>
+            <label className={toggleClass}>
+              <input
+                type="radio"
+                name="circuit"
+                value="NEGRO"
+                checked={circuit === "NEGRO"}
+                onChange={() => setCircuit("NEGRO")}
+                className="sr-only"
+              />
+              Negro (sin factura)
+            </label>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="space-y-1">
         <label className="text-sm" htmlFor="type">
           Tipo
         </label>
-        <select id="type" name="type" required defaultValue="NOTA_CREDITO" className={inputClass}>
+        <select
+          id="type"
+          name="type"
+          required
+          value={type}
+          onChange={(e) => setType(e.target.value as TipoMovimiento)}
+          className={inputClass}
+        >
           <option value="NOTA_CREDITO">Nota de crédito</option>
           <option value="NOTA_DEBITO">Nota de débito</option>
           <option value="AJUSTE">Ajuste manual</option>
@@ -49,59 +130,93 @@ export function DocumentFormFields({
           <label className="text-sm" htmlFor="number">
             Número
           </label>
-          <input id="number" name="number" required className={inputClass} />
+          <input id="number" name="number" required defaultValue={defaultValues?.number} className={inputClass} />
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="date">
             Fecha
           </label>
-          <input id="date" type="date" name="date" required className={inputClass} />
+          <input id="date" type="date" name="date" required defaultValue={defaultValues?.date} className={inputClass} />
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="dueDate">
             Vencimiento (opcional)
           </label>
-          <input id="dueDate" type="date" name="dueDate" className={inputClass} />
+          <input id="dueDate" type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="currency">
             Moneda
           </label>
-          <select id="currency" name="currency" defaultValue="ARS" className={inputClass}>
+          <select
+            id="currency"
+            name="currency"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className={inputClass}
+          >
             <option value="ARS">ARS</option>
             <option value="USD">USD</option>
           </select>
         </div>
+        {currency === "USD" && (
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="exchangeRate">
+              Cotización
+            </label>
+            <input
+              id="exchangeRate"
+              name="exchangeRate"
+              inputMode="decimal"
+              defaultValue={defaultValues?.exchangeRate}
+              className={inputClass}
+            />
+          </div>
+        )}
         <div className="space-y-1">
-          <label className="text-sm" htmlFor="exchangeRate">
-            Cotización (si es USD)
+          <label className="text-sm" htmlFor={conIva ? "netAmount" : "amount"}>
+            {conIva ? "Neto gravado" : "Monto"}
           </label>
-          <input id="exchangeRate" name="exchangeRate" className={inputClass} />
+          {/* El name cambia con el circuito: en Blanco se carga el neto y el IVA va encima; en
+              Negro y en los ajustes el monto es el importe final. */}
+          <input
+            id={conIva ? "netAmount" : "amount"}
+            key={conIva ? "netAmount" : "amount"}
+            name={conIva ? "netAmount" : "amount"}
+            required
+            inputMode="decimal"
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            placeholder="150.000,50"
+            className={inputClass}
+          />
         </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="amount">
-            Monto *
-          </label>
-          <input id="amount" name="amount" required inputMode="decimal" className={inputClass} />
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="ajusteEffect">
-            Efecto (solo Ajuste)
-          </label>
-          <select id="ajusteEffect" name="ajusteEffect" defaultValue="SUMA" className={inputClass}>
-            <option value="SUMA">Suma al saldo</option>
-            <option value="RESTA">Resta al saldo</option>
-          </select>
-        </div>
+        {!esNota && (
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="ajusteEffect">
+              Efecto
+            </label>
+            <select
+              id="ajusteEffect"
+              name="ajusteEffect"
+              defaultValue={defaultValues?.ajusteEffect ?? "SUMA"}
+              className={inputClass}
+            >
+              <option value="SUMA">Suma al saldo</option>
+              <option value="RESTA">Resta al saldo</option>
+            </select>
+          </div>
+        )}
         {isTreasury && (
           <div className="space-y-1">
             <label className="text-sm" htmlFor="treasuryCategory">
-              Categoría (solo Ajuste)
+              Categoría
             </label>
-            <select id="treasuryCategory" name="treasuryCategory" defaultValue="OTRO" className={inputClass}>
-              {MANUAL_TREASURY_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {TREASURY_MOVEMENT_CATEGORY_LABELS[cat]}
+            <select id="treasuryCategory" name="treasuryCategory" defaultValue="" className={inputClass}>
+              <option value="">— Elegir —</option>
+              {MANUAL_TREASURY_CATEGORIES.map((value) => (
+                <option key={value} value={value}>
+                  {TREASURY_MOVEMENT_CATEGORY_LABELS[value]}
                 </option>
               ))}
             </select>
@@ -109,15 +224,32 @@ export function DocumentFormFields({
         )}
       </div>
 
+      {conIva && (
+        <>
+          <ImpuestosCompraFields
+            defaults={defaultValues?.impuestos}
+            onChange={setImpuestos}
+            titulo="Impuestos del comprobante"
+            aclaracion="Una nota en Blanco es un comprobante fiscal: entra al libro de IVA con este desglose."
+          />
+          <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
+            <span className="text-sm">Total</span>
+            <span className="text-lg font-semibold tabular-nums">
+              {formatMoney(total, currency as "ARS" | "USD")}
+            </span>
+          </div>
+        </>
+      )}
+
       <div className="space-y-1">
         <label className="text-sm" htmlFor="reason">
-          Motivo (obligatorio para Ajuste)
+          {esNota ? "Motivo (opcional)" : "Motivo"}
         </label>
-        <input id="reason" name="reason" className={inputClass} />
+        <input id="reason" name="reason" defaultValue={defaultValues?.reason} className={inputClass} />
       </div>
 
       <button type="submit" className={submitClass}>
-        Crear
+        {esEdicion ? "Guardar cambios" : "Crear"}
       </button>
     </>
   );

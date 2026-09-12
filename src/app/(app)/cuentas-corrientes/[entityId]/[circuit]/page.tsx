@@ -9,7 +9,7 @@ import { getAccountStatement, type StatementEntry } from "@/lib/account-statemen
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
-import { ALICUOTAS_IVA, OTROS_TRIBUTOS, impuestosDesdeDocumento } from "@/lib/gasto";
+import { ALICUOTAS_IVA, OTROS_TRIBUTOS, impuestosDesdeDocumento } from "@/lib/impuestos";
 import {
   createDocumentForEntity,
   deleteCompra,
@@ -31,7 +31,6 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { RemitoFormFields } from "@/components/RemitoForm";
 import { CompraFormFields } from "@/components/CompraForm";
 import { EditFacturaFields } from "@/components/EditFacturaFields";
-import { EditDocumentFields } from "@/components/EditDocumentFields";
 import { GastoFormFields } from "@/components/GastoFormFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
@@ -296,15 +295,24 @@ export default async function AccountLedgerPage({
 
     return (
       <div className="flex items-center gap-2">
-        <FormModal triggerLabel="Editar" iconName="edit" title="Editar movimiento" action={updateDocument}>
-          <EditDocumentFields
-            documentId={doc.id}
+        <FormModal
+          triggerLabel="Editar"
+          iconName="edit"
+          title="Editar movimiento"
+          action={updateDocument}
+          maxWidthClass="max-w-xl"
+        >
+          <DocumentFormFields
+            editingDocumentId={doc.id}
+            circuitoFijo={circuit}
+            isTreasury={isTreasuryEntity}
             defaultValues={{
               ...headerDefaults,
               type: doc.type as "NOTA_CREDITO" | "NOTA_DEBITO" | "AJUSTE",
               amount: doc.netAmount.toString(),
               ajusteEffect: doc.totalAmount.lessThan(0) ? "RESTA" : "SUMA",
               reason: doc.reason ?? undefined,
+              impuestos: impuestosDesdeDocumento(doc),
             }}
           />
         </FormModal>

@@ -489,6 +489,7 @@ function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
       subtitle: encabezado("Sólo comprobantes tipo Factura de la cuenta Blanco."),
       columns: [
         { header: "Fecha", value: (r) => r.date, format: "date" },
+        { header: "Comprobante", value: (r) => r.tipo, width: 16 },
         { header: "Nro de Comp", value: (r) => r.number, width: 18 },
         { header: "Comprador", value: (r) => r.entityName, width: 32 },
         { header: "Nro de Cuit", value: (r) => r.taxId ?? "", width: 16 },
@@ -498,7 +499,7 @@ function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
         { header: "Total", value: (r) => r.total, format: "money" },
       ],
       rows: libro.ventas,
-      totals: totalesFila(libro.totalesVentas, 4),
+      totals: totalesFila(libro.totalesVentas, 5),
     }),
     sheet<RenglonIva>({
       name: "IVA Compras",
@@ -506,6 +507,7 @@ function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
       subtitle: encabezado("Compras de insumos y facturas de gasto de la cuenta Blanco."),
       columns: [
         { header: "Fecha", value: (r) => r.date, format: "date" },
+        { header: "Comprobante", value: (r) => r.tipo, width: 16 },
         { header: "Nro de Comp", value: (r) => r.number, width: 18 },
         { header: "Proveedor", value: (r) => r.entityName, width: 32 },
         { header: "Nro de Cuit", value: (r) => r.taxId ?? "", width: 16 },
@@ -516,7 +518,7 @@ function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
         { header: "Total", value: (r) => r.total, format: "money" },
       ],
       rows: libro.compras,
-      totals: totalesFila(libro.totalesCompras, 5),
+      totals: totalesFila(libro.totalesCompras, 6),
     }),
     sheet<(typeof alicuotas)[number]>({
       name: "Resumen",

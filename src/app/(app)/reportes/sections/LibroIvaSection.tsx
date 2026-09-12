@@ -69,6 +69,29 @@ export async function LibroIvaSection({ period }: { period: Period }) {
         </div>
       )}
 
+      {libro.notasSinClasificar.length > 0 && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+          <p className="flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4" />
+            {libro.notasSinClasificar.length === 1
+              ? "Hay una nota en Blanco que no entró al libro"
+              : `Hay ${libro.notasSinClasificar.length} notas en Blanco que no entraron al libro`}
+          </p>
+          <p className="mt-1 text-amber-800 dark:text-amber-300">
+            La cuenta es de una entidad marcada como “Ambos”, así que no se puede saber si la nota la
+            emitimos nosotros o la recibimos. Cambiá la entidad a Cliente o a Proveedor y vuelve a
+            calcularse sola.
+          </p>
+          <ul className="mt-2 space-y-0.5 text-amber-900 dark:text-amber-200">
+            {libro.notasSinClasificar.map((n) => (
+              <li key={`${n.number}-${n.date.toISOString()}`}>
+                {n.tipo} #{n.number} — {n.entityName} — {n.date.toLocaleDateString("es-AR")}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <Planilla
         titulo="I.V.A. Ventas — Facturas A"
         aclaracion="Los comprobantes tipo Factura de la cuenta Blanco."
@@ -122,8 +145,9 @@ export async function LibroIvaSection({ period }: { period: Period }) {
       )}
 
       <p className="text-xs text-foreground/50">
-        Las notas de crédito y débito todavía no entran al libro: se cargan como movimiento suelto,
-        sin desglose de IVA. <Link href="/cuentas-corrientes" className="underline underline-offset-2">Cuentas corrientes</Link>
+        Las notas de crédito restan: entran en negativo, así que la fila de totales ya es lo que se
+        declara. Las notas en Negro y los ajustes manuales quedan fuera, porque no son comprobantes
+        fiscales. <Link href="/cuentas-corrientes" className="underline underline-offset-2">Cuentas corrientes</Link>
       </p>
     </div>
   );
@@ -148,7 +172,7 @@ function Planilla({
   totales: TotalesIva;
   vacio: string;
 }) {
-  const columnas = conConcepto ? 9 : 8;
+  const columnas = conConcepto ? 10 : 9;
 
   return (
     <section>
@@ -159,6 +183,7 @@ function Planilla({
           <thead>
             <tr className="border-b border-foreground/10 text-foreground/60">
               <th className={thClass}>Fecha</th>
+              <th className={thClass}>Comprobante</th>
               <th className={thClass}>Nro de Comp</th>
               <th className={thClass}>{columnaEntidad}</th>
               <th className={thClass}>Nro de Cuit</th>
@@ -173,6 +198,7 @@ function Planilla({
             {renglones.map((r, i) => (
               <tr key={`${r.number}-${i}`} className="border-b border-foreground/5">
                 <td className="py-2 pr-4 whitespace-nowrap">{r.date.toLocaleDateString("es-AR")}</td>
+                <td className="py-2 pr-4">{r.tipo}</td>
                 <td className="py-2 pr-4">{r.number}</td>
                 <td className="py-2 pr-4">{r.entityName}</td>
                 <td className="py-2 pr-4 text-foreground/60">{r.taxId ?? "—"}</td>
@@ -194,7 +220,7 @@ function Planilla({
           {renglones.length > 0 && (
             <tfoot>
               <tr className="border-t border-foreground/20 font-semibold">
-                <td className="py-2 pr-4" colSpan={conConcepto ? 5 : 4}>
+                <td className="py-2 pr-4" colSpan={conConcepto ? 6 : 5}>
                   TOTALES
                 </td>
                 <td className={tdNum}>{formatMoney(totales.neto)}</td>

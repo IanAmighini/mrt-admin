@@ -1,7 +1,8 @@
 import "server-only";
-import { Prisma, type Currency } from "@prisma/client";
+import { Prisma, type Currency, type DocumentType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/settings";
+import { DOCUMENT_TYPE_LABELS } from "@/lib/labels";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { formatPeriodLabel, periodLastDay, type Period } from "@/lib/period";
 
@@ -25,6 +26,8 @@ export async function getContribuyente(): Promise<Contribuyente> {
 export type RenglonIva = {
   date: Date;
   number: string;
+  /** Qué comprobante es: en la planilla se mezclan facturas con notas de crédito y débito. */
+  tipo: string;
   entityName: string;
   taxId: string | null;
   /** Qué es: "Factura", "Gasto", "Compra". Sólo se muestra del lado de compras, donde se mezclan. */
@@ -63,6 +66,11 @@ export type LibroIva = {
    * comprobantes fiscales— pero si quedan sin facturar, esa venta falta en la declaración.
    */
   remitosSinFacturar: { number: string; date: Date; entityName: string; pendiente: Prisma.Decimal }[];
+  /**
+   * Notas en Blanco de entidades marcadas como "Ambos": no se sabe si la emitimos o la recibimos,
+   * así que no se puede decidir de qué lado del libro van. Se avisan en vez de adivinar.
+   */
+  notasSinClasificar: { number: string; date: Date; entityName: string; tipo: string }[];
 };
 
 const MESES = [
@@ -88,6 +96,12 @@ function sumarTotales(renglones: RenglonIva[]): TotalesIva {
   };
 }
 
+/**
+ * Una nota de crédito resta: baja la base imponible y el IVA del período, de los dos lados. El resto
+ * de los comprobantes suma. El signo del saldo de la cuenta lo maneja aparte `getDocumentEffect`.
+ */
+const signoDe = (type: DocumentType) => (type === "NOTA_CREDITO" ? -1 : 1);
+
 type DocConTaxes = { taxes: { kind: string; rate: Prisma.Decimal | null; base: Prisma.Decimal | null; amount: Prisma.Decimal }[] };
 
 /**
@@ -95,7 +109,12 @@ type DocConTaxes = { taxes: { kind: string; rate: Prisma.Decimal | null; base: P
  * cuando un comprobante trae más de una; los que no tienen desglose caen en su `ivaRate`.
  */
 function abrirPorAlicuota(
-  docs: (DocConTaxes & { ivaRate: Prisma.Decimal | null; netAmount: Prisma.Decimal; ivaAmount: Prisma.Decimal | null })[]
+  docs: (DocConTaxes & {
+    type: DocumentType;
+    ivaRate: Prisma.Decimal | null;
+    netAmount: Prisma.Decimal;
+    ivaAmount: Prisma.Decimal | null;
+  })[]
 ) {
   const porTasa = new Map<string, { rate: Prisma.Decimal; neto: Prisma.Decimal; iva: Prisma.Decimal }>();
 
@@ -108,12 +127,15 @@ function abrirPorAlicuota(
   };
 
   for (const doc of docs) {
+    const signo = signoDe(doc.type);
     const filasIva = doc.taxes.filter((t) => t.kind === "IVA" && t.rate);
     if (filasIva.length > 0) {
-      for (const fila of filasIva) sumar(fila.rate!, toDecimal(fila.base), toDecimal(fila.amount));
+      for (const fila of filasIva) {
+        sumar(fila.rate!, toDecimal(fila.base).times(signo), toDecimal(fila.amount).times(signo));
+      }
     } else if (doc.ivaRate) {
       // Comprobantes cargados antes de que existiera el desglose: una sola alícuota.
-      sumar(doc.ivaRate, toDecimal(doc.netAmount), toDecimal(doc.ivaAmount));
+      sumar(doc.ivaRate, toDecimal(doc.netAmount).times(signo), toDecimal(doc.ivaAmount).times(signo));
     }
   }
 
@@ -129,7 +151,7 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
   const enElPeriodo = { date: { gte: period.from, lt: period.to } };
   const enBlanco = { account: { circuit: "BLANCO" as const } };
 
-  const [contribuyente, facturas, gastos, compras, remitos] = await Promise.all([
+  const [contribuyente, facturas, gastos, compras, remitos, notas] = await Promise.all([
     getContribuyente(),
     // Ventas: sólo las facturas. Un remito no es comprobante fiscal.
     prisma.document.findMany({
@@ -153,10 +175,18 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       include: { account: { include: { entity: true } }, remitoLinks: true },
       orderBy: { date: "asc" },
     }),
+    // Notas de crédito y débito: van al lado del libro que corresponda según con quién sea la
+    // cuenta. Las de Negro no entran —no son comprobantes fiscales— y el ajuste tampoco.
+    prisma.document.findMany({
+      where: { type: { in: ["NOTA_CREDITO", "NOTA_DEBITO"] }, ...enBlanco, ...enElPeriodo },
+      include: { account: { include: { entity: true } }, taxes: true },
+      orderBy: [{ date: "asc" }, { number: "asc" }],
+    }),
   ]);
 
   const renglon = (
     doc: {
+      type: DocumentType;
       date: Date;
       number: string;
       netAmount: Prisma.Decimal;
@@ -166,25 +196,46 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       currency: Currency;
       account: { entity: { name: string; taxId: string | null } };
     },
-    concepto: string | null
-  ): RenglonIva => ({
-    date: doc.date,
-    number: doc.number,
-    entityName: doc.account.entity.name,
-    taxId: doc.account.entity.taxId,
-    concepto,
-    neto: toDecimal(doc.netAmount),
-    percepcion: percepcionesDe(doc),
-    iva: toDecimal(doc.ivaAmount),
-    total: toDecimal(doc.totalAmount),
-    currency: doc.currency,
-  });
+    concepto: string | null,
+    tipo?: string
+  ): RenglonIva => {
+    // Una nota de crédito entra en negativo, así que la fila de TOTALES ya es lo que se declara.
+    // `0 × −1` da −0, que se imprime "−$ 0,00": el cero no lleva signo.
+    const signo = signoDe(doc.type);
+    const conSigno = (v: Prisma.Decimal) => (v.isZero() ? ZERO : v.times(signo));
+    return {
+      date: doc.date,
+      number: doc.number,
+      tipo: tipo ?? DOCUMENT_TYPE_LABELS[doc.type],
+      entityName: doc.account.entity.name,
+      taxId: doc.account.entity.taxId,
+      concepto,
+      neto: conSigno(toDecimal(doc.netAmount)),
+      percepcion: conSigno(percepcionesDe(doc)),
+      iva: conSigno(toDecimal(doc.ivaAmount)),
+      total: conSigno(toDecimal(doc.totalAmount)),
+      currency: doc.currency,
+    };
+  };
 
-  const ventas = facturas.map((d) => renglon(d, null));
+  const porFecha = (a: RenglonIva, b: RenglonIva) =>
+    a.date.getTime() - b.date.getTime() || a.number.localeCompare(b.number);
+
+  const notasDe = (tipoEntidad: "CLIENTE" | "PROVEEDOR") =>
+    notas.filter((n) => n.account.entity.type === tipoEntidad);
+
+  const ventas = [
+    ...facturas.map((d) => renglon(d, null)),
+    ...notasDe("CLIENTE").map((d) => renglon(d, d.reason)),
+  ].sort(porFecha);
+
   const comprasRenglones = [
-    ...compras.map((d) => renglon(d, "Compra")),
-    ...gastos.map((d) => renglon(d, "Gasto")),
-  ].sort((a, b) => a.date.getTime() - b.date.getTime() || a.number.localeCompare(b.number));
+    // Una compra se guarda como REMITO, pero en un libro de IVA esa palabra despista: lo que
+    // respalda el crédito fiscal es la factura del proveedor, cuyo número es el que se carga.
+    ...compras.map((d) => renglon(d, "Insumos", "Compra")),
+    ...gastos.map((d) => renglon(d, d.reason, "Gasto")),
+    ...notasDe("PROVEEDOR").map((d) => renglon(d, d.reason)),
+  ].sort(porFecha);
 
   const totalesVentas = sumarTotales(ventas);
   const totalesCompras = sumarTotales(comprasRenglones);
@@ -208,8 +259,16 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
     totalesVentas,
     totalesCompras,
     saldoIva: totalesVentas.iva.minus(totalesCompras.iva),
-    alicuotasVentas: abrirPorAlicuota(facturas),
-    alicuotasCompras: abrirPorAlicuota([...compras, ...gastos]),
+    alicuotasVentas: abrirPorAlicuota([...facturas, ...notasDe("CLIENTE")]),
+    alicuotasCompras: abrirPorAlicuota([...compras, ...gastos, ...notasDe("PROVEEDOR")]),
     remitosSinFacturar,
+    notasSinClasificar: notas
+      .filter((n) => n.account.entity.type !== "CLIENTE" && n.account.entity.type !== "PROVEEDOR")
+      .map((n) => ({
+        number: n.number,
+        date: n.date,
+        entityName: n.account.entity.name,
+        tipo: DOCUMENT_TYPE_LABELS[n.type],
+      })),
   };
 }

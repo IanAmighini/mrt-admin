@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_ORDER } from "@/lib/labels";
-import { ALICUOTAS_IVA, OTROS_TRIBUTOS, computeGastoTotals, filasDesdeValores } from "@/lib/gasto";
+import { ALICUOTAS_IVA, OTROS_TRIBUTOS, computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";

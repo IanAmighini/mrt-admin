@@ -13,8 +13,8 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal } from "@/lib/money";
-import { impuestosDeCompra, leerGastoDelForm } from "@/lib/gasto";
+import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
+import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impuestos";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
@@ -22,6 +22,25 @@ import { logAudit } from "@/lib/audit";
 import type { AuditAction } from "@prisma/client";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
+
+const esNota = (type: DocumentType) => type === "NOTA_CREDITO" || type === "NOTA_DEBITO";
+
+/** Un ajuste no es comprobante: va por monto, y el signo lo elige quien lo carga. */
+function montoDeAjuste(formData: FormData) {
+  const amount = parseAmount(formData.get("amount"), "monto");
+  const resta = String(formData.get("ajusteEffect") || "SUMA") === "RESTA";
+  return {
+    taxRows: [],
+    totals: {
+      netAmount: amount,
+      ivaRate: null,
+      ivaAmount: ZERO,
+      perceptionAmount: ZERO,
+      retentionAmount: ZERO,
+      totalAmount: resta ? amount.negated() : amount,
+    },
+  };
+}
 
 const MANUAL_TREASURY_CATEGORIES: TreasuryMovementCategory[] = [
   "GASTO_BANCARIO",
@@ -143,33 +162,42 @@ export async function updateDocument(formData: FormData) {
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
 
-  const amount = parseAmount(formData.get("amount"), "monto");
   const reason = String(formData.get("reason") || "").trim() || null;
 
   if (type === "AJUSTE" && !reason) {
     throw new UserError("El ajuste manual requiere un motivo.");
   }
 
-  const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
-  const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
+  const account = await getAccountOrThrow(document.accountId);
+  const { taxRows, totals } = esNota(type)
+    ? impuestosDeNota(formData, account.circuit)
+    : montoDeAjuste(formData);
+
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory"));
 
-  const account = await getAccountOrThrow(document.accountId);
+  await prisma.$transaction(async (tx) => {
+    // El desglose se reescribe entero: es más corto que conciliar fila por fila, y pasar de nota a
+    // ajuste tiene que dejar el comprobante sin tributos.
+    await tx.documentTax.deleteMany({ where: { documentId } });
 
-  await prisma.document.update({
-    where: { id: documentId },
-    data: {
-      type,
-      number,
-      date,
-      dueDate,
-      currency,
-      exchangeRate,
-      netAmount: amount,
-      totalAmount,
-      reason,
-      ...(treasuryCategory !== undefined ? { treasuryCategory } : {}),
-    },
+    await tx.document.update({
+      where: { id: documentId },
+      data: {
+        type,
+        number,
+        date,
+        dueDate,
+        currency,
+        exchangeRate,
+        ...totals,
+        reason,
+        ...(treasuryCategory !== undefined ? { treasuryCategory } : {}),
+      },
+    });
+
+    if (taxRows.length > 0) {
+      await tx.documentTax.createMany({ data: taxRows.map((row) => ({ ...row, documentId })) });
+    }
   });
 
   await logAudit(prisma, {
@@ -177,7 +205,7 @@ export async function updateDocument(formData: FormData) {
     action: "UPDATE",
     entityType: "Movimiento de cuenta",
     entityId: documentId,
-    summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+    summary: `#${number} — ${account.entity.name} — ${formatMoney(totals.totalAmount, currency)}`,
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
@@ -248,32 +276,42 @@ export async function createDocumentForEntity(formData: FormData) {
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
 
-  const amount = parseAmount(formData.get("amount"), "monto");
   const reason = String(formData.get("reason") || "").trim() || null;
 
   if (type === "AJUSTE" && !reason) {
     throw new UserError("El ajuste manual requiere un motivo.");
   }
 
-  const ajusteEffect = String(formData.get("ajusteEffect") || "SUMA");
-  const totalAmount = type === "AJUSTE" && ajusteEffect === "RESTA" ? amount.negated() : amount;
+  // Una nota es un comprobante y en Blanco lleva IVA discriminado; un ajuste es una corrección de
+  // saldo y va por monto, con el signo que elija quien lo carga.
+  const { taxRows, totals } = esNota(type)
+    ? impuestosDeNota(formData, circuit)
+    : montoDeAjuste(formData);
+
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory")) || null;
 
-  const document = await prisma.document.create({
-    data: {
-      accountId: account.id,
-      type,
-      number,
-      date,
-      dueDate,
-      currency,
-      exchangeRate,
-      netAmount: amount,
-      totalAmount,
-      reason,
-      treasuryCategory,
-      createdById: user.id,
-    },
+  const document = await prisma.$transaction(async (tx) => {
+    const creado = await tx.document.create({
+      data: {
+        accountId: account.id,
+        type,
+        number,
+        date,
+        dueDate,
+        currency,
+        exchangeRate,
+        ...totals,
+        reason,
+        treasuryCategory,
+        createdById: user.id,
+      },
+    });
+
+    if (taxRows.length > 0) {
+      await tx.documentTax.createMany({ data: taxRows.map((row) => ({ ...row, documentId: creado.id })) });
+    }
+
+    return creado;
   });
 
   await logAudit(prisma, {
@@ -281,7 +319,7 @@ export async function createDocumentForEntity(formData: FormData) {
     action: "CREATE",
     entityType: "Movimiento de cuenta",
     entityId: document.id,
-    summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+    summary: `#${number} — ${account.entity.name} — ${formatMoney(totals.totalAmount, currency)}`,
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);

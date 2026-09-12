@@ -249,3 +249,23 @@ export function impuestosDesdeDocumento(doc: {
   }
   return valores;
 }
+
+/**
+ * El desglose de una nota de crédito o débito. En Blanco es un comprobante fiscal: se carga el neto
+ * y el IVA va encima, igual que una factura o una compra. En Negro no hay comprobante —el monto es
+ * el monto— y esas notas quedan fuera del libro de IVA.
+ *
+ * El ajuste manual no pasa por acá: no es un comprobante sino una corrección de saldo.
+ */
+export function impuestosDeNota(
+  formData: FormData,
+  circuit: Circuit
+): { taxRows: GastoTaxRow[]; totals: GastoTotals } {
+  const campo = circuit === "BLANCO" ? "netAmount" : "amount";
+  const etiqueta = circuit === "BLANCO" ? "neto" : "monto";
+  const raw = String(formData.get(campo) || "").trim();
+  if (!raw) throw new UserError(`Falta el ${etiqueta}.`);
+
+  // Con el neto ya leído, el resto es idéntico a una compra: alícuota, percepciones y retención.
+  return impuestosDeCompra(formData, parseNumeroEscrito(raw, etiqueta), circuit);
+}

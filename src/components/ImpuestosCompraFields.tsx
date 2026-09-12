@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PERCEPCIONES_COMPRA } from "@/lib/gasto";
+import { PERCEPCIONES_COMPRA } from "@/lib/impuestos";
 import { DEFAULT_IVA_RATE } from "@/lib/money";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-1 text-sm";
@@ -24,9 +24,13 @@ export const impuestosIniciales = (defaults?: ImpuestosCompra): ImpuestosCompra 
 export function ImpuestosCompraFields({
   defaults,
   onChange,
+  titulo = "Impuestos de la parte en Blanco",
+  aclaracion = "El neto sale de las líneas y el IVA se suma encima. Las líneas en Negro no llevan impuestos.",
 }: {
   defaults?: ImpuestosCompra;
   onChange?: (valores: ImpuestosCompra) => void;
+  titulo?: string;
+  aclaracion?: string;
 }) {
   const [valores, setValores] = useState<ImpuestosCompra>(() => impuestosIniciales(defaults));
 
@@ -48,10 +52,8 @@ export function ImpuestosCompraFields({
 
   return (
     <div className="space-y-2 rounded-lg border border-foreground/10 p-3">
-      <p className="text-sm font-medium">Impuestos de la parte en Blanco</p>
-      <p className="text-xs text-foreground/50">
-        El neto sale de las líneas y el IVA se suma encima. Las líneas en Negro no llevan impuestos.
-      </p>
+      <p className="text-sm font-medium">{titulo}</p>
+      <p className="text-xs text-foreground/50">{aclaracion}</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <div className="space-y-1">
           <label className="text-xs text-foreground/70" htmlFor="ivaRate">
