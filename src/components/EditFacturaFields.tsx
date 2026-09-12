@@ -94,7 +94,7 @@ export function EditFacturaFields({
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="perceptionAmount">
-            Percepción
+            Percepción RG 5329
           </label>
           <input id="perceptionAmount" name="perceptionAmount" defaultValue={defaultValues.perceptionAmount} className={inputClass} />
         </div>

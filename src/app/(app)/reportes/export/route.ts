@@ -13,6 +13,7 @@ import {
   getVentasReport,
   isReportKey,
 } from "@/lib/reports";
+import { getLibroIva } from "@/lib/libro-iva";
 import { buildReportSheets, reportFilename, type ReportData } from "@/lib/reports-excel";
 import { buildWorkbook, excelResponse } from "@/lib/excel";
 
@@ -67,6 +68,9 @@ export async function GET(request: NextRequest) {
       break;
     case "gastos":
       data = { key, report: await getGastosReport(period) };
+      break;
+    case "libro-iva":
+      data = { key, libro: await getLibroIva(period) };
       break;
     case "produccion":
       data = { key, report: await getProduccionReport(period) };

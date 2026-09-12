@@ -23,6 +23,7 @@ export const REPORT_KEYS = [
   "cobranzas",
   "compras",
   "gastos",
+  "libro-iva",
   "produccion",
 ] as const;
 
@@ -35,6 +36,7 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
   cobranzas: "Cobranzas y pagos",
   compras: "Compras de insumos",
   gastos: "Gastos",
+  "libro-iva": "Libro de IVA",
   produccion: "Producción",
 };
 

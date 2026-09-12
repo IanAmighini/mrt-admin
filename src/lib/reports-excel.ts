@@ -8,9 +8,10 @@ import {
   PAYMENT_METHOD_LABELS,
   SUPPLIER_CATEGORY_LABELS,
 } from "@/lib/labels";
-import { sheet, type ExcelSheet } from "@/lib/excel";
+import { sheet, type CellValue, type ExcelSheet } from "@/lib/excel";
 import { slugify } from "@/lib/slug";
 import { formatPeriodLabel, toDateInputValue, periodLastDay, type Period } from "@/lib/period";
+import type { LibroIva, RenglonIva } from "@/lib/libro-iva";
 import {
   REPORT_KEYS_SNAPSHOT,
   REPORT_LABELS,
@@ -455,6 +456,92 @@ function gastosSheets(report: GastosReport, generatedAt: Date): ExcelSheet<never
 
 // ---------------------------------------------------------------------------
 
+/**
+ * El libro de IVA, con el mismo encabezado y las mismas columnas que la planilla que se llevaba a
+ * mano: contribuyente, CUIT y período arriba, y la fila de totales al pie.
+ */
+function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
+  const encabezado = (planilla: string) => [
+    `CONTRIBUYENTE: ${libro.contribuyente.nombre}`,
+    `C.U.I.T. Nº: ${libro.contribuyente.cuit}`,
+    `PERIODO: ${libro.periodoTitulo}`,
+    planilla,
+  ];
+
+  const totalesFila = (t: LibroIva["totalesVentas"], columnasAntes: number) => [
+    ...Array<CellValue>(columnasAntes - 1).fill(null),
+    "TOTALES",
+    t.neto,
+    t.percepcion,
+    t.iva,
+    t.total,
+  ];
+
+  const alicuotas = [
+    ...libro.alicuotasVentas.map((a) => ({ lado: "Ventas", ...a })),
+    ...libro.alicuotasCompras.map((a) => ({ lado: "Compras", ...a })),
+  ];
+
+  return [
+    sheet<RenglonIva>({
+      name: "IVA Ventas",
+      title: "PLANILLA DETALLE DE I.V.A. VENTAS FACTURAS A",
+      subtitle: encabezado("Sólo comprobantes tipo Factura de la cuenta Blanco."),
+      columns: [
+        { header: "Fecha", value: (r) => r.date, format: "date" },
+        { header: "Nro de Comp", value: (r) => r.number, width: 18 },
+        { header: "Comprador", value: (r) => r.entityName, width: 32 },
+        { header: "Nro de Cuit", value: (r) => r.taxId ?? "", width: 16 },
+        { header: "Neto Gravado", value: (r) => r.neto, format: "money" },
+        { header: "RG 5329 3%", value: (r) => r.percepcion, format: "money" },
+        { header: "Iva 21%", value: (r) => r.iva, format: "money" },
+        { header: "Total", value: (r) => r.total, format: "money" },
+      ],
+      rows: libro.ventas,
+      totals: totalesFila(libro.totalesVentas, 4),
+    }),
+    sheet<RenglonIva>({
+      name: "IVA Compras",
+      title: "PLANILLA DETALLE DE I.V.A. COMPRAS",
+      subtitle: encabezado("Compras de insumos y facturas de gasto de la cuenta Blanco."),
+      columns: [
+        { header: "Fecha", value: (r) => r.date, format: "date" },
+        { header: "Nro de Comp", value: (r) => r.number, width: 18 },
+        { header: "Proveedor", value: (r) => r.entityName, width: 32 },
+        { header: "Nro de Cuit", value: (r) => r.taxId ?? "", width: 16 },
+        { header: "Concepto", value: (r) => r.concepto ?? "", width: 14 },
+        { header: "Neto Gravado", value: (r) => r.neto, format: "money" },
+        { header: "Percepciones", value: (r) => r.percepcion, format: "money" },
+        { header: "IVA", value: (r) => r.iva, format: "money" },
+        { header: "Total", value: (r) => r.total, format: "money" },
+      ],
+      rows: libro.compras,
+      totals: totalesFila(libro.totalesCompras, 5),
+    }),
+    sheet<(typeof alicuotas)[number]>({
+      name: "Resumen",
+      title: "Resumen del período",
+      subtitle: [
+        ...encabezado(""),
+        `IVA débito fiscal (ventas): ${libro.totalesVentas.iva.toFixed(2)}`,
+        `IVA crédito fiscal (compras): ${libro.totalesCompras.iva.toFixed(2)}`,
+        libro.saldoIva.greaterThanOrEqualTo(0)
+          ? `Saldo a pagar: ${libro.saldoIva.toFixed(2)}`
+          : `Saldo a favor: ${libro.saldoIva.negated().toFixed(2)}`,
+      ].filter(Boolean),
+      columns: [
+        { header: "Lado", value: (r) => r.lado, width: 12 },
+        { header: "Alícuota %", value: (r) => r.rate, format: "number", width: 12 },
+        { header: "Neto gravado", value: (r) => r.neto, format: "money" },
+        { header: "IVA", value: (r) => r.iva, format: "money" },
+      ],
+      rows: alicuotas,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+
 export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
   | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
@@ -463,6 +550,7 @@ export type ReportData =
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
   | { key: "compras"; report: ComprasReport }
   | { key: "gastos"; report: GastosReport }
+  | { key: "libro-iva"; libro: LibroIva }
   | { key: "produccion"; report: ProduccionReport };
 
 export function buildReportSheets(data: ReportData, generatedAt = new Date()): ExcelSheet<never>[] {
@@ -482,6 +570,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return comprasSheets(data.report, generatedAt);
     case "gastos":
       return gastosSheets(data.report, generatedAt);
+    case "libro-iva":
+      return libroIvaSheets(data.libro);
     case "produccion":
       return produccionSheets(data.report, generatedAt);
   }

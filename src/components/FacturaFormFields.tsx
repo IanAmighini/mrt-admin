@@ -63,21 +63,27 @@ export function FacturaFormFields({
           </label>
           <input id="ivaRate" name="ivaRate" defaultValue={DEFAULT_IVA_RATE} className={inputClass} />
         </div>
+        {/* La percepción es rara pero puede caer en cualquier factura, así que está siempre a mano.
+            La retención, en cambio, la practica el cliente que es agente: sólo aparece ahí. */}
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="perceptionAmount">
+            Percepción RG 5329
+          </label>
+          <input
+            id="perceptionAmount"
+            name="perceptionAmount"
+            inputMode="decimal"
+            placeholder="0,00"
+            className={inputClass}
+          />
+        </div>
         {isWithholdingAgent && (
-          <>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="retentionAmount">
-                Retención
-              </label>
-              <input id="retentionAmount" name="retentionAmount" className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="perceptionAmount">
-                Percepción
-              </label>
-              <input id="perceptionAmount" name="perceptionAmount" className={inputClass} />
-            </div>
-          </>
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="retentionAmount">
+              Retención
+            </label>
+            <input id="retentionAmount" name="retentionAmount" inputMode="decimal" className={inputClass} />
+          </div>
         )}
       </div>
       {invoiceableRemitos.length > 0 && (
