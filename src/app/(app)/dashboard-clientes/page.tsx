@@ -245,14 +245,41 @@ async function ReportesGerenciales() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-          <p className="text-sm font-semibold mb-1">Rentabilidad del mes</p>
-          <p className="text-2xl font-semibold">{formatMoney(rentabilidad.rentabilidad)}</p>
-          <p className="text-xs text-foreground/50 mt-1">
-            ingresos (ARS) menos costo de insumos consumidos en producción. No incluye otros
-            costos fijos (mano de obra, alquiler, etc.)
-            {rentabilidad.itemsSinCosto > 0 &&
-              ` — ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) sin costo unitario cargado, no se descontaron.`}
+          <p className="text-sm font-semibold mb-1">Margen del mes</p>
+          <p
+            className={`text-2xl font-semibold ${
+              rentabilidad.rentabilidad.lessThan(0) ? "text-red-600 dark:text-red-400" : ""
+            }`}
+          >
+            {formatMoney(rentabilidad.rentabilidad)}
           </p>
+          {/* De dónde sale: un margen suelto no se puede discutir, tres renglones sí. */}
+          <div className="mt-2 space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-foreground/60">Ventas</span>
+              <span className="tabular-nums">{formatMoney(rentabilidad.ingresos)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-foreground/60">− Insumos</span>
+              <span className="tabular-nums">{formatMoney(rentabilidad.costoInsumos)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-foreground/60">− Gastos</span>
+              <span className="tabular-nums">{formatMoney(rentabilidad.gastos)}</span>
+            </div>
+          </div>
+          <p className="text-xs text-foreground/50 mt-2">
+            Todo en pesos y neto de IVA. No incluye sueldos, que todavía no se cargan.
+            {rentabilidad.itemsSinCosto > 0 &&
+              ` Ojo: ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) no tienen costo unitario cargado, así que no se descontaron.`}
+          </p>
+          {rentabilidad.facturasSinCompra.count > 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+              Hay {rentabilidad.facturasSinCompra.count} factura(s) de proveedor por{" "}
+              {formatMoney(rentabilidad.facturasSinCompra.total)} sin una compra vinculada, así que
+              ese costo no está descontado acá.
+            </p>
+          )}
         </div>
         <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
           <p className="text-sm font-semibold mb-1">Producto entregado valorizado (este mes), por marca</p>

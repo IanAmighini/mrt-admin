@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getDocumentEffect } from "@/lib/ledger";
 import { getAllItemStocks } from "@/lib/stock";
+import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 import { monthPeriod, type Period } from "@/lib/period";
 
 /**
@@ -27,18 +28,28 @@ export async function getLitrosEnvasados(period: Period = monthPeriod()) {
 }
 
 /** Efecto (por moneda) de los documentos del período de las entidades de los tipos dados. */
+/**
+ * El saldo inicial es lo que se debía antes de que existiera el sistema, no actividad del mes.
+ * Contarlo como ingreso o como compra hace que el primer mes muestre números enormes: la cuenta de
+ * La Campechana arranca en 329 millones y eso no es una venta de septiembre.
+ */
+const SIN_SALDO_INICIAL = { number: { not: NUMERO_SALDO_INICIAL } };
+
+const DOCUMENT_INCLUDE_EFECTO = {
+  remitoLinks: true,
+  allocations: true,
+  lines: { include: { product: true } },
+  purchaseLines: { include: { item: true } },
+} satisfies Prisma.DocumentInclude;
+
 async function getEfectoDocumentos(period: Period, typeFilter: EntityType[]) {
   const documents = await prisma.document.findMany({
     where: {
       date: { gte: period.from, lt: period.to },
       account: { entity: { type: { in: typeFilter } } },
+      ...SIN_SALDO_INICIAL,
     },
-    include: {
-      remitoLinks: true,
-      allocations: true,
-      lines: { include: { product: true } },
-      purchaseLines: { include: { item: true } },
-    },
+    include: DOCUMENT_INCLUDE_EFECTO,
   });
 
   const byCurrency = new Map<Currency, Prisma.Decimal>();
@@ -159,14 +170,103 @@ export async function getCostoInsumos(period: Period = monthPeriod()): Promise<{
 }
 
 /**
- * Rentabilidad estimada del período: ingresos (ARS) menos costo de insumos consumidos. No incluye
- * otros costos fijos (mano de obra, alquiler, etc.).
+ * Lo facturado en el período sin el IVA. El IVA no es ingreso: se cobra y se deposita, así que
+ * compararlo contra costos netos infla el margen en una quinta parte de las ventas en Blanco.
+ *
+ * Se saca proporcionalmente del efecto y no sumando `netAmount` a secas, para no perder la lógica
+ * de `getDocumentEffect`: un remito ya facturado aporta cero, y uno facturado a medias aporta sólo
+ * lo que le queda pendiente.
+ */
+async function getIngresosNetos(period: Period): Promise<Prisma.Decimal> {
+  const documents = await prisma.document.findMany({
+    where: {
+      date: { gte: period.from, lt: period.to },
+      currency: "ARS",
+      account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
+      ...SIN_SALDO_INICIAL,
+    },
+    include: DOCUMENT_INCLUDE_EFECTO,
+  });
+
+  return documents.reduce((acc, doc) => {
+    const efecto = getDocumentEffect(doc);
+    const total = toDecimal(doc.totalAmount);
+    // Sin IVA discriminado —todo Negro— el efecto ya es neto.
+    const neto = total.isZero() ? efecto : efecto.times(toDecimal(doc.netAmount)).dividedBy(total);
+    return acc.plus(neto);
+  }, ZERO);
+}
+
+/**
+ * Los gastos del período: flete, alquiler, luz, honorarios. De los dos circuitos, porque un gasto
+ * en negro cuesta igual, y por el neto, porque el IVA de un gasto en blanco es crédito fiscal y no
+ * costo.
+ */
+async function getGastosNetos(period: Period): Promise<Prisma.Decimal> {
+  const documents = await prisma.document.findMany({
+    where: { type: "GASTO", currency: "ARS", date: { gte: period.from, lt: period.to } },
+    select: { netAmount: true },
+  });
+  return sumDecimals(documents.map((d) => d.netAmount));
+}
+
+/**
+ * Los insumos que no llevan stock —pegamento, stretch, jabón, aditivo— se consumen sin pasar por el
+ * depósito, así que no generan un CONSUMO_PRODUCCION que valorizar. Su costo es el de la compra.
+ */
+async function getCostoInsumosSinStock(period: Period): Promise<Prisma.Decimal> {
+  const lines = await prisma.purchaseLine.findMany({
+    where: {
+      item: { llevaStock: false },
+      document: { currency: "ARS", date: { gte: period.from, lt: period.to } },
+    },
+    select: { subtotal: true },
+  });
+  return sumDecimals(lines.map((l) => l.subtotal));
+}
+
+/**
+ * Facturas de proveedor que no cubren ninguna compra. Su costo no entra al margen —el de los
+ * insumos sale del consumo en producción, y sin compra cargada no hay stock que consumir— así que
+ * en vez de adivinar si son un costo o un duplicado, se avisan.
+ */
+async function getFacturasDeProveedorSinCompra(period: Period) {
+  const documents = await prisma.document.findMany({
+    where: {
+      type: "FACTURA",
+      currency: "ARS",
+      date: { gte: period.from, lt: period.to },
+      account: { entity: { type: { in: ["PROVEEDOR", "AMBOS"] } } },
+      facturaLinks: { none: {} },
+    },
+    select: { netAmount: true },
+  });
+  return { count: documents.length, total: sumDecimals(documents.map((d) => d.netAmount)) };
+}
+
+/**
+ * Margen del período: lo facturado menos lo que costó producirlo menos los gastos. Todo neto de
+ * IVA y en pesos — las cuentas en dólares quedan afuera porque valuarlas necesitaría una cotización
+ * por comprobante y el número dejaría de ser comparable contra el mes anterior.
  */
 export async function getRentabilidad(period: Period = monthPeriod()) {
-  const [ingresos, costo] = await Promise.all([getIngresos(period), getCostoInsumos(period)]);
+  const [ingresos, costo, sinStock, gastos, sueltas] = await Promise.all([
+    getIngresosNetos(period),
+    getCostoInsumos(period),
+    getCostoInsumosSinStock(period),
+    getGastosNetos(period),
+    getFacturasDeProveedorSinCompra(period),
+  ]);
 
-  const ingresosArs = ingresos.get("ARS") ?? ZERO;
-  return { rentabilidad: ingresosArs.minus(costo.total), itemsSinCosto: costo.itemsSinCosto };
+  const costoInsumos = costo.total.plus(sinStock);
+  return {
+    ingresos,
+    costoInsumos,
+    gastos,
+    rentabilidad: ingresos.minus(costoInsumos).minus(gastos),
+    itemsSinCosto: costo.itemsSinCosto,
+    facturasSinCompra: sueltas,
+  };
 }
 
 /**
