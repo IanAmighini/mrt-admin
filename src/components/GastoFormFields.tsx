@@ -13,6 +13,7 @@ const toggleClass =
   "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
 export type GastoDefaults = {
+  entityId?: string;
   circuit?: "BLANCO" | "NEGRO";
   expenseCategory?: string;
   reason?: string;
@@ -30,10 +31,14 @@ export type GastoDefaults = {
 
 export function GastoFormFields({
   entityId,
+  proveedores,
   editingDocumentId,
   defaultValues,
 }: {
-  entityId: string;
+  /** Si viene, el proveedor queda fijo (se abre desde su ficha). */
+  entityId?: string;
+  /** Si no hay proveedor fijo, la lista para elegirlo — se abre desde Compras. */
+  proveedores?: { id: string; name: string }[];
   /** Si viene, el formulario edita ese gasto en vez de crear uno nuevo. */
   editingDocumentId?: string;
   defaultValues?: GastoDefaults;
@@ -56,8 +61,30 @@ export function GastoFormFields({
 
   return (
     <>
-      <input type="hidden" name="entityId" value={entityId} />
+      {entityId && <input type="hidden" name="entityId" value={entityId} />}
       {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
+
+      {!entityId && (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="entityId">
+            Proveedor
+          </label>
+          <select
+            id="entityId"
+            name="entityId"
+            required
+            defaultValue={defaultValues?.entityId ?? ""}
+            className={inputClass}
+          >
+            <option value="">— Elegir —</option>
+            {(proveedores ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>

@@ -1,7 +1,15 @@
 import "server-only";
-import { Prisma, type Circuit, type Currency, type DocumentType, type EntityType } from "@prisma/client";
+import {
+  Prisma,
+  type Circuit,
+  type Currency,
+  type DocumentType,
+  type EntityType,
+  type ExpenseCategory,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
+import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 
 const DUE_DATE_DAYS: Record<Circuit, number> = {
   NEGRO: 7,
@@ -206,6 +214,38 @@ export async function getRecentCompras(limit = 30, entityId?: string, search?: s
             OR: [
               { number: { contains: trimmedSearch, mode: "insensitive" } },
               { account: { entity: { name: { contains: trimmedSearch, mode: "insensitive" } } } },
+            ],
+          }
+        : {}),
+    },
+    include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
+    orderBy: { date: "desc" },
+    take: limit,
+  });
+}
+
+/** Facturas de gasto: lo que se le compra a un proveedor y no es un insumo — flete, alquiler, luz. */
+export async function getRecentGastos(limit = 30, entityId?: string, search?: string) {
+  const trimmedSearch = search?.trim();
+  // El rubro es un enum, así que buscar "flete" no lo encontraría por más que la fila lo muestre:
+  // se traduce el texto a las categorías cuya etiqueta lo contenga.
+  const rubros = trimmedSearch
+    ? (Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[]).filter((c) =>
+        EXPENSE_CATEGORY_LABELS[c].toLowerCase().includes(trimmedSearch.toLowerCase())
+      )
+    : [];
+
+  return prisma.document.findMany({
+    where: {
+      type: "GASTO",
+      ...(entityId ? { account: { entityId } } : {}),
+      ...(trimmedSearch
+        ? {
+            OR: [
+              { number: { contains: trimmedSearch, mode: "insensitive" } },
+              { reason: { contains: trimmedSearch, mode: "insensitive" } },
+              { account: { entity: { name: { contains: trimmedSearch, mode: "insensitive" } } } },
+              ...(rubros.length > 0 ? [{ expenseCategory: { in: rubros } }] : []),
             ],
           }
         : {}),

@@ -29,7 +29,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/proveedores", label: "Proveedores", roles: ADMINISTRATIVOS },
   { href: "/pedidos", label: "Pedidos", roles: ALL_ROLES },
   { href: "/entregas", label: "Entregas", roles: ADMINISTRATIVOS },
-  { href: "/compras", label: "Compras", roles: ADMINISTRATIVOS },
+  { href: "/compras", label: "Compras y gastos", roles: ADMINISTRATIVOS },
   { href: "/pagos-clientes", label: "Pagos de Clientes", roles: ADMINISTRATIVOS },
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
   { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },

@@ -269,3 +269,23 @@ export function impuestosDeNota(
   // Con el neto ya leído, el resto es idéntico a una compra: alícuota, percepciones y retención.
   return impuestosDeCompra(formData, parseNumeroEscrito(raw, etiqueta), circuit);
 }
+
+/**
+ * El desglose de un gasto con las mismas claves con las que lo manda su formulario, para que
+ * editarlo sea reabrir lo que se cargó y no rearmarlo de memoria.
+ */
+export function tributosDeGasto(doc: {
+  taxes: { kind: TaxKind; base: Prisma.Decimal | null; rate: Prisma.Decimal | null; amount: Prisma.Decimal }[];
+}): Record<string, string> {
+  const tributos: Record<string, string> = {};
+  for (const tax of doc.taxes) {
+    if (tax.kind === "IVA") {
+      const alicuota = ALICUOTAS_IVA.find((a) => tax.rate?.equals(a.replace(",", ".")));
+      if (alicuota) tributos[`ivaBase_${alicuota}`] = tax.base?.toString() ?? "";
+    } else {
+      const campo = OTROS_TRIBUTOS.find((t) => t.kind === tax.kind);
+      if (campo) tributos[campo.name] = tax.amount.toString();
+    }
+  }
+  return tributos;
+}
