@@ -215,7 +215,18 @@ enum PaymentMethod {
   TRANSFERENCIA
   CHEQUE
   ECHEQ
+  /// Lo que un cliente retiene al pagarnos. Cancela su deuda como cualquier pago, pero no es plata:
+  /// es un crédito contra nuestro propio impuesto, así que nunca toca una tesorería.
+  RETENCION
   OTRO
+}
+
+/// Contra qué impuesto se imputa una retención sufrida.
+enum RetentionKind {
+  IVA
+  GANANCIAS
+  IIBB
+  OTRA
 }
 
 model Document {
@@ -335,21 +346,23 @@ model DocumentLink {
 }
 
 model Payment {
-  id           String        @id @default(cuid())
-  accountId    String
-  account      Account       @relation(fields: [accountId], references: [id])
-  date         DateTime
+  id            String         @id @default(cuid())
+  accountId     String
+  account       Account        @relation(fields: [accountId], references: [id])
+  date          DateTime
   /// En la moneda de la cuenta. Si la cuenta va en dólares, esto son dólares.
-  amount       Decimal       @db.Decimal(14, 2)
-  currency     Currency      @default(ARS)
+  amount        Decimal        @db.Decimal(14, 2)
+  currency      Currency       @default(ARS)
   /// Con qué cotización se pagó, cuando el pago se hizo en pesos contra una cuenta en dólares.
   /// Guardarla es lo que deja reconstruir cuántos pesos salieron del banco.
-  exchangeRate Decimal?      @db.Decimal(12, 4)
-  method       PaymentMethod
-  reference    String?
-  createdById  String
-  createdBy    User          @relation(fields: [createdById], references: [id])
-  createdAt    DateTime      @default(now())
+  exchangeRate  Decimal?       @db.Decimal(12, 4)
+  method        PaymentMethod
+  /// Solo cuando `method` es RETENCION: contra qué impuesto se imputa.
+  retentionKind RetentionKind?
+  reference     String?
+  createdById   String
+  createdBy     User           @relation(fields: [createdById], references: [id])
+  createdAt     DateTime       @default(now())
 
   /**
    * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.

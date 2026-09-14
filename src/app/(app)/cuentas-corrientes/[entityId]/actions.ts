@@ -9,6 +9,7 @@ import {
   type Currency,
   type DocumentType,
   type PaymentMethod,
+  type RetentionKind,
   type TreasuryMovementCategory,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -16,7 +17,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
 import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impuestos";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
-import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { logAudit } from "@/lib/audit";
 import type { AuditAction } from "@prisma/client";
@@ -1037,6 +1038,25 @@ export async function deleteFactura(formData: FormData) {
 }
 
 /**
+ * Una retención sufrida cancela la deuda del cliente como cualquier pago, pero no es plata: nunca
+ * llegó a una caja. El destino se descarta acá y no sólo en el formulario, porque si entrara igual
+ * la tesorería contaría plata que no existe.
+ */
+function leerRetencion(formData: FormData, method: PaymentMethod) {
+  if (method !== "RETENCION") {
+    return {
+      retentionKind: null,
+      destino: String(formData.get("destino") || ""),
+      proveedorId: String(formData.get("proveedorId") || ""),
+    };
+  }
+
+  const raw = String(formData.get("retentionKind") || "");
+  if (!(raw in RETENTION_KIND_LABELS)) throw new UserError("Elegí el tipo de retención.");
+  return { retentionKind: raw as RetentionKind, destino: "", proveedorId: "" };
+}
+
+/**
  * Aplica el destino/origen elegido para un cobro/pago recién creado (o recreado al editar):
  * - Tesorería (Banco Galicia / Caja Bufano): genera el Document AJUSTE que suma/resta su saldo,
  *   vinculado al Payment por sourcePaymentId (se borra solo si se borra el Payment).
@@ -1161,8 +1181,7 @@ export async function createPaymentForEntity(formData: FormData) {
   const date = parseFormDate(formData.get("date"));
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
-  const destino = String(formData.get("destino") || "");
-  const proveedorId = String(formData.get("proveedorId") || "");
+  const { retentionKind, destino, proveedorId } = leerRetencion(formData, method);
 
   // En una cuenta en dólares se escribe lo que realmente salió del banco —pesos— y la cotización,
   // y el pago se acredita en dólares. Es la cuenta que hoy se hace a mano; guardarla acá deja
@@ -1179,6 +1198,7 @@ export async function createPaymentForEntity(formData: FormData) {
         currency: account.entity.moneda,
         exchangeRate,
         method,
+        retentionKind,
         reference,
         createdById: user.id,
       },
@@ -1300,8 +1320,7 @@ export async function updatePayment(formData: FormData) {
   const { amount, exchangeRate } = montoDelPago(formData, account.entity.moneda);
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
-  const destino = String(formData.get("destino") || "");
-  const proveedorId = String(formData.get("proveedorId") || "");
+  const { retentionKind, destino, proveedorId } = leerRetencion(formData, method);
   const isCobro = formData.get("isCobro") === "1";
 
   const oldLinkedPaymentId = payment.linkedPaymentId;
@@ -1333,6 +1352,7 @@ export async function updatePayment(formData: FormData) {
         currency: account.entity.moneda,
         exchangeRate,
         method,
+        retentionKind,
         reference,
         treasuryId: null,
         linkedPaymentId: isCobro ? null : payment.linkedPaymentId,

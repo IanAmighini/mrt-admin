@@ -1,5 +1,5 @@
 import "server-only";
-import { Prisma, type Currency, type DocumentType, type TaxKind } from "@prisma/client";
+import { Prisma, type Currency, type DocumentType, type RetentionKind, type TaxKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/settings";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/labels";
@@ -88,6 +88,20 @@ export type LibroIva = {
    * así que no se puede decidir de qué lado del libro van. Se avisan en vez de adivinar.
    */
   notasSinClasificar: { number: string; date: Date; entityName: string; tipo: string }[];
+  /**
+   * Lo que los clientes retuvieron al pagarnos. No es IVA ventas ni IVA compras: es un crédito
+   * contra nuestro propio impuesto, y va al contador con su certificado.
+   */
+  retenciones: {
+    date: Date;
+    entityName: string;
+    taxId: string | null;
+    kind: RetentionKind;
+    certificado: string | null;
+    amount: Prisma.Decimal;
+  }[];
+  retencionesPorTipo: { kind: RetentionKind; total: Prisma.Decimal }[];
+  totalRetenciones: Prisma.Decimal;
 };
 
 const MESES = [
@@ -168,7 +182,7 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
   const enElPeriodo = { date: { gte: period.from, lt: period.to } };
   const enBlanco = { account: { circuit: "BLANCO" as const } };
 
-  const [contribuyente, facturas, gastos, remitos, notas] = await Promise.all([
+  const [contribuyente, facturas, gastos, remitos, notas, retencionesCrudas] = await Promise.all([
     getContribuyente(),
     // Las facturas de los dos lados: la que le emitimos a un cliente y la que nos emite un
     // proveedor. Ni el remito de entrega ni la compra son comprobantes fiscales.
@@ -196,7 +210,26 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       include: { account: { include: { entity: true } }, taxes: true },
       orderBy: [{ date: "asc" }, { number: "asc" }],
     }),
+    // Las retenciones que sufrimos: se cargan como pago del cliente, de cualquier circuito, porque
+    // lo que las define es el método y no en qué cuenta cayeron.
+    prisma.payment.findMany({
+      where: { method: "RETENCION", date: { gte: period.from, lt: period.to } },
+      include: { account: { include: { entity: true } } },
+      orderBy: { date: "asc" },
+    }),
   ]);
+
+  const retenciones = retencionesCrudas.map((p) => ({
+    date: p.date,
+    entityName: p.account.entity.name,
+    taxId: p.account.entity.taxId,
+    kind: p.retentionKind ?? ("OTRA" as RetentionKind),
+    certificado: p.reference,
+    amount: toDecimal(p.amount),
+  }));
+
+  const porTipo = new Map<RetentionKind, Prisma.Decimal>();
+  for (const r of retenciones) porTipo.set(r.kind, (porTipo.get(r.kind) ?? ZERO).plus(r.amount));
 
   const renglon = (
     doc: {
@@ -304,6 +337,9 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
     alicuotasVentas: abrirPorAlicuota([...deCliente(facturas), ...deCliente(notas)]),
     alicuotasCompras: abrirPorAlicuota([...deProveedor(facturas), ...deProveedor(gastos), ...deProveedor(notas)]),
     remitosSinFacturar,
+    retenciones,
+    retencionesPorTipo: Array.from(porTipo.entries()).map(([kind, total]) => ({ kind, total })),
+    totalRetenciones: sumDecimals(retenciones.map((r) => r.amount)),
     notasSinClasificar: [...notas, ...facturas]
       .filter((n) => n.account.entity.type !== "CLIENTE" && n.account.entity.type !== "PROVEEDOR")
       .map((n) => ({

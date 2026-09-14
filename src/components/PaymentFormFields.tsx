@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Currency, Entity, PaymentMethod } from "@prisma/client";
-import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS, RETENTION_KIND_ORDER } from "@/lib/labels";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
@@ -12,7 +12,14 @@ const submitClass =
 const toggleClass =
   "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
-const PAYMENT_METHODS: PaymentMethod[] = ["EFECTIVO", "TRANSFERENCIA", "CHEQUE", "ECHEQ", "OTRO"];
+const PAYMENT_METHODS: PaymentMethod[] = [
+  "EFECTIVO",
+  "TRANSFERENCIA",
+  "CHEQUE",
+  "ECHEQ",
+  "RETENCION",
+  "OTRO",
+];
 
 export function PaymentFormFields({
   entities,
@@ -39,6 +46,8 @@ export function PaymentFormFields({
   // cotización, y se acredita la división.
   const [entityId, setEntityId] = useState(fixedEntityId ?? "");
   const [monto, setMonto] = useState("");
+  const [method, setMethod] = useState<PaymentMethod>("EFECTIVO");
+  const esRetencion = method === "RETENCION";
   const [cotizacion, setCotizacion] = useState("");
   const monedaCuenta: Currency =
     moneda ?? entities?.find((e) => e.id === entityId)?.moneda ?? "ARS";
@@ -98,16 +107,17 @@ export function PaymentFormFields({
       <div className="space-y-1">
         <p className="text-sm">Método de pago</p>
         <div className="flex flex-wrap gap-2">
-          {PAYMENT_METHODS.map((method, i) => (
-            <label key={method} className={toggleClass}>
+          {PAYMENT_METHODS.map((m) => (
+            <label key={m} className={toggleClass}>
               <input
                 type="radio"
                 name="method"
-                value={method}
-                defaultChecked={i === 0}
+                value={m}
+                checked={method === m}
+                onChange={() => setMethod(m)}
                 className="sr-only"
               />
-              {PAYMENT_METHOD_LABELS[method]}
+              {PAYMENT_METHOD_LABELS[m]}
             </label>
           ))}
         </div>
@@ -163,23 +173,52 @@ export function PaymentFormFields({
         </div>
       )}
 
-      <PaymentDestinoField
-        isCobro={isCobro}
-        treasuries={treasuries}
-        proveedores={proveedores}
-        defaultDestino={defaultTreasuryId}
-        montoDelCobro={monto}
-      />
+      {/* Una retención no es plata: no entró a ninguna caja, así que no tiene destino. Mostrar el
+          selector invitaría a imputarla a Banco y dejar la tesorería contando plata que no llegó. */}
+      {esRetencion ? (
+        <div className="space-y-1 rounded-lg border border-foreground/10 p-3">
+          <p className="text-sm">
+            Tipo de retención
+            <span className="block text-xs text-foreground/50">
+              Cancela la deuda del cliente igual que un pago, pero no entra a ninguna caja: es un
+              crédito contra tu propio impuesto.
+            </span>
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {RETENTION_KIND_ORDER.map((kind, i) => (
+              <label key={kind} className={toggleClass}>
+                <input
+                  type="radio"
+                  name="retentionKind"
+                  value={kind}
+                  defaultChecked={i === 0}
+                  className="sr-only"
+                />
+                {RETENTION_KIND_LABELS[kind]}
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <PaymentDestinoField
+          isCobro={isCobro}
+          treasuries={treasuries}
+          proveedores={proveedores}
+          defaultDestino={defaultTreasuryId}
+          montoDelCobro={monto}
+        />
+      )}
 
       <div className="space-y-1">
         <label className="text-sm" htmlFor="reference">
-          Descripción
+          {esRetencion ? "Nº de certificado" : "Descripción"}
         </label>
         <textarea
           id="reference"
           name="reference"
           rows={2}
-          placeholder="Observaciones del pago..."
+          required={esRetencion}
+          placeholder={esRetencion ? "Número del certificado de retención" : "Observaciones del pago..."}
           className={inputClass}
         />
       </div>

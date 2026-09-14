@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AlertTriangle, Scale, TrendingDown, TrendingUp } from "lucide-react";
 import { formatMoney, formatNumeroEditable } from "@/lib/money";
+import { RETENTION_KIND_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { FormModal } from "@/components/Modal";
 import { ContribuyenteFields } from "@/components/ContribuyenteFields";
@@ -124,6 +125,52 @@ export async function LibroIvaSection({
         totales={libro.totalesCompras}
         vacio="Sin compras ni gastos facturados en este período."
       />
+
+      {libro.retenciones.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold">Retenciones sufridas</h2>
+          <p className="mb-2 text-xs text-foreground/50">
+            Lo que los clientes retuvieron al pagarnos. No entra en ninguna de las dos planillas: es
+            un crédito contra nuestro propio impuesto.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-foreground/10 text-foreground/60">
+                  <th className={thClass}>Fecha</th>
+                  <th className={thClass}>Cliente</th>
+                  <th className={thClass}>Nro de Cuit</th>
+                  <th className={thClass}>Tipo</th>
+                  <th className={thClass}>Certificado</th>
+                  <th className={thNum}>Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                {libro.retenciones.map((r, i) => (
+                  <tr key={`${r.certificado}-${i}`} className="border-b border-foreground/5">
+                    <td className="py-2 pr-4 whitespace-nowrap">{r.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4">{r.entityName}</td>
+                    <td className="py-2 pr-4 text-foreground/60">{r.taxId ?? "—"}</td>
+                    <td className="py-2 pr-4">{RETENTION_KIND_LABELS[r.kind]}</td>
+                    <td className="py-2 pr-4 text-foreground/60">{r.certificado ?? "—"}</td>
+                    <td className={tdNum}>{formatMoney(r.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-foreground/20 font-semibold">
+                  <td className="py-2 pr-4" colSpan={5}>
+                    {libro.retencionesPorTipo
+                      .map((r) => `${RETENTION_KIND_LABELS[r.kind]}: ${formatMoney(r.total)}`)
+                      .join(" · ")}
+                  </td>
+                  <td className={tdNum}>{formatMoney(libro.totalRetenciones)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+      )}
 
       {(libro.alicuotasVentas.length > 0 || libro.alicuotasCompras.length > 0) && (
         <section>

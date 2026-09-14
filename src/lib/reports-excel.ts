@@ -13,6 +13,7 @@ import { slugify } from "@/lib/slug";
 import { formatPeriodLabel, toDateInputValue, periodLastDay, type Period } from "@/lib/period";
 import type { LibroIva, RenglonIva } from "@/lib/libro-iva";
 import { ALICUOTAS_IVA, OTROS_TRIBUTOS } from "@/lib/impuestos";
+import { RETENTION_KIND_LABELS } from "@/lib/labels";
 import {
   REPORT_KEYS_SNAPSHOT,
   REPORT_LABELS,
@@ -553,6 +554,21 @@ export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
         libro.totalesCompras.total,
       ],
     }),
+    sheet<LibroIva["retenciones"][number]>({
+      name: "Retenciones sufridas",
+      title: "RETENCIONES SUFRIDAS",
+      subtitle: encabezado("Lo que los clientes retuvieron al pagarnos, con su certificado."),
+      columns: [
+        { header: "Fecha", value: (r) => r.date, format: "date" },
+        { header: "Cliente", value: (r) => r.entityName, width: 32 },
+        { header: "Nro de Cuit", value: (r) => r.taxId ?? "", width: 16 },
+        { header: "Tipo", value: (r) => RETENTION_KIND_LABELS[r.kind], width: 16 },
+        { header: "Certificado", value: (r) => r.certificado ?? "", width: 24 },
+        { header: "Importe", value: (r) => r.amount, format: "money" },
+      ],
+      rows: libro.retenciones,
+      totals: [null, null, null, null, "TOTAL", libro.totalRetenciones],
+    }),
     sheet<(typeof alicuotas)[number]>({
       name: "Resumen",
       title: "Resumen del período",
@@ -560,6 +576,9 @@ export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
         ...encabezado(""),
         `IVA débito fiscal (ventas): ${libro.totalesVentas.iva.toFixed(2)}`,
         `IVA crédito fiscal (compras): ${libro.totalesCompras.iva.toFixed(2)}`,
+        ...libro.retencionesPorTipo.map(
+          (r) => `Retención de ${RETENTION_KIND_LABELS[r.kind]} sufrida: ${r.total.toFixed(2)}`
+        ),
         libro.saldoIva.greaterThanOrEqualTo(0)
           ? `Saldo a pagar: ${libro.saldoIva.toFixed(2)}`
           : `Saldo a favor: ${libro.saldoIva.negated().toFixed(2)}`,

@@ -8,6 +8,7 @@ import type {
   PaymentMethod,
   PedidoStatus,
   ProductMovementType,
+  RetentionKind,
   SupplierCategory,
   TreasuryMovementCategory,
 } from "@prisma/client";
@@ -88,8 +89,19 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   TRANSFERENCIA: "Transferencia",
   CHEQUE: "Cheque",
   ECHEQ: "Echeq",
+  RETENCION: "Retención sufrida",
   OTRO: "Otro",
 };
+
+export const RETENTION_KIND_LABELS: Record<RetentionKind, string> = {
+  IVA: "IVA",
+  GANANCIAS: "Ganancias",
+  IIBB: "Ingresos Brutos",
+  OTRA: "Otra",
+};
+
+/** Los tipos de retención en el orden en que se ofrecen y se listan. */
+export const RETENTION_KIND_ORDER: RetentionKind[] = ["IVA", "GANANCIAS", "IIBB", "OTRA"];
 
 export const CURRENCY_LABELS: Record<Currency, string> = {
   ARS: "ARS",
