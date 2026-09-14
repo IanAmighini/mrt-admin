@@ -33,6 +33,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pagos-clientes", label: "Pagos de Clientes", roles: ADMINISTRATIVOS },
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
   { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },
+  // Fuera de Reportes, que es gerencial: la secretaría lo coteja con ARCA antes de pasárselo al
+  // contador, pero no tiene por qué ver el resto de los reportes.
+  { href: "/libro-iva", label: "Libro de IVA", roles: ADMINISTRATIVOS },
   { href: "/produccion", label: "Producción", roles: ALL_ROLES },
   { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
   { href: "/actividad", label: "Actividad", roles: ["ADMIN"] },

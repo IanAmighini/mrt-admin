@@ -4,7 +4,7 @@ import { formatMoney, formatNumeroEditable } from "@/lib/money";
 import { KpiCard } from "@/components/KpiCard";
 import { FormModal } from "@/components/Modal";
 import { ContribuyenteFields } from "@/components/ContribuyenteFields";
-import { updateContribuyente } from "../actions";
+import { updateContribuyente } from "./actions";
 import { getLibroIva, type RenglonIva, type TotalesIva } from "@/lib/libro-iva";
 import type { Period } from "@/lib/period";
 
@@ -12,7 +12,14 @@ const thClass = "py-2 pr-4 text-left font-medium";
 const thNum = "py-2 pr-4 text-right font-medium";
 const tdNum = "py-2 pr-4 text-right tabular-nums";
 
-export async function LibroIvaSection({ period }: { period: Period }) {
+export async function LibroIvaSection({
+  period,
+  canEdit,
+}: {
+  period: Period;
+  /** Sólo Admin cambia el contribuyente; los demás lo ven pero no tienen por qué tocarlo. */
+  canEdit?: boolean;
+}) {
   const libro = await getLibroIva(period);
   const aFavor = libro.saldoIva.lessThan(0);
 
@@ -25,14 +32,16 @@ export async function LibroIvaSection({ period }: { period: Period }) {
             C.U.I.T. {libro.contribuyente.cuit} · Período {libro.periodoTitulo}
           </p>
         </div>
-        <FormModal
-          triggerLabel="Datos del contribuyente"
-          iconName="edit"
-          title="Datos del contribuyente"
-          action={updateContribuyente}
-        >
-          <ContribuyenteFields defaultValues={libro.contribuyente} />
-        </FormModal>
+        {canEdit && (
+          <FormModal
+            triggerLabel="Datos del contribuyente"
+            iconName="edit"
+            title="Datos del contribuyente"
+            action={updateContribuyente}
+          >
+            <ContribuyenteFields defaultValues={libro.contribuyente} />
+          </FormModal>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">

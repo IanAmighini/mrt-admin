@@ -460,7 +460,7 @@ function gastosSheets(report: GastosReport, generatedAt: Date): ExcelSheet<never
  * El libro de IVA, con el mismo encabezado y las mismas columnas que la planilla que se llevaba a
  * mano: contribuyente, CUIT y período arriba, y la fila de totales al pie.
  */
-function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
+export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
   const encabezado = (planilla: string) => [
     `CONTRIBUYENTE: ${libro.contribuyente.nombre}`,
     `C.U.I.T. Nº: ${libro.contribuyente.cuit}`,
@@ -552,7 +552,6 @@ export type ReportData =
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
   | { key: "compras"; report: ComprasReport }
   | { key: "gastos"; report: GastosReport }
-  | { key: "libro-iva"; libro: LibroIva }
   | { key: "produccion"; report: ProduccionReport };
 
 export function buildReportSheets(data: ReportData, generatedAt = new Date()): ExcelSheet<never>[] {
@@ -572,8 +571,6 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return comprasSheets(data.report, generatedAt);
     case "gastos":
       return gastosSheets(data.report, generatedAt);
-    case "libro-iva":
-      return libroIvaSheets(data.libro);
     case "produccion":
       return produccionSheets(data.report, generatedAt);
   }
