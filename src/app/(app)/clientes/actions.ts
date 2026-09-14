@@ -7,9 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
 import { generateUniqueSlug } from "@/lib/slug";
-import { SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 import { aplicarSaldoInicial, NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
-import type { EntityType, SupplierCategory } from "@prisma/client";
+import { parseRubro } from "@/lib/rubro-proveedor";
+import type { EntityType } from "@prisma/client";
 
 const ENTITY_TYPES: EntityType[] = ["CLIENTE", "PROVEEDOR", "AMBOS"];
 const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
@@ -18,9 +18,6 @@ const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   AMBOS: "Cliente/Proveedor",
   TESORERIA: "Tesorería",
 };
-// Misma lista que el resto de la app, para que no se desincronicen.
-const SUPPLIER_CATEGORIES: SupplierCategory[] = SUPPLIER_CATEGORY_ORDER;
-
 export async function createEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
@@ -36,10 +33,7 @@ export async function createEntity(formData: FormData) {
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
-  const supplierCategoryRaw = String(formData.get("supplierCategory") || "").trim();
-  const supplierCategory = SUPPLIER_CATEGORIES.includes(supplierCategoryRaw as SupplierCategory)
-    ? (supplierCategoryRaw as SupplierCategory)
-    : null;
+  const { supplierCategory, expenseCategory } = parseRubro(String(formData.get("rubro") || "").trim());
 
   if (!name) {
     throw new UserError("El nombre es obligatorio.");
@@ -56,7 +50,7 @@ export async function createEntity(formData: FormData) {
     );
     const entity = await tx.entity.create({
       data: {
-        name, slug, type, taxId, email, phone, address, notes, supplierCategory,
+        name, slug, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
         isWithholdingAgent, llevaCuentaPreformas, moneda,
       },
     });
@@ -99,10 +93,7 @@ export async function updateEntity(formData: FormData) {
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
-  const supplierCategoryRaw = String(formData.get("supplierCategory") || "").trim();
-  const supplierCategory = SUPPLIER_CATEGORIES.includes(supplierCategoryRaw as SupplierCategory)
-    ? (supplierCategoryRaw as SupplierCategory)
-    : null;
+  const { supplierCategory, expenseCategory } = parseRubro(String(formData.get("rubro") || "").trim());
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
 
@@ -117,7 +108,7 @@ export async function updateEntity(formData: FormData) {
     const entity = await tx.entity.update({
       where: { id: entityId },
       data: {
-        name, type, taxId, email, phone, address, notes, supplierCategory,
+        name, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
         isWithholdingAgent, llevaCuentaPreformas, moneda,
       },
       include: { accounts: true },

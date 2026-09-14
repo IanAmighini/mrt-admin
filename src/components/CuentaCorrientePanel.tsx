@@ -18,6 +18,7 @@ import { GastoFormFields } from "./GastoFormFields";
 export function CuentaCorrientePanel({
   entityId,
   entityType,
+  rubroGasto,
   moneda,
   movements,
   canEdit,
@@ -27,6 +28,8 @@ export function CuentaCorrientePanel({
 }: {
   entityId: string;
   entityType: Entity["type"];
+  /** El rubro del proveedor, para que un gasto suyo arranque con él puesto. */
+  rubroGasto?: Entity["expenseCategory"];
   /** Moneda de la cuenta: en dólares el pago se carga en pesos y se convierte. */
   moneda: Entity["moneda"];
   movements: RecentMovement[];
@@ -75,7 +78,7 @@ export function CuentaCorrientePanel({
                 action={createGasto}
                 maxWidthClass="max-w-xl"
               >
-                <GastoFormFields entityId={entityId} />
+                <GastoFormFields entityId={entityId} defaultValues={{ expenseCategory: rubroGasto ?? undefined }} />
               </FormModal>
             )}
             {factura && (

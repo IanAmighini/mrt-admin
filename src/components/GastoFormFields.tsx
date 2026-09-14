@@ -37,8 +37,9 @@ export function GastoFormFields({
 }: {
   /** Si viene, el proveedor queda fijo (se abre desde su ficha). */
   entityId?: string;
-  /** Si no hay proveedor fijo, la lista para elegirlo — se abre desde Compras. */
-  proveedores?: { id: string; name: string }[];
+  /** Si no hay proveedor fijo, la lista para elegirlo — se abre desde Compras. Cada uno trae su
+   * rubro, para precargarlo al elegirlo. */
+  proveedores?: { id: string; name: string; expenseCategory: string | null }[];
   /** Si viene, el formulario edita ese gasto en vez de crear uno nuevo. */
   editingDocumentId?: string;
   defaultValues?: GastoDefaults;
@@ -48,6 +49,10 @@ export function GastoFormFields({
   const [montos, setMontos] = useState<Record<string, string>>(defaultValues?.tributos ?? {});
   const [retencion, setRetencion] = useState(defaultValues?.retentionAmount ?? "");
   const [montoNegro, setMontoNegro] = useState(defaultValues?.amount ?? "");
+  // El rubro arranca con el del proveedor: a Edenor se le cargan servicios, al transportista flete.
+  // Se puede cambiar, y una vez tocado deja de seguir al proveedor.
+  const [rubro, setRubro] = useState(defaultValues?.expenseCategory ?? "");
+  const [rubroTocado, setRubroTocado] = useState(false);
 
   const setMonto = (name: string, value: string) =>
     setMontos((previos) => ({ ...previos, [name]: value }));
@@ -74,6 +79,11 @@ export function GastoFormFields({
             name="entityId"
             required
             defaultValue={defaultValues?.entityId ?? ""}
+            onChange={(e) => {
+              if (rubroTocado) return;
+              const elegido = (proveedores ?? []).find((p) => p.id === e.target.value);
+              setRubro(elegido?.expenseCategory ?? "");
+            }}
             className={inputClass}
           >
             <option value="">— Elegir —</option>
@@ -123,7 +133,11 @@ export function GastoFormFields({
             id="expenseCategory"
             name="expenseCategory"
             required
-            defaultValue={defaultValues?.expenseCategory ?? ""}
+            value={rubro}
+            onChange={(e) => {
+              setRubro(e.target.value);
+              setRubroTocado(true);
+            }}
             className={inputClass}
           >
             <option value="">— Elegir —</option>

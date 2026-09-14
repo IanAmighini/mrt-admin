@@ -2,6 +2,7 @@ import "server-only";
 import type { EntityType, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CIRCUIT_SLUGS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
+import { rubroLabel } from "@/lib/rubro-proveedor";
 import { formatProductLabel } from "@/lib/product-label";
 
 export type SearchResultKind =
@@ -112,7 +113,7 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
             OR: [{ name: contains }, { taxId: contains }],
             ...(ocultarTesorerias ? { type: { not: "TESORERIA" as const } } : {}),
           },
-          select: { id: true, slug: true, name: true, taxId: true, type: true, supplierCategory: true },
+          select: { id: true, slug: true, name: true, taxId: true, type: true, supplierCategory: true, expenseCategory: true },
           orderBy: { name: "asc" },
           take: TAKE_POR_TIPO,
         }),
@@ -163,7 +164,7 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
             taxId: { not: null },
             ...(ocultarTesorerias ? { type: { not: "TESORERIA" as const } } : {}),
           },
-          select: { id: true, slug: true, name: true, taxId: true, type: true, supplierCategory: true },
+          select: { id: true, slug: true, name: true, taxId: true, type: true, supplierCategory: true, expenseCategory: true },
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
@@ -186,8 +187,8 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
         ? `${ENTITY_TYPE_LABELS.TESORERIA} · Cuenta Blanco`
         : entity.taxId
           ? `${ENTITY_TYPE_LABELS[entity.type]} · ${entity.taxId}`
-          : entity.supplierCategory
-            ? `${ENTITY_TYPE_LABELS[entity.type]} · ${SUPPLIER_CATEGORY_LABELS[entity.supplierCategory]}`
+          : rubroLabel(entity)
+            ? `${ENTITY_TYPE_LABELS[entity.type]} · ${rubroLabel(entity)}`
             : ENTITY_TYPE_LABELS[entity.type];
 
     scored.push({

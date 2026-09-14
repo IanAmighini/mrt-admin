@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { getEntitySaldos } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
-import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
+import { rubroLabel } from "@/lib/rubro-proveedor";
 import { FormModal } from "@/components/Modal";
 import { EntityFormFields } from "@/components/EntityFormFields";
 import { createEntity } from "../clientes/actions";
@@ -62,7 +62,7 @@ export default async function ProveedoresPage() {
                 </td>
                 <td className="py-2 pr-4">{TYPE_LABELS[entity.type]}</td>
                 <td className="py-2 pr-4">
-                  {entity.supplierCategory ? SUPPLIER_CATEGORY_LABELS[entity.supplierCategory] : "—"}
+                  {rubroLabel(entity) ?? "—"}
                 </td>
                 <td className="py-2 pr-4">{entity.taxId || "—"}</td>
                 <td className="py-2 pr-4">{blancoSaldo ? formatMoney(blancoSaldo) : "—"}</td>

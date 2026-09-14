@@ -220,6 +220,7 @@ export default async function EntityLedgerPage({
         <CuentaCorrientePanel
           entityId={entity.id}
           entityType={entity.type}
+          rubroGasto={entity.expenseCategory}
           moneda={entity.moneda}
           movements={recentMovements}
           canEdit={canEdit}

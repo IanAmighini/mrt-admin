@@ -49,7 +49,7 @@ export default async function ComprasPage({
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     prisma.entity.findMany({
       where: { type: { in: ["PROVEEDOR", "AMBOS"] } },
-      select: { id: true, name: true },
+      select: { id: true, name: true, expenseCategory: true },
       orderBy: { name: "asc" },
     }),
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q),

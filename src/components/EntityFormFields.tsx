@@ -1,5 +1,5 @@
 import type { Entity } from "@prisma/client";
-import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
+import { RUBRO_GRUPOS, rubroDeEntidad } from "@/lib/rubro-proveedor";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const selectClass = inputClass;
@@ -79,20 +79,21 @@ export function EntityFormFields({
         </div>
         {showSupplierCategory && (
           <div className="space-y-1">
-            <label className="text-sm" htmlFor="supplierCategory">
-              Tipo de insumo
+            <label className="text-sm" htmlFor="rubro">
+              Rubro
             </label>
-            <select
-              id="supplierCategory"
-              name="supplierCategory"
-              defaultValue={entity?.supplierCategory ?? ""}
-              className={selectClass}
-            >
+            {/* Insumos y servicios en el mismo desplegable: un transportista o la luz no encajan en
+                ninguna categoría de insumo, y mandarlos a "Otro" los mezclaba con los que sí. */}
+            <select id="rubro" name="rubro" defaultValue={rubroDeEntidad(entity)} className={selectClass}>
               <option value="">— Elegir —</option>
-              {Object.entries(SUPPLIER_CATEGORY_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
+              {RUBRO_GRUPOS.map((grupo) => (
+                <optgroup key={grupo.label} label={grupo.label}>
+                  {grupo.opciones.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>

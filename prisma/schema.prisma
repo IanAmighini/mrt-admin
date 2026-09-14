@@ -114,6 +114,9 @@ model Entity {
   address              String?
   notes                String?
   supplierCategory     SupplierCategory?
+  /// Para el proveedor que no vende insumos sino servicios: el rubro con el que se le cargan los
+  /// gastos. Excluyente con `supplierCategory` — un proveedor es de una cosa o de la otra.
+  expenseCategory      ExpenseCategory?
   isWithholdingAgent   Boolean           @default(false)
   /// Si es true, la ficha muestra la cuenta de preformas: este proveedor fía la preforma y cobra
   /// sólo el soplado, así que además de la cuenta en pesos se le deben preformas en unidades.
