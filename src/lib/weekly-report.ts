@@ -20,6 +20,7 @@ import {
   getVencidosReport,
   getVentasReport,
 } from "@/lib/reports";
+import { getLibroIva } from "@/lib/libro-iva";
 import { getAllPedidosPendientes } from "@/lib/pedidos";
 import { buildReportSheets, reportFilename } from "@/lib/reports-excel";
 import { buildWorkbook } from "@/lib/excel";
@@ -169,7 +170,11 @@ async function buildEmailBody({
   semana: string;
   semanaKey: string;
 }): Promise<WeeklyReportEmail> {
-  const [vencidos, insumos, pedidos, ventas, cobranzas, pagos, compras, produccion] =
+  // El libro va por mes corriente y no por la semana reportada: el IVA se declara mensual, y una
+  // porción de siete días no dice nada. Es el único bloque del mail con otro período.
+  const mesEnCurso = monthPeriod(asOf);
+
+  const [vencidos, insumos, pedidos, ventas, cobranzas, pagos, compras, produccion, libro] =
     await Promise.all([
       getVencidosReport({ asOf }),
       getInsumosMinimoReport({ asOf }),
@@ -179,6 +184,7 @@ async function buildEmailBody({
       getCobranzasReport(period, "PROVEEDORES"),
       getComprasReport(period),
       getProduccionReport(period),
+      getLibroIva(mesEnCurso),
     ]);
 
   const totalVencido = moneyArs(vencidos.totalPendiente);
@@ -287,7 +293,14 @@ async function buildEmailBody({
         ],
         ["Cobranzas", `${cobranzas.rows.length}`, escapeHtml(formatMoney(moneyArs(cobranzas.totales)))],
         ["Pagos a proveedores", `${pagos.rows.length}`, escapeHtml(formatMoney(moneyArs(pagos.totales)))],
-        ["Compras", `${compras.detalle.length}`, escapeHtml(formatMoney(moneyArs(compras.totales)))],
+        // "de insumos" y no "Compras" a secas: más abajo hay otro total de compras, el del libro,
+        // que es del mes, lleva IVA y suma los gastos. Dos números distintos con el mismo nombre
+        // en el mismo mail es una discusión asegurada.
+        [
+          "Compras de insumos (neto)",
+          `${compras.detalle.length}`,
+          escapeHtml(formatMoney(moneyArs(compras.totales))),
+        ],
         [
           "Producción",
           escapeHtml(`${formatQuantity(produccion.totalPallets)} pallets`),
@@ -295,6 +308,46 @@ async function buildEmailBody({
         ],
       ]
     )
+  );
+
+  // --- IVA del mes en curso ---
+  const aFavor = libro.saldoIva.lessThan(0);
+  const sinFacturar = libro.remitosSinFacturar.length;
+
+  bloques.push(
+    divider(),
+    heading(`IVA de ${libro.periodoTitulo.toLowerCase()}`),
+    table(
+      ["Concepto", "Neto", "IVA", "Total"],
+      [
+        [
+          "Ventas",
+          escapeHtml(formatMoney(libro.totalesVentas.neto)),
+          escapeHtml(formatMoney(libro.totalesVentas.iva)),
+          escapeHtml(formatMoney(libro.totalesVentas.total)),
+        ],
+        [
+          "Compras y gastos",
+          escapeHtml(formatMoney(libro.totalesCompras.neto)),
+          escapeHtml(formatMoney(libro.totalesCompras.iva)),
+          escapeHtml(formatMoney(libro.totalesCompras.total)),
+        ],
+      ]
+    ),
+    paragraph(
+      `${aFavor ? "Saldo a favor" : "Saldo a pagar"}: <strong>${escapeHtml(
+        formatMoney(aFavor ? libro.saldoIva.negated() : libro.saldoIva)
+      )}</strong> — débito menos crédito, del mes hasta hoy.`
+    ),
+    // El número de arriba vale lo que valga lo cargado: si faltan facturas, está corto.
+    sinFacturar > 0
+      ? paragraph(
+          sinFacturar === 1
+            ? "Ojo: hay un comprobante del mes sin su factura cargada, así que todavía no cuenta acá."
+            : `Ojo: hay ${sinFacturar} comprobantes del mes sin su factura cargada, así que todavía no cuentan acá.`,
+          true
+        )
+      : subtle("Todos los comprobantes del mes tienen su factura cargada.")
   );
 
   const html = shell({
@@ -315,6 +368,10 @@ async function buildEmailBody({
     `Semana pasada — entregas: ${formatQuantity(ventas.totales.pallets)} pallets por ${formatMoney(moneyArs(ventas.totales.byCurrency))}.`,
     `Cobrado: ${formatMoney(moneyArs(cobranzas.totales))} · Pagado: ${formatMoney(moneyArs(pagos.totales))} · Comprado: ${formatMoney(moneyArs(compras.totales))}.`,
     `Producción: ${formatQuantity(produccion.totalPallets)} pallets, ${formatQuantity(produccion.litrosEnvasados, "L")}.`,
+    "",
+    `IVA de ${libro.periodoTitulo.toLowerCase()} — ventas: neto ${formatMoney(libro.totalesVentas.neto)}, IVA ${formatMoney(libro.totalesVentas.iva)}, total ${formatMoney(libro.totalesVentas.total)}.`,
+    `Compras y gastos: neto ${formatMoney(libro.totalesCompras.neto)}, IVA ${formatMoney(libro.totalesCompras.iva)}, total ${formatMoney(libro.totalesCompras.total)}.`,
+    `${aFavor ? "Saldo a favor" : "Saldo a pagar"}: ${formatMoney(aFavor ? libro.saldoIva.negated() : libro.saldoIva)}.${sinFacturar > 0 ? ` Falta${sinFacturar === 1 ? "" : "n"} ${sinFacturar} factura${sinFacturar === 1 ? "" : "s"} por cargar.` : ""}`,
     "",
     "El detalle de vencidos va en el Excel adjunto.",
   ].join("\n");
