@@ -2,14 +2,23 @@
 
 import { useMemo, useState } from "react";
 import type { SupplierCategory } from "@prisma/client";
-import { formatMoney, formatNumeroEditable, formatQuantity, parseNumeroSuave } from "@/lib/money";
+import {
+  DEFAULT_IVA_RATE,
+  formatMoney,
+  formatNumeroEditable,
+  formatQuantity,
+  parseNumeroSuave,
+  toDecimal,
+  ZERO,
+} from "@/lib/money";
+import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 import { FacturaDeCompraFields } from "./FacturaDeCompraFields";
 import {
-  ImpuestosCompraFields,
+  ImpuestosFields,
   impuestosIniciales,
-  type ImpuestosCompra,
-} from "./ImpuestosCompraFields";
+  type ImpuestosValores,
+} from "./ImpuestosFields";
 
 type Circuit = "BLANCO" | "NEGRO";
 
@@ -66,7 +75,7 @@ export function NuevaCompraForm({
   // La cotización deja de ser un dato suelto del encabezado: con ella cargada, las líneas piden el
   // precio en U$S y el de pesos pasa a ser derivado.
   const [cotizacion, setCotizacion] = useState("");
-  const [impuestos, setImpuestos] = useState<ImpuestosCompra>(() => impuestosIniciales());
+  const [impuestos, setImpuestos] = useState<ImpuestosValores>(() => impuestosIniciales());
   const cotizacionNum = parseNumeroSuave(cotizacion);
   const enDolares = cotizacionNum !== null && cotizacionNum.greaterThan(0);
 
@@ -153,19 +162,32 @@ export function NuevaCompraForm({
   );
 
   // Mismo cálculo que hace `impuestosDeCompra` en el servidor, sólo para mostrarlo mientras se
-  // carga: el IVA y las percepciones van sobre la parte facturada, la de Negro queda como está.
-  // Sin líneas en Blanco no hay documento facturado, así que no hay sobre qué aplicar tributos:
-  // sin este corte, mover la última línea a Negro dejaba un "Total Blanco" con la percepción suelta.
+  // carga. Sin líneas en Blanco no hay comprobante facturado, así que no hay sobre qué aplicar
+  // tributos: sin este corte, mover la última línea a Negro dejaba un "Total Blanco" con la
+  // percepción suelta.
   const hayBlanco = netos.BLANCO > 0;
-  const alicuota = hayBlanco ? (parseNumeroSuave(impuestos.ivaRate ?? "")?.toNumber() ?? 0) : 0;
-  const iva = (netos.BLANCO * alicuota) / 100;
-  const sumaCampos = (campos: string[]) =>
-    hayBlanco
-      ? campos.reduce((acc, campo) => acc + (parseNumeroSuave(impuestos[campo] ?? "")?.toNumber() ?? 0), 0)
-      : 0;
-  const percepciones = sumaCampos(["percepcionIva", "percepcionIibb", "percepcionMunicipal"]);
-  const retencion = sumaCampos(["retentionAmount"]);
-  const totalBlanco = netos.BLANCO + iva + percepciones - retencion;
+  const filas = hayBlanco ? filasDesdeValores(impuestos) : [];
+  // Igual que el servidor: sin reparto cargado, el neto entero va al 21%.
+  const filasEfectivas =
+    filas.some((f) => f.kind === "IVA" || f.kind === "NO_GRAVADO")
+      ? filas
+      : hayBlanco
+        ? [
+            {
+              kind: "IVA" as const,
+              base: toDecimal(netos.BLANCO),
+              rate: toDecimal(DEFAULT_IVA_RATE),
+              amount: toDecimal(netos.BLANCO).times(DEFAULT_IVA_RATE).dividedBy(100),
+            },
+            ...filas,
+          ]
+        : [];
+  const desglose = computeGastoTotals(
+    filasEfectivas,
+    hayBlanco ? (parseNumeroSuave(impuestos.retentionAmount ?? "") ?? ZERO) : ZERO
+  );
+  const iva = desglose.ivaAmount.toNumber();
+  const totalBlanco = desglose.totalAmount.toNumber();
   const totals = { BLANCO: totalBlanco, NEGRO: netos.NEGRO, total: totalBlanco + netos.NEGRO };
 
   return (
@@ -392,7 +414,7 @@ export function NuevaCompraForm({
 
         {netos.BLANCO > 0 && (
           <>
-            <ImpuestosCompraFields onChange={setImpuestos} />
+            <ImpuestosFields onChange={setImpuestos} netoDeLineas={netos.BLANCO} />
             <FacturaDeCompraFields />
           </>
         )}
@@ -403,7 +425,7 @@ export function NuevaCompraForm({
             <p className="font-semibold">{formatMoney(netos.BLANCO)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-foreground/50">{alicuota ? `IVA ${impuestos.ivaRate}%` : "IVA"}</p>
+            <p className="text-xs text-foreground/50">IVA</p>
             <p className="font-semibold">{formatMoney(iva)}</p>
           </div>
           <div className="text-right">

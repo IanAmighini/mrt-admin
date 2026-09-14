@@ -8,7 +8,7 @@ import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CompraFormFields } from "@/components/CompraForm";
 import { GastoFormFields } from "@/components/GastoFormFields";
-import { impuestosDesdeDocumento, tributosDeGasto } from "@/lib/impuestos";
+import { desgloseDesdeDocumento } from "@/lib/impuestos";
 import { facturaDeCompra } from "@/lib/compra-factura";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import {
@@ -233,7 +233,7 @@ export default async function ComprasPage({
                                 exchangeRate: doc.exchangeRate?.toString(),
                                 amount: doc.totalAmount.toString(),
                                 retentionAmount: doc.retentionAmount?.toString(),
-                                tributos: tributosDeGasto(doc),
+                                tributos: desgloseDesdeDocumento(doc),
                               }}
                             />
                           </FormModal>
@@ -264,7 +264,7 @@ export default async function ComprasPage({
                                 currency: doc.currency,
                                 exchangeRate: doc.exchangeRate?.toString(),
                               }}
-                              impuestos={impuestosDesdeDocumento(doc)}
+                              impuestos={desgloseDesdeDocumento(doc)}
                               factura={facturaDeCompra(doc)}
                             />
                           </FormModal>

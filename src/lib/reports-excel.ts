@@ -12,6 +12,7 @@ import { sheet, type CellValue, type ExcelSheet } from "@/lib/excel";
 import { slugify } from "@/lib/slug";
 import { formatPeriodLabel, toDateInputValue, periodLastDay, type Period } from "@/lib/period";
 import type { LibroIva, RenglonIva } from "@/lib/libro-iva";
+import { ALICUOTAS_IVA, OTROS_TRIBUTOS } from "@/lib/impuestos";
 import {
   REPORT_KEYS_SNAPSHOT,
   REPORT_LABELS,
@@ -456,6 +457,13 @@ function gastosSheets(report: GastosReport, generatedAt: Date): ExcelSheet<never
 
 // ---------------------------------------------------------------------------
 
+function sumarColumna(
+  renglones: RenglonIva[],
+  valor: (r: RenglonIva) => Prisma.Decimal | undefined
+): Prisma.Decimal {
+  return renglones.reduce((acc, r) => acc.plus(valor(r) ?? ZERO), ZERO);
+}
+
 /**
  * El libro de IVA, con el mismo encabezado y las mismas columnas que la planilla que se llevaba a
  * mano: contribuyente, CUIT y período arriba, y la fila de totales al pie.
@@ -505,20 +513,45 @@ export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
       name: "IVA Compras",
       title: "PLANILLA DETALLE DE I.V.A. COMPRAS",
       subtitle: encabezado("Facturas de proveedores y facturas de gasto de la cuenta Blanco."),
+      // Las mismas columnas de la planilla que se llevaba a mano, en el mismo orden, para que el
+      // contador no tenga que traducir nada.
       columns: [
         { header: "Fecha", value: (r) => r.date, format: "date" },
         { header: "Comprobante", value: (r) => r.tipo, width: 16 },
         { header: "Nro de Comp", value: (r) => r.number, width: 18 },
         { header: "Proveedor", value: (r) => r.entityName, width: 32 },
         { header: "Nro de Cuit", value: (r) => r.taxId ?? "", width: 16 },
-        { header: "Concepto", value: (r) => r.concepto ?? "", width: 14 },
-        { header: "Neto Gravado", value: (r) => r.neto, format: "money" },
-        { header: "Percepciones", value: (r) => r.percepcion, format: "money" },
-        { header: "IVA", value: (r) => r.iva, format: "money" },
+        { header: "Concepto", value: (r) => r.concepto ?? "", width: 18 },
+        ...ALICUOTAS_IVA.map((rate) => ({
+          header: `N.G. ${rate}%`,
+          value: (r: RenglonIva) => r.porAlicuota.find((a) => a.rate === rate)?.neto ?? ZERO,
+          format: "money" as const,
+        })),
+        ...ALICUOTAS_IVA.map((rate) => ({
+          header: `IVA ${rate}%`,
+          value: (r: RenglonIva) => r.porAlicuota.find((a) => a.rate === rate)?.iva ?? ZERO,
+          format: "money" as const,
+        })),
+        ...OTROS_TRIBUTOS.map((t) => ({
+          header: t.kind === "NO_GRAVADO" ? "NO GRAVADO" : t.label,
+          value: (r: RenglonIva) => r.porTributo[t.kind] ?? ZERO,
+          format: "money" as const,
+        })),
+        { header: "¿Qué otro tributo?", value: (r) => r.otroTributo ?? "", width: 24 },
+        { header: "Retención", value: (r) => r.retencion, format: "money" },
         { header: "Total", value: (r) => r.total, format: "money" },
       ],
       rows: libro.compras,
-      totals: totalesFila(libro.totalesCompras, 6),
+      totals: [
+        ...Array<CellValue>(5).fill(null),
+        "TOTALES",
+        ...ALICUOTAS_IVA.map((rate) => sumarColumna(libro.compras, (r) => r.porAlicuota.find((a) => a.rate === rate)?.neto)),
+        ...ALICUOTAS_IVA.map((rate) => sumarColumna(libro.compras, (r) => r.porAlicuota.find((a) => a.rate === rate)?.iva)),
+        ...OTROS_TRIBUTOS.map((t) => sumarColumna(libro.compras, (r) => r.porTributo[t.kind])),
+        null,
+        sumarColumna(libro.compras, (r) => r.retencion),
+        libro.totalesCompras.total,
+      ],
     }),
     sheet<(typeof alicuotas)[number]>({
       name: "Resumen",

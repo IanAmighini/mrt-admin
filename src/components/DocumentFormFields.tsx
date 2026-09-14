@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { TREASURY_MOVEMENT_CATEGORY_LABELS } from "@/lib/labels";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
-import { ImpuestosCompraFields, impuestosIniciales, type ImpuestosCompra } from "./ImpuestosCompraFields";
+import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
+import { ImpuestosFields, impuestosIniciales, type ImpuestosValores } from "./ImpuestosFields";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
@@ -27,7 +28,7 @@ export type DocumentDefaults = {
   amount?: string;
   ajusteEffect?: "SUMA" | "RESTA";
   reason?: string;
-  impuestos?: ImpuestosCompra;
+  impuestos?: ImpuestosValores;
 };
 
 /**
@@ -57,20 +58,16 @@ export function DocumentFormFields({
   const [circuit, setCircuit] = useState<CircuitoMovimiento>(circuitoFijo ?? "BLANCO");
   const [currency, setCurrency] = useState(defaultValues?.currency ?? "ARS");
   const [monto, setMonto] = useState(defaultValues?.amount ?? "");
-  const [impuestos, setImpuestos] = useState<ImpuestosCompra>(() => impuestosIniciales(defaultValues?.impuestos));
+  const [impuestos, setImpuestos] = useState<ImpuestosValores>(() => impuestosIniciales(defaultValues?.impuestos));
 
   const esNota = type !== "AJUSTE";
   const conIva = esNota && circuit === "BLANCO";
 
-  const neto = parseNumeroSuave(monto) ?? ZERO;
-  const alicuota = parseNumeroSuave(impuestos.ivaRate ?? "") ?? ZERO;
-  const iva = neto.times(alicuota).dividedBy(100);
-  const percepciones = ["percepcionIva", "percepcionIibb", "percepcionMunicipal"].reduce(
-    (acc, campo) => acc.plus(parseNumeroSuave(impuestos[campo] ?? "") ?? ZERO),
-    ZERO
+  const desglose = computeGastoTotals(
+    filasDesdeValores(impuestos),
+    parseNumeroSuave(impuestos.retentionAmount ?? "") ?? ZERO
   );
-  const retencion = parseNumeroSuave(impuestos.retentionAmount ?? "") ?? ZERO;
-  const total = conIva ? neto.plus(iva).plus(percepciones).minus(retencion) : neto;
+  const total = conIva ? desglose.totalAmount : (parseNumeroSuave(monto) ?? ZERO);
 
   return (
     <>
@@ -173,24 +170,25 @@ export function DocumentFormFields({
             />
           </div>
         )}
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor={conIva ? "netAmount" : "amount"}>
-            {conIva ? "Neto gravado" : "Monto"}
-          </label>
-          {/* El name cambia con el circuito: en Blanco se carga el neto y el IVA va encima; en
-              Negro y en los ajustes el monto es el importe final. */}
-          <input
-            id={conIva ? "netAmount" : "amount"}
-            key={conIva ? "netAmount" : "amount"}
-            name={conIva ? "netAmount" : "amount"}
-            required
-            inputMode="decimal"
-            value={monto}
-            onChange={(e) => setMonto(e.target.value)}
-            placeholder="150.000,50"
-            className={inputClass}
-          />
-        </div>
+        {/* En Blanco el neto lo carga la grilla de abajo, abierto por alícuota. Acá sólo queda el
+            monto de los casos que no llevan desglose: las notas en Negro y los ajustes. */}
+        {!conIva && (
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="amount">
+              Monto
+            </label>
+            <input
+              id="amount"
+              name="amount"
+              required
+              inputMode="decimal"
+              value={monto}
+              onChange={(e) => setMonto(e.target.value)}
+              placeholder="150.000,50"
+              className={inputClass}
+            />
+          </div>
+        )}
         {!esNota && (
           <div className="space-y-1">
             <label className="text-sm" htmlFor="ajusteEffect">
@@ -226,11 +224,11 @@ export function DocumentFormFields({
 
       {conIva && (
         <>
-          <ImpuestosCompraFields
+          <ImpuestosFields
             defaults={defaultValues?.impuestos}
             onChange={setImpuestos}
-            titulo="Impuestos del comprobante"
-            aclaracion="Una nota en Blanco es un comprobante fiscal: entra al libro de IVA con este desglose."
+            titulo="Desglose de la nota"
+            aclaracion="Una nota en Blanco es un comprobante fiscal: el neto va abierto por alícuota y entra así al libro de IVA."
           />
           <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
             <span className="text-sm">Total</span>

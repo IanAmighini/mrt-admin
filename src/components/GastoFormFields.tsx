@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_ORDER } from "@/lib/labels";
-import { ALICUOTAS_IVA, OTROS_TRIBUTOS, computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
+import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
+import { ImpuestosFields } from "./ImpuestosFields";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
-const smallInputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-1 text-sm";
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
 const toggleClass =
@@ -47,20 +47,16 @@ export function GastoFormFields({
   const [circuit, setCircuit] = useState<"BLANCO" | "NEGRO">(defaultValues?.circuit ?? "BLANCO");
   const [currency, setCurrency] = useState(defaultValues?.currency ?? "ARS");
   const [montos, setMontos] = useState<Record<string, string>>(defaultValues?.tributos ?? {});
-  const [retencion, setRetencion] = useState(defaultValues?.retentionAmount ?? "");
   const [montoNegro, setMontoNegro] = useState(defaultValues?.amount ?? "");
   // El rubro arranca con el del proveedor: a Edenor se le cargan servicios, al transportista flete.
   // Se puede cambiar, y una vez tocado deja de seguir al proveedor.
   const [rubro, setRubro] = useState(defaultValues?.expenseCategory ?? "");
   const [rubroTocado, setRubroTocado] = useState(false);
 
-  const setMonto = (name: string, value: string) =>
-    setMontos((previos) => ({ ...previos, [name]: value }));
-
   const totals =
     circuit === "NEGRO"
       ? null
-      : computeGastoTotals(filasDesdeValores(montos), parseNumeroSuave(retencion) ?? ZERO);
+      : computeGastoTotals(filasDesdeValores(montos), parseNumeroSuave(montos.retentionAmount ?? "") ?? ZERO);
   const totalVivo =
     circuit === "NEGRO" ? (parseNumeroSuave(montoNegro) ?? ZERO) : totals!.totalAmount;
 
@@ -247,67 +243,11 @@ export function GastoFormFields({
       </div>
 
       {circuit === "BLANCO" && (
-        <div className="space-y-2 rounded-lg border border-foreground/10 p-3">
-          <p className="text-sm font-medium">Desglose de la factura</p>
-          <p className="text-xs text-foreground/50">
-            Cargá el neto gravado de cada alícuota que traiga la factura. La mayoría trae una sola.
-          </p>
-
-          <div className="space-y-1">
-            {ALICUOTAS_IVA.map((alicuota) => {
-              const campo = `ivaBase_${alicuota}`;
-              const base = parseNumeroSuave(montos[campo] ?? "") ?? ZERO;
-              const iva = base.times(parseNumeroSuave(alicuota)!).dividedBy(100);
-              return (
-                <div key={alicuota} className="grid grid-cols-[5rem_1fr_7rem] items-center gap-2">
-                  <span className="text-sm text-foreground/70">IVA {alicuota}%</span>
-                  <input
-                    name={campo}
-                    inputMode="decimal"
-                    value={montos[campo] ?? ""}
-                    onChange={(e) => setMonto(campo, e.target.value)}
-                    placeholder="Neto gravado"
-                    className={smallInputClass}
-                  />
-                  <span className="text-right text-sm tabular-nums text-foreground/60">
-                    {base.isZero() ? "—" : formatMoney(iva, currency as "ARS" | "USD")}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            {OTROS_TRIBUTOS.map((tributo) => (
-              <div key={tributo.name} className="space-y-1">
-                <label className="text-xs text-foreground/70" htmlFor={tributo.name}>
-                  {tributo.label}
-                </label>
-                <input
-                  id={tributo.name}
-                  name={tributo.name}
-                  inputMode="decimal"
-                  value={montos[tributo.name] ?? ""}
-                  onChange={(e) => setMonto(tributo.name, e.target.value)}
-                  className={smallInputClass}
-                />
-              </div>
-            ))}
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/70" htmlFor="retentionAmount">
-                Retención
-              </label>
-              <input
-                id="retentionAmount"
-                name="retentionAmount"
-                inputMode="decimal"
-                value={retencion}
-                onChange={(e) => setRetencion(e.target.value)}
-                className={smallInputClass}
-              />
-            </div>
-          </div>
-        </div>
+        <ImpuestosFields
+          defaults={defaultValues?.tributos}
+          onChange={setMontos}
+          aclaracion="Cargá el neto gravado de cada alícuota que traiga la factura. La mayoría trae una sola."
+        />
       )}
 
       <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">

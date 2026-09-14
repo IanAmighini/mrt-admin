@@ -65,10 +65,18 @@ export const TAX_KIND_LABELS: Record<TaxKind, string> = {
   NO_GRAVADO: "No gravado",
   EXENTO: "Exento",
   PERCEPCION_IVA: "Percepción IVA",
+  PERCEPCION_IIBB_BSAS: "Ing. Brutos BsAs",
+  PERCEPCION_IIBB_CABA: "Ing. Brutos CABA",
+  PERCEPCION_IIBB_SANTA_FE: "Ing. Brutos Santa Fe",
+  CONTRIBUCION_MUNICIPAL: "Contrib municipal",
+  CONTRIBUCION_PROVINCIAL: "Contrib provincial",
+  RG_3337: "RG 3337",
+  CEF: "CEF",
+  OTRO_TRIBUTO: "Otro tributo",
+  // Previos a la apertura por jurisdicción: ya no se ofrecen, pero el Record es exhaustivo.
   PERCEPCION_IIBB: "Percepción IIBB",
   PERCEPCION_MUNICIPAL: "Percepción municipal",
   IMPUESTO_INTERNO: "Impuestos internos",
-  OTRO_TRIBUTO: "Otro tributo",
 };
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

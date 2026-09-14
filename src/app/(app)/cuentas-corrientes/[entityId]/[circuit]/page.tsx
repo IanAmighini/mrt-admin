@@ -9,7 +9,7 @@ import { getAccountStatement, type StatementEntry } from "@/lib/account-statemen
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
-import { impuestosDesdeDocumento, tributosDeGasto } from "@/lib/impuestos";
+import { desgloseDesdeDocumento } from "@/lib/impuestos";
 import { facturaDeCompra } from "@/lib/compra-factura";
 import {
   createDocumentForEntity,
@@ -206,7 +206,7 @@ export default async function AccountLedgerPage({
               items={items}
               editingDocumentId={doc.id}
               defaultValues={headerDefaults}
-              impuestos={impuestosDesdeDocumento(doc)}
+              impuestos={desgloseDesdeDocumento(doc)}
               factura={facturaDeCompra(doc)}
             />
           </FormModal>
@@ -268,7 +268,7 @@ export default async function AccountLedgerPage({
                 reason: doc.reason ?? undefined,
                 amount: doc.totalAmount.toString(),
                 retentionAmount: doc.retentionAmount?.toString(),
-                tributos: tributosDeGasto(doc),
+                tributos: desgloseDesdeDocumento(doc),
               }}
             />
           </FormModal>
@@ -301,7 +301,7 @@ export default async function AccountLedgerPage({
               amount: doc.netAmount.toString(),
               ajusteEffect: doc.totalAmount.lessThan(0) ? "RESTA" : "SUMA",
               reason: doc.reason ?? undefined,
-              impuestos: impuestosDesdeDocumento(doc),
+              impuestos: desgloseDesdeDocumento(doc),
             }}
           />
         </FormModal>

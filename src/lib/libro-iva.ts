@@ -1,8 +1,9 @@
 import "server-only";
-import { Prisma, type Currency, type DocumentType } from "@prisma/client";
+import { Prisma, type Currency, type DocumentType, type TaxKind } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getSetting } from "@/lib/settings";
 import { DOCUMENT_TYPE_LABELS } from "@/lib/labels";
+import { ALICUOTAS_IVA } from "@/lib/impuestos";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { formatPeriodLabel, periodLastDay, type Period } from "@/lib/period";
 
@@ -37,6 +38,13 @@ export type RenglonIva = {
   iva: Prisma.Decimal;
   total: Prisma.Decimal;
   currency: Currency;
+  /** Neto e IVA abiertos por alícuota, en el orden de `ALICUOTAS_IVA`: son columnas de la planilla. */
+  porAlicuota: { rate: string; neto: Prisma.Decimal; iva: Prisma.Decimal }[];
+  /** El resto de los renglones, por tipo: cada percepción tiene su columna. */
+  porTributo: Partial<Record<TaxKind, Prisma.Decimal>>;
+  /** El nombre del tributo suelto, cuando hay uno que no tiene columna propia. */
+  otroTributo: string | null;
+  retencion: Prisma.Decimal;
 };
 
 export type TotalesIva = {
@@ -195,9 +203,17 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       type: DocumentType;
       date: Date;
       number: string;
+      taxes: {
+        kind: TaxKind;
+        base: Prisma.Decimal | null;
+        rate: Prisma.Decimal | null;
+        amount: Prisma.Decimal;
+        description: string | null;
+      }[];
       netAmount: Prisma.Decimal;
       ivaAmount: Prisma.Decimal | null;
       perceptionAmount: Prisma.Decimal | null;
+      retentionAmount: Prisma.Decimal | null;
       totalAmount: Prisma.Decimal;
       currency: Currency;
       account: { entity: { name: string; taxId: string | null } };
@@ -221,6 +237,24 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       iva: conSigno(toDecimal(doc.ivaAmount)),
       total: conSigno(toDecimal(doc.totalAmount)),
       currency: doc.currency,
+      porAlicuota: ALICUOTAS_IVA.map((rate) => {
+        const filas = doc.taxes.filter(
+          (t) => t.kind === "IVA" && t.rate?.equals(rate.replace(",", "."))
+        );
+        return {
+          rate,
+          neto: conSigno(sumDecimals(filas.map((f) => f.base))),
+          iva: conSigno(sumDecimals(filas.map((f) => f.amount))),
+        };
+      }),
+      porTributo: Object.fromEntries(
+        Array.from(new Set(doc.taxes.filter((t) => t.kind !== "IVA").map((t) => t.kind))).map((kind) => [
+          kind,
+          conSigno(sumDecimals(doc.taxes.filter((t) => t.kind === kind).map((t) => t.amount))),
+        ])
+      ),
+      otroTributo: doc.taxes.find((t) => t.kind === "OTRO_TRIBUTO")?.description ?? null,
+      retencion: conSigno(toDecimal(doc.retentionAmount)),
     };
   };
 

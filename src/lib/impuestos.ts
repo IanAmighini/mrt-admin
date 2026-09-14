@@ -2,6 +2,7 @@ import { Prisma, type Circuit, type Currency, type ExpenseCategory, type TaxKind
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import {
   DEFAULT_IVA_RATE,
+  formatMoney,
   parseNumeroEscrito,
   parseNumeroOpcional,
   parseNumeroSuave,
@@ -17,27 +18,39 @@ import { UserError } from "@/lib/user-error";
  */
 export const ALICUOTAS_IVA = ["21", "10,5", "27"] as const;
 
-/** Los renglones que no son IVA: cada uno es un campo suelto del formulario. */
+/**
+ * Los renglones que no son IVA, en el orden y con los nombres de la planilla que se llevaba a mano:
+ * cada uno es un campo del formulario y una columna del libro.
+ *
+ * `OTRO_TRIBUTO` es el comodín para el régimen que aparece de vez en cuando y no tiene columna
+ * propia; lleva su nombre escrito al lado.
+ */
 export const OTROS_TRIBUTOS: { name: string; kind: TaxKind; label: string }[] = [
   { name: "noGravado", kind: "NO_GRAVADO", label: "No gravado" },
-  { name: "exento", kind: "EXENTO", label: "Exento" },
+  { name: "iibbBsAs", kind: "PERCEPCION_IIBB_BSAS", label: "Ing. Brutos BsAs" },
+  { name: "iibbCaba", kind: "PERCEPCION_IIBB_CABA", label: "Ing. Brutos CABA" },
+  { name: "iibbSantaFe", kind: "PERCEPCION_IIBB_SANTA_FE", label: "Ing. Brutos Santa Fe" },
   { name: "percepcionIva", kind: "PERCEPCION_IVA", label: "Percepción IVA" },
-  { name: "percepcionIibb", kind: "PERCEPCION_IIBB", label: "Percepción IIBB" },
-  { name: "percepcionMunicipal", kind: "PERCEPCION_MUNICIPAL", label: "Percepción municipal" },
-  { name: "impuestoInterno", kind: "IMPUESTO_INTERNO", label: "Impuestos internos" },
+  { name: "contribMunicipal", kind: "CONTRIBUCION_MUNICIPAL", label: "Contrib municipal" },
+  { name: "contribProvincial", kind: "CONTRIBUCION_PROVINCIAL", label: "Contrib provincial" },
+  { name: "rg3337", kind: "RG_3337", label: "RG 3337" },
+  { name: "cef", kind: "CEF", label: "CEF" },
+  { name: "otroTributo", kind: "OTRO_TRIBUTO", label: "Otro tributo" },
 ];
 
-/** Los renglones que suman al total pero no al neto. Los otros (no gravado, exento) son neto. */
-const KINDS_PERCEPCION: TaxKind[] = [
-  "PERCEPCION_IVA",
-  "PERCEPCION_IIBB",
-  "PERCEPCION_MUNICIPAL",
-  "IMPUESTO_INTERNO",
-  "OTRO_TRIBUTO",
-];
+/** El comodín lleva además una descripción, para que el libro pueda decir de qué se trata. */
+export const CAMPO_OTRO_TRIBUTO_DESC = "otroTributoDesc";
+
+/** Lo que suma al neto en vez de al total: no gravado y exento no llevan IVA pero son base. */
+const KINDS_NETO: TaxKind[] = ["NO_GRAVADO", "EXENTO"];
+
+/** Todo lo que no es IVA ni base imponible suma al total como percepción. */
+const esPercepcion = (kind: TaxKind) => kind !== "IVA" && !KINDS_NETO.includes(kind);
 
 export type GastoTaxRow = {
   kind: TaxKind;
+  /** Sólo para OTRO_TRIBUTO: de qué se trata. */
+  description?: string | null;
   /** Neto gravado. Solo en las filas de IVA. */
   base: Prisma.Decimal | null;
   /** Alícuota en %. Solo en las filas de IVA. */
@@ -64,8 +77,8 @@ export function computeGastoTotals(
   retentionAmount: Prisma.Decimal
 ): GastoTotals {
   const ivaRows = rows.filter((r) => r.kind === "IVA");
-  const netoRows = rows.filter((r) => r.kind === "NO_GRAVADO" || r.kind === "EXENTO");
-  const percepcionRows = rows.filter((r) => KINDS_PERCEPCION.includes(r.kind));
+  const netoRows = rows.filter((r) => KINDS_NETO.includes(r.kind));
+  const percepcionRows = rows.filter((r) => esPercepcion(r.kind));
 
   const netAmount = sumDecimals([
     ...ivaRows.map((r) => r.base),
@@ -136,7 +149,7 @@ export function leerGastoDelForm(formData: FormData) {
   if (circuit === "BLANCO" && !numberRaw) throw new UserError("Falta el número de la factura.");
   const number = numberRaw || "S/N";
 
-  const taxRows: GastoTaxRow[] = [];
+  let taxRows: GastoTaxRow[] = [];
   let totals: GastoTotals;
 
   if (circuit === "NEGRO") {
@@ -152,26 +165,7 @@ export function leerGastoDelForm(formData: FormData) {
       totalAmount: amount,
     };
   } else {
-    for (const alicuota of ALICUOTAS_IVA) {
-      const base = parseNumeroOpcional(
-        String(formData.get(`ivaBase_${alicuota}`) || ""),
-        `neto gravado ${alicuota}%`
-      );
-      if (base.isZero()) continue;
-      const rate = parseNumeroEscrito(alicuota, "alícuota");
-      taxRows.push({ kind: "IVA", base, rate, amount: base.times(rate).dividedBy(100) });
-    }
-    for (const tributo of OTROS_TRIBUTOS) {
-      const amount = parseNumeroOpcional(String(formData.get(tributo.name) || ""), tributo.label);
-      if (amount.isZero()) continue;
-      taxRows.push({ kind: tributo.kind, base: null, rate: null, amount });
-    }
-    const retentionAmount = parseNumeroOpcional(
-      String(formData.get("retentionAmount") || ""),
-      "retención"
-    );
-    totals = computeGastoTotals(taxRows, retentionAmount);
-
+    ({ taxRows, totals } = leerDesglose(formData));
     if (totals.totalAmount.isZero()) {
       throw new UserError("El gasto quedó en cero: cargá al menos un neto gravado o un no gravado.");
     }
@@ -184,11 +178,51 @@ export function leerGastoDelForm(formData: FormData) {
  * Los tributos que puede traer una compra de insumos, además del IVA. A diferencia de un gasto no
  * lleva "no gravado" ni "exento": el neto de una compra sale de las líneas, no se escribe a mano.
  */
-export const PERCEPCIONES_COMPRA = OTROS_TRIBUTOS.filter((t) => t.name.startsWith("percepcion"));
+/** En una compra el neto sale de las líneas, pero el resto de los renglones es el mismo. */
+export const PERCEPCIONES_COMPRA = OTROS_TRIBUTOS;
+
+/**
+ * Lee la grilla de impuestos tal como la manda cualquiera de los tres formularios: el neto abierto
+ * por alícuota, el no gravado, las percepciones y la retención.
+ */
+export function leerDesglose(formData: FormData): { taxRows: GastoTaxRow[]; totals: GastoTotals } {
+  const taxRows: GastoTaxRow[] = [];
+
+  for (const alicuota of ALICUOTAS_IVA) {
+    const base = parseNumeroOpcional(
+      String(formData.get(`ivaBase_${alicuota}`) || ""),
+      `neto gravado ${alicuota}%`
+    );
+    if (base.isZero()) continue;
+    const rate = parseNumeroEscrito(alicuota, "alícuota");
+    taxRows.push({ kind: "IVA", base, rate, amount: base.times(rate).dividedBy(100) });
+  }
+
+  for (const tributo of OTROS_TRIBUTOS) {
+    const amount = parseNumeroOpcional(String(formData.get(tributo.name) || ""), tributo.label);
+    if (amount.isZero()) continue;
+    const description =
+      tributo.kind === "OTRO_TRIBUTO"
+        ? String(formData.get(CAMPO_OTRO_TRIBUTO_DESC) || "").trim() || null
+        : null;
+    if (tributo.kind === "OTRO_TRIBUTO" && !description) {
+      throw new UserError("Decí de qué es ese otro tributo.");
+    }
+    taxRows.push({ kind: tributo.kind, base: null, rate: null, amount, description });
+  }
+
+  const retentionAmount = parseNumeroOpcional(
+    String(formData.get("retentionAmount") || ""),
+    "retención"
+  );
+
+  return { taxRows, totals: computeGastoTotals(taxRows, retentionAmount) };
+}
 
 /**
  * El desglose impositivo de una compra en Blanco. El neto no se escribe: es la suma de las líneas,
- * y sobre eso se aplica la alícuota. En Negro no hay factura, así que el neto ES el total.
+ * y el reparto por alícuota tiene que cerrar contra eso. En Negro no hay factura, así que el neto
+ * ES el total.
  */
 export function impuestosDeCompra(
   formData: FormData,
@@ -209,43 +243,59 @@ export function impuestosDeCompra(
     };
   }
 
-  const rate = parseNumeroEscrito(String(formData.get("ivaRate") || DEFAULT_IVA_RATE), "alícuota de IVA");
-  const taxRows: GastoTaxRow[] = [
-    { kind: "IVA", base: neto, rate, amount: neto.times(rate).dividedBy(100) },
-  ];
+  const leido = leerDesglose(formData);
+  let taxRows = leido.taxRows;
+  let totals = leido.totals;
 
-  for (const tributo of PERCEPCIONES_COMPRA) {
-    const amount = parseNumeroOpcional(String(formData.get(tributo.name) || ""), tributo.label);
-    if (amount.isZero()) continue;
-    taxRows.push({ kind: tributo.kind, base: null, rate: null, amount });
+  // Sin reparto cargado el neto entero va al 21%: es el caso normal y no vale la pena tipearlo.
+  if (!taxRows.some((r) => r.kind === "IVA" || KINDS_NETO.includes(r.kind))) {
+    const rate = parseNumeroEscrito(String(DEFAULT_IVA_RATE), "alícuota");
+    taxRows = [{ kind: "IVA", base: neto, rate, amount: neto.times(rate).dividedBy(100) }, ...taxRows];
+    totals = computeGastoTotals(taxRows, totals.retentionAmount);
   }
 
-  const retentionAmount = parseNumeroOpcional(
-    String(formData.get("retentionAmount") || ""),
-    "retención"
-  );
+  // El reparto tiene que cerrar contra lo que realmente llegó: si no, el libro declara un neto que
+  // no es el de la compra y nadie se entera hasta que el contador concilia.
+  if (!totals.netAmount.equals(neto)) {
+    const diferencia = totals.netAmount.minus(neto);
+    throw new UserError(
+      `El desglose suma ${formatMoney(totals.netAmount)} y las líneas de la compra suman ${formatMoney(neto)} — ` +
+        `${diferencia.greaterThan(0) ? "sobran" : "faltan"} ${formatMoney(diferencia.abs())}.`
+    );
+  }
 
-  return { taxRows, totals: computeGastoTotals(taxRows, retentionAmount) };
+  return { taxRows, totals };
 }
 
 /**
- * Devuelve los tributos de una compra con las mismas claves con las que los manda el formulario,
- * para que editarla sea reabrir lo que se cargó y no rearmarlo de memoria.
+ * El desglose de un comprobante con las mismas claves con las que lo manda el formulario, para que
+ * editarlo sea reabrir lo que se cargó y no rearmarlo de memoria. Sirve para los tres: gasto,
+ * compra y nota.
  */
-export function impuestosDesdeDocumento(doc: {
-  ivaRate: Prisma.Decimal | null;
+export function desgloseDesdeDocumento(doc: {
   retentionAmount: Prisma.Decimal | null;
-  taxes: { kind: TaxKind; amount: Prisma.Decimal }[];
+  taxes: {
+    kind: TaxKind;
+    base: Prisma.Decimal | null;
+    rate: Prisma.Decimal | null;
+    amount: Prisma.Decimal;
+    description?: string | null;
+  }[];
 }): Record<string, string> {
-  const valores: Record<string, string> = {
-    ivaRate: (doc.ivaRate ?? DEFAULT_IVA_RATE).toString(),
-  };
+  const valores: Record<string, string> = {};
   if (doc.retentionAmount && !doc.retentionAmount.isZero()) {
     valores.retentionAmount = doc.retentionAmount.toString();
   }
   for (const tax of doc.taxes) {
-    const campo = PERCEPCIONES_COMPRA.find((t) => t.kind === tax.kind);
-    if (campo) valores[campo.name] = tax.amount.toString();
+    if (tax.kind === "IVA") {
+      const alicuota = ALICUOTAS_IVA.find((a) => tax.rate?.equals(a.replace(",", ".")));
+      if (alicuota) valores[`ivaBase_${alicuota}`] = tax.base?.toString() ?? "";
+      continue;
+    }
+    const campo = OTROS_TRIBUTOS.find((t) => t.kind === tax.kind);
+    if (!campo) continue;
+    valores[campo.name] = tax.amount.toString();
+    if (tax.description) valores[CAMPO_OTRO_TRIBUTO_DESC] = tax.description;
   }
   return valores;
 }
@@ -261,31 +311,28 @@ export function impuestosDeNota(
   formData: FormData,
   circuit: Circuit
 ): { taxRows: GastoTaxRow[]; totals: GastoTotals } {
-  const campo = circuit === "BLANCO" ? "netAmount" : "amount";
-  const etiqueta = circuit === "BLANCO" ? "neto" : "monto";
-  const raw = String(formData.get(campo) || "").trim();
-  if (!raw) throw new UserError(`Falta el ${etiqueta}.`);
-
-  // Con el neto ya leído, el resto es idéntico a una compra: alícuota, percepciones y retención.
-  return impuestosDeCompra(formData, parseNumeroEscrito(raw, etiqueta), circuit);
-}
-
-/**
- * El desglose de un gasto con las mismas claves con las que lo manda su formulario, para que
- * editarlo sea reabrir lo que se cargó y no rearmarlo de memoria.
- */
-export function tributosDeGasto(doc: {
-  taxes: { kind: TaxKind; base: Prisma.Decimal | null; rate: Prisma.Decimal | null; amount: Prisma.Decimal }[];
-}): Record<string, string> {
-  const tributos: Record<string, string> = {};
-  for (const tax of doc.taxes) {
-    if (tax.kind === "IVA") {
-      const alicuota = ALICUOTAS_IVA.find((a) => tax.rate?.equals(a.replace(",", ".")));
-      if (alicuota) tributos[`ivaBase_${alicuota}`] = tax.base?.toString() ?? "";
-    } else {
-      const campo = OTROS_TRIBUTOS.find((t) => t.kind === tax.kind);
-      if (campo) tributos[campo.name] = tax.amount.toString();
-    }
+  if (circuit === "NEGRO") {
+    const raw = String(formData.get("amount") || "").trim();
+    if (!raw) throw new UserError("Falta el monto.");
+    const amount = parseNumeroEscrito(raw, "monto");
+    return {
+      taxRows: [],
+      totals: {
+        netAmount: amount,
+        ivaRate: null,
+        ivaAmount: ZERO,
+        perceptionAmount: ZERO,
+        retentionAmount: ZERO,
+        totalAmount: amount,
+      },
+    };
   }
-  return tributos;
+
+  // En Blanco el neto vive en la grilla, abierto por alícuota, igual que en un gasto.
+  const { taxRows, totals } = leerDesglose(formData);
+  if (totals.netAmount.isZero()) {
+    throw new UserError("Cargá el neto gravado de la nota.");
+  }
+  return { taxRows, totals };
 }
+

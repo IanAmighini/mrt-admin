@@ -184,10 +184,20 @@ enum TaxKind {
   NO_GRAVADO
   EXENTO
   PERCEPCION_IVA
+  /// Ingresos brutos, por jurisdicción: cada una es una columna del libro.
+  PERCEPCION_IIBB_BSAS
+  PERCEPCION_IIBB_CABA
+  PERCEPCION_IIBB_SANTA_FE
+  CONTRIBUCION_MUNICIPAL
+  CONTRIBUCION_PROVINCIAL
+  RG_3337
+  CEF
+  /// Cualquier otro régimen que aparezca suelto; lleva su nombre en `description`.
+  OTRO_TRIBUTO
+  /// Anteriores a la apertura por jurisdicción. No se ofrecen más al cargar.
   PERCEPCION_IIBB
   PERCEPCION_MUNICIPAL
   IMPUESTO_INTERNO
-  OTRO_TRIBUTO
 }
 
 enum Currency {
@@ -257,15 +267,17 @@ model Document {
 /// Las columnas `netAmount`/`ivaAmount`/`perceptionAmount` del Document son el resumen de esto, para
 /// que el saldo y las pantallas viejas no dependan de esta tabla.
 model DocumentTax {
-  id         String   @id @default(cuid())
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  kind       TaxKind
+  id          String   @id @default(cuid())
+  documentId  String
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  kind        TaxKind
   /// Neto gravado. Solo para IVA; las percepciones se cargan por monto.
-  base       Decimal? @db.Decimal(14, 2)
+  base        Decimal? @db.Decimal(14, 2)
   /// Alícuota en porcentaje (21, 10.5, 27). Solo para IVA.
-  rate       Decimal? @db.Decimal(5, 2)
-  amount     Decimal  @db.Decimal(14, 2)
+  rate        Decimal? @db.Decimal(5, 2)
+  /// Cómo se llama el tributo, cuando es OTRO_TRIBUTO y no tiene columna propia.
+  description String?
+  amount      Decimal  @db.Decimal(14, 2)
 
   @@index([documentId])
 }
