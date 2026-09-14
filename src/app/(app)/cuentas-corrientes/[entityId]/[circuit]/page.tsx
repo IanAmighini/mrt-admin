@@ -10,6 +10,7 @@ import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
 import { impuestosDesdeDocumento, tributosDeGasto } from "@/lib/impuestos";
+import { facturaDeCompra } from "@/lib/compra-factura";
 import {
   createDocumentForEntity,
   deleteCompra,
@@ -206,6 +207,7 @@ export default async function AccountLedgerPage({
               editingDocumentId={doc.id}
               defaultValues={headerDefaults}
               impuestos={impuestosDesdeDocumento(doc)}
+              factura={facturaDeCompra(doc)}
             />
           </FormModal>
           <DeleteButton

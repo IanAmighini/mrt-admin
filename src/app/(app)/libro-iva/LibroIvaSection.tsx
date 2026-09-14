@@ -65,13 +65,16 @@ export async function LibroIvaSection({
           </p>
           <p className="mt-1 text-amber-800 dark:text-amber-300">
             Ni un remito ni una compra son comprobantes fiscales, así que no entran al libro. Esa
-            venta —o ese crédito fiscal— no está declarada hasta que se cargue la factura.
+            venta —o ese crédito fiscal— no está declarada hasta que se cargue la factura: entrá a
+            la ficha y usá el botón Factura, que te deja tildar varios a la vez.
           </p>
           <ul className="mt-2 space-y-0.5 text-amber-900 dark:text-amber-200">
             {libro.remitosSinFacturar.map((r) => (
               <li key={`${r.number}-${r.date.toISOString()}`}>
-                {r.sustantivo} #{r.number} — {r.entityName} — {r.date.toLocaleDateString("es-AR")} —{" "}
-                {formatMoney(r.pendiente)} sin facturar
+                <Link href={`/cuentas-corrientes/${r.entitySlug}`} className="underline underline-offset-2">
+                  {r.sustantivo} #{r.number} — {r.entityName}
+                </Link>{" "}
+                — {r.date.toLocaleDateString("es-AR")} — {formatMoney(r.pendiente)} sin facturar
               </li>
             ))}
           </ul>

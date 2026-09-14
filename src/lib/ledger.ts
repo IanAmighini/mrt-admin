@@ -25,7 +25,7 @@ export function defaultDueDate(date: Date, circuit: Circuit): Date {
 
 export type DocumentWithRelations = Prisma.DocumentGetPayload<{
   include: {
-    remitoLinks: true;
+    remitoLinks: { include: { factura: { select: { id: true; number: true; date: true } } } };
     allocations: true;
     lines: { include: { product: true } };
     purchaseLines: { include: { item: true } };
@@ -34,7 +34,8 @@ export type DocumentWithRelations = Prisma.DocumentGetPayload<{
 }>;
 
 const DOCUMENT_QUERY_INCLUDE = {
-  remitoLinks: true,
+  // Con la factura adentro: una compra necesita poder mostrar cuál la cubre, no sólo que lo está.
+  remitoLinks: { include: { factura: { select: { id: true, number: true, date: true } } } },
   allocations: true,
   lines: { include: { product: true } },
   purchaseLines: { include: { item: true } },
@@ -49,9 +50,13 @@ const DOCUMENT_QUERY_INCLUDE = {
  * sigue pendiente; si se facturó todo, el resultado es cero) para no duplicar saldo.
  */
 export function getDocumentEffect(
-  // Solo lo que realmente lee, y no `DocumentWithRelations` entero, para que también sirva desde
-  // consultas que no traen las relaciones que no hacen falta acá.
-  document: Pick<DocumentWithRelations, "type" | "totalAmount" | "remitoLinks">
+  // Solo lo que realmente lee, y estructural en vez de `Pick<DocumentWithRelations, …>`: así sirve
+  // igual desde una consulta que trae menos de cada link, o más.
+  document: {
+    type: DocumentType;
+    totalAmount: Prisma.Decimal;
+    remitoLinks: { amount: Prisma.Decimal }[];
+  }
 ): Prisma.Decimal {
   const total = toDecimal(document.totalAmount);
 

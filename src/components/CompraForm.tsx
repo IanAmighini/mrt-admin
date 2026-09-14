@@ -1,6 +1,7 @@
 import type { Item } from "@prisma/client";
 import { CompraLinesFields } from "./CompraLinesFields";
 import { ImpuestosCompraFields, type ImpuestosCompra } from "./ImpuestosCompraFields";
+import { FacturaDeCompraFields } from "./FacturaDeCompraFields";
 
 export function CompraFormFields({
   entityId,
@@ -8,6 +9,7 @@ export function CompraFormFields({
   editingDocumentId,
   defaultValues,
   impuestos,
+  factura,
 }: {
   entityId: string;
   items: Item[];
@@ -15,6 +17,8 @@ export function CompraFormFields({
   defaultValues?: { number?: string; date?: string; dueDate?: string; currency?: string; exchangeRate?: string };
   /** Los tributos ya cargados, al editar: alícuota, percepciones y retención. */
   impuestos?: ImpuestosCompra;
+  /** La factura que la compra ya trae, al editar. */
+  factura?: { number: string; date: string };
 }) {
   return (
     <>
@@ -47,6 +51,7 @@ export function CompraFormFields({
       </div>
       <CompraLinesFields items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))} />
       <ImpuestosCompraFields defaults={impuestos} />
+      <FacturaDeCompraFields defaultNumber={factura?.number} defaultDate={factura?.date} />
       <button type="submit" className={submitClass}>
         {editingDocumentId ? "Guardar cambios" : "Crear compra"}
       </button>

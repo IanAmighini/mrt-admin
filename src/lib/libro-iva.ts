@@ -69,6 +69,8 @@ export type LibroIva = {
     number: string;
     date: Date;
     entityName: string;
+    /** Para linkear a la ficha, que es donde se carga la factura que lo cubre. */
+    entitySlug: string;
     pendiente: Prisma.Decimal;
     /** "Remito" si es una entrega a un cliente, "Compra" si es un ingreso de un proveedor. */
     sustantivo: string;
@@ -249,6 +251,7 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       number: r.number,
       date: r.date,
       entityName: r.account.entity.name,
+      entitySlug: r.account.entity.slug,
       sustantivo: r.purchaseLines.length > 0 ? "Compra" : "Remito",
       pendiente: toDecimal(r.totalAmount).minus(sumDecimals(r.remitoLinks.map((l) => l.amount))),
     }))

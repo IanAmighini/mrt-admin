@@ -528,6 +528,23 @@ export async function updateRemito(formData: FormData) {
 
 /** Núcleo compartido por createCompra y updateCompra (que borra y vuelve a llamar a este núcleo)
  * — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
+/** El orden importa: primero lo que cuelga del documento, y la factura antes que el remito que
+ * referencia, porque DocumentLink no tiene cascade. */
+async function borrarCompraYSuFactura(
+  tx: Prisma.TransactionClient,
+  documentId: string,
+  facturaId: string | null
+) {
+  await tx.itemMovement.deleteMany({ where: { documentId } });
+  await tx.paymentAllocation.deleteMany({ where: { documentId } });
+  if (facturaId) {
+    await tx.documentLink.deleteMany({ where: { facturaId } });
+    await tx.paymentAllocation.deleteMany({ where: { documentId: facturaId } });
+    await tx.document.delete({ where: { id: facturaId } });
+  }
+  await tx.document.delete({ where: { id: documentId } });
+}
+
 async function createCompraCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
@@ -643,6 +660,10 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
     ).map((i) => [i.id, i.llevaStock])
   );
 
+  // Datos de la factura del proveedor, cuando la compra ya viene con ella.
+  const facturaNumber = String(formData.get("facturaNumber") || "").trim();
+  const facturaDate = parseOptionalFormDate(formData.get("facturaDate"));
+
   let combinedTotal = toDecimal(0);
 
   await prisma.$transaction(async (tx) => {
@@ -685,6 +706,33 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
         await tx.documentTax.createMany({
           data: taxRows.map((row) => ({ ...row, documentId: document.id })),
         });
+      }
+
+      // El caso normal: el remito viene con su factura. Se crea acá misma, vinculada y con los
+      // mismos importes, para no pedir dos veces el mismo dato. Cuando una factura engloba varios
+      // remitos —o un remito se parte en dos— se deja vacío y se carga aparte desde la ficha.
+      if (circuit === "BLANCO" && facturaNumber) {
+        const factura = await tx.document.create({
+          data: {
+            accountId: account.id,
+            type: "FACTURA",
+            number: facturaNumber,
+            date: facturaDate ?? date,
+            dueDate: dueDate ?? defaultDueDate(facturaDate ?? date, "BLANCO"),
+            currency,
+            exchangeRate,
+            ...totals,
+            createdById: user.id,
+          },
+        });
+        await tx.documentLink.create({
+          data: { remitoId: document.id, facturaId: factura.id, amount: totals.totalAmount },
+        });
+        if (taxRows.length > 0) {
+          await tx.documentTax.createMany({
+            data: taxRows.map((row) => ({ ...row, documentId: factura.id })),
+          });
+        }
       }
 
       // Los insumos que no llevan stock quedan fuera: su gasto ya entró en el documento de arriba,
@@ -734,21 +782,38 @@ export async function createCompra(formData: FormData) {
   await createCompraCore(user, formData, "CREATE");
 }
 
+/**
+ * La compra, y la factura que arrastra si la tiene.
+ *
+ * Una factura que cubre SÓLO esta compra es la que se creó junto con ella —el caso normal, el
+ * remito que vino con su factura— y se rehace con la compra sin que nadie tenga que pensarlo. Una
+ * que cubre varias es otra cosa: borrarla al editar una sola compra desfacturaría a las demás, así
+ * que ahí sí hay que ir a borrarla a mano.
+ */
 async function getCompraOrThrow(documentId: string) {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { purchaseLines: true, remitoLinks: true, account: { include: { entity: true } } },
+    include: {
+      purchaseLines: true,
+      // `facturaLinks` y no `remitoLinks`: son dos relaciones distintas, y los vínculos de una
+      // factura son aquellos donde ELLA es la factura.
+      remitoLinks: { include: { factura: { include: { facturaLinks: true } } } },
+      account: { include: { entity: true } },
+    },
   });
   if (!document) throw new UserError("La compra ya no existe.");
   if (document.type !== "REMITO" || document.purchaseLines.length === 0) {
     throw new UserError("Este comprobante no es una compra.");
   }
-  // Misma guarda que en un remito de venta: borrarla o reescribirla dejaría el DocumentLink
-  // apuntando a un comprobante que ya no existe, y la FK no tiene cascade.
-  if (document.remitoLinks.length > 0) {
-    throw new UserError("Esta compra ya está facturada — hay que borrar la factura primero.");
+
+  const compartidas = document.remitoLinks.filter((l) => l.factura.facturaLinks.length > 1);
+  if (compartidas.length > 0) {
+    throw new UserError(
+      `La factura #${compartidas[0].factura.number} cubre también otras compras — hay que borrarla primero.`
+    );
   }
-  return document;
+
+  return { ...document, facturaPropia: document.remitoLinks[0]?.factura ?? null };
 }
 
 export async function deleteCompra(formData: FormData) {
@@ -758,9 +823,7 @@ export async function deleteCompra(formData: FormData) {
   const document = await getCompraOrThrow(documentId);
 
   await prisma.$transaction(async (tx) => {
-    await tx.itemMovement.deleteMany({ where: { documentId } });
-    await tx.paymentAllocation.deleteMany({ where: { documentId } });
-    await tx.document.delete({ where: { id: documentId } });
+    await borrarCompraYSuFactura(tx, documentId, document.facturaPropia?.id ?? null);
 
     await logAudit(tx, {
       userId: user.id,
@@ -784,14 +847,13 @@ export async function updateCompra(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
-  await getCompraOrThrow(documentId);
+  const document = await getCompraOrThrow(documentId);
 
   await prisma.$transaction(async (tx) => {
-    await tx.itemMovement.deleteMany({ where: { documentId } });
-    await tx.paymentAllocation.deleteMany({ where: { documentId } });
-    await tx.document.delete({ where: { id: documentId } });
+    await borrarCompraYSuFactura(tx, documentId, document.facturaPropia?.id ?? null);
   });
 
+  // La factura vuelve a crearse desde el formulario, que la trae precargada.
   await createCompraCore(user, formData, "UPDATE");
 }
 

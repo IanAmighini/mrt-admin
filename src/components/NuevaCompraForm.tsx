@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { SupplierCategory } from "@prisma/client";
 import { formatMoney, formatNumeroEditable, formatQuantity, parseNumeroSuave } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
+import { FacturaDeCompraFields } from "./FacturaDeCompraFields";
 import {
   ImpuestosCompraFields,
   impuestosIniciales,
@@ -389,7 +390,12 @@ export function NuevaCompraForm({
           ))}
         </div>
 
-        {netos.BLANCO > 0 && <ImpuestosCompraFields onChange={setImpuestos} />}
+        {netos.BLANCO > 0 && (
+          <>
+            <ImpuestosCompraFields onChange={setImpuestos} />
+            <FacturaDeCompraFields />
+          </>
+        )}
 
         <div className="flex flex-wrap justify-end gap-6 border-t border-foreground/10 pt-3 text-sm">
           <div className="text-right">
