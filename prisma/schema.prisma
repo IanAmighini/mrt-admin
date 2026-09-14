@@ -89,6 +89,7 @@ enum TreasuryMovementCategory {
 
 enum SupplierCategory {
   ACEITE
+  PREFORMAS
   ENVASES
   CAJAS
   TAPAS
@@ -96,10 +97,12 @@ enum SupplierCategory {
   PEGAMENTO
   STRETCH
   ETIQUETAS
+  ADITIVO_TINTA
   PALLET_NORMALIZADO
   /// El pallet en el que llegan los insumos comprados. Va aparte del normalizado a propósito: el
   /// desplegable de la receta filtra por PALLET_NORMALIZADO y este no es una opción válida ahí.
   PALLET_DESCARTABLE
+  JABON
   OTRO
 }
 
@@ -168,6 +171,8 @@ enum ExpenseCategory {
   ALQUILER
   SERVICIOS
   REPARACIONES
+  HIGIENE_Y_SEGURIDAD
+  BALANZA
   FERRETERIA
   COMBUSTIBLE
   IMPUESTOS

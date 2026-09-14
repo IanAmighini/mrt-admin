@@ -15,10 +15,13 @@ import { createItemMovement } from "./[itemId]/actions";
 
 const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
   ACEITE: Droplet,
+  PREFORMAS: PackageOpen,
   ENVASES: PackageOpen,
   TAPAS: PackageOpen,
   CAJAS: Archive,
   ETIQUETAS: Tag,
+  ADITIVO_TINTA: Droplet,
+  JABON: Droplet,
   CINTA: Scissors,
   PEGAMENTO: Droplet,
   STRETCH: Scissors,
