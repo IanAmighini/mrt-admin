@@ -394,7 +394,10 @@ export async function getEntitySaldos(typeFilter?: EntityType[]) {
     })
   );
 
-  return rows.sort((a, b) => b.total - a.total);
+  // Alfabético, que es como se busca a alguien en una lista. Con `localeCompare("es")` para que la
+  // ñ y los acentos caigan donde corresponde, y no después de la z como haría un orden por bytes.
+  // Los dashboards no dependen de esto: reordenan por saldo para armar sus top 5.
+  return rows.sort((a, b) => a.entity.name.localeCompare(b.entity.name, "es"));
 }
 
 /** Las entidades TESORERIA (Banco Galicia, Caja Bufano), con sus dos cuentas — para el selector
