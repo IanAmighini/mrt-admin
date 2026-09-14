@@ -227,9 +227,13 @@ export default async function EntityLedgerPage({
           treasuries={treasuries}
           proveedores={proveedores}
           factura={
-            // Los proveedores también facturan: del lado de compras el comprobante que va al libro
-            // de IVA es su factura, no el remito con el que entregaron.
-            entity.type === "TESORERIA"
+            // En un proveedor el botón sólo sirve para agrupar compras en su factura, así que sin
+            // compras pendientes no se muestra: un botón "Factura" al lado de "Gasto", sin nada que
+            // facturar, es una invitación a cargar ahí el alquiler.
+            // Un cliente sí puede facturar algo que no salió de un remito, así que ahí queda
+            // siempre.
+            entity.type === "TESORERIA" ||
+            (entity.type === "PROVEEDOR" && invoiceableRemitos.length === 0)
               ? undefined
               : {
                   blancoAccountId: blancoAccount.id,

@@ -83,8 +83,11 @@ export function CuentaCorrientePanel({
             )}
             {factura && (
               <FormModal
-                triggerLabel="Factura"
-                title={isCliente ? "Nueva factura" : "Factura del proveedor"}
+                // En un proveedor este botón sirve para UNA cosa: agrupar compras en su factura.
+                // Decirle "Factura" a secas lo hacía competir con "Gasto" y ganaba el que sonaba
+                // más parecido a lo que uno tiene en la mano.
+                triggerLabel={isCliente ? "Factura" : "Facturar compras"}
+                title={isCliente ? "Nueva factura" : "Facturar compras del proveedor"}
                 action={createFactura}
                 maxWidthClass="max-w-xl"
               >
