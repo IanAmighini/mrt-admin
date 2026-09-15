@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, sumDecimals } from "@/lib/money";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
@@ -32,8 +32,9 @@ export default async function ChequesPage({
   searchParams: Promise<{ estado?: string }>;
 }) {
   const { estado } = await searchParams;
-  const user = await requireUser();
-  const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
+  // Vive dentro de Tesorería, así que lo ven los mismos: la secretaría no.
+  const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
+  const canEdit = user.role === "ADMIN";
   const filtro = FILTROS.some((f) => f.value === estado && f.value) ? (estado as ChequeEstado) : null;
 
   const cheques = await prisma.cheque.findMany({
@@ -52,7 +53,10 @@ export default async function ChequesPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-xl font-semibold mb-1">Cheques</h1>
+        <Link href="/tesoreria" className="text-sm underline underline-offset-2">
+          ← Tesorería
+        </Link>
+        <h1 className="mt-2 text-xl font-semibold mb-1">Cheques</h1>
         <p className="text-sm text-foreground/60">
           El mismo cheque desde que entra con el cobro de un cliente hasta que se entrega o se
           deposita. No mueve la caja: eso lo sigue haciendo el destino del pago.
@@ -69,7 +73,7 @@ export default async function ChequesPage({
         {FILTROS.map((f) => (
           <Link
             key={f.value}
-            href={{ pathname: "/cheques", query: f.value ? { estado: f.value } : {} }}
+            href={{ pathname: "/tesoreria/cheques", query: f.value ? { estado: f.value } : {} }}
             className={`rounded px-3 py-1.5 text-sm ${
               (filtro ?? "") === f.value
                 ? "bg-primary text-primary-foreground"

@@ -13,7 +13,7 @@ const ESTADOS_MANUALES: ChequeEstado[] = ["DEPOSITADO", "RECHAZADO", "EN_CARTERA
 
 /** Depositar un cheque, o marcarlo rechazado. Entregarlo no se hace acá: eso es cargar el pago. */
 export async function actualizarEstadoCheque(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole(["ADMIN"]);
 
   const chequeId = String(formData.get("chequeId") || "");
   const estado = String(formData.get("estado") || "") as ChequeEstado;
@@ -30,5 +30,5 @@ export async function actualizarEstadoCheque(formData: FormData) {
     summary: `#${cheque?.numero ?? chequeId} — ${CHEQUE_ESTADO_LABELS[estado]}`,
   });
 
-  revalidatePath("/cheques");
+  revalidatePath("/tesoreria/cheques");
 }

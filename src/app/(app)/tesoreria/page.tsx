@@ -1,12 +1,23 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/auth-helpers";
 import { getAccountBalance, getTreasuries } from "@/lib/ledger";
-import { formatMoney } from "@/lib/money";
+import { Wallet } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { formatMoney, sumDecimals } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
+
+/** La caja de efectivo, que es donde están los cheques en papel. Se identifica por nombre, igual
+ *  que "Banco Galicia" en el formulario de pago. */
+const esLaCaja = (nombre: string) => nombre.toLowerCase().includes("caja");
 
 export default async function TesoreriaPage() {
   await requireRole(["ADMIN", "SOLO_LECTURA"]);
-  const treasuries = await getTreasuries();
+  const [treasuries, cartera] = await Promise.all([
+    getTreasuries(),
+    prisma.cheque.findMany({ where: { estado: "EN_CARTERA" }, select: { amount: true } }),
+  ]);
+  const carteraTotal = sumDecimals(cartera.map((c) => c.amount));
+  const carteraCount = `${cartera.length} cheque${cartera.length === 1 ? "" : "s"}`;
 
   const cards = await Promise.all(
     treasuries.map(async (treasury) => {
@@ -59,6 +70,23 @@ export default async function TesoreriaPage() {
                 </Link>
               )}
             </div>
+            {/* Los cheques físicos viven en la caja, así que la cartera cuelga de ahí. No suman al
+                saldo: no son plata hasta que se cobran. */}
+            {esLaCaja(treasury.name) && (
+              <Link
+                href="/tesoreria/cheques"
+                className="flex items-center justify-between rounded-lg border border-foreground/10 p-3 text-sm hover:bg-foreground/5 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Wallet size={15} className="text-foreground/40" />
+                  Cheques en cartera
+                </span>
+                <span className="font-medium">
+                  {formatMoney(carteraTotal)}
+                  <span className="ml-2 text-xs text-foreground/50">{carteraCount}</span>
+                </span>
+              </Link>
+            )}
           </div>
         ))}
         {cards.length === 0 && (
