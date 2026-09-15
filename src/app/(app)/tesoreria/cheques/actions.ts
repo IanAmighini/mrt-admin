@@ -1,14 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { ChequeEstado } from "@prisma/client";
+import { Prisma, type ChequeEstado } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
 import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { marcarCheque } from "@/lib/cheques";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
-import { formatMoney, parseNumeroEscrito, sumDecimals } from "@/lib/money";
+import { formatMoney, parseNumeroEscrito, parseNumeroOpcional, sumDecimals } from "@/lib/money";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -16,9 +16,9 @@ function parseFormDate(value: FormDataEntryValue | null): Date {
   return new Date(`${str}T00:00:00`);
 }
 
-const ESTADOS_MANUALES: ChequeEstado[] = ["DEPOSITADO", "RECHAZADO", "EN_CARTERA"];
+const ESTADOS_MANUALES: ChequeEstado[] = ["DEPOSITADO", "EN_CARTERA"];
 
-/** Depositar un cheque, o marcarlo rechazado. Entregarlo no se hace acá: eso es cargar el pago. */
+/** Depositar un cheque, o devolverlo a cartera. El rechazo va aparte: mueve cuentas corrientes. */
 export async function actualizarEstadoCheque(formData: FormData) {
   const user = await requireRole(["ADMIN"]);
 
@@ -132,4 +132,102 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
 
   revalidatePath("/tesoreria/cheques");
   revalidatePath("/tesoreria");
+}
+
+/**
+ * Un cheque que vuelve rechazado.
+ *
+ * El cheque no valía, así que todo lo que se canceló con él vuelve a deberse. Se resuelve con notas
+ * de débito y no borrando los pagos: el pago existió —se entregó el papel— y borrarlo dejaría la
+ * cuenta cerrando bien pero sin explicar por qué.
+ *
+ * Toca hasta dos cuentas:
+ *  - La del proveedor al que se le entregó: vuelve la deuda, más lo que cobra por el rechazo (un
+ *    fijo y un porcentaje sobre el valor, que se cargan como dos renglones aparte, igual que los
+ *    manda él).
+ *  - La del cliente que lo dio: vuelve su deuda, porque su pago no valió.
+ */
+export async function rechazarCheque(formData: FormData) {
+  const user = await requireRole(["ADMIN"]);
+
+  const chequeId = String(formData.get("chequeId") || "");
+  const cheque = await prisma.cheque.findUnique({
+    where: { id: chequeId },
+    include: {
+      recibidoEn: { include: { account: { include: { entity: true } } } },
+      entregadoEn: { include: { account: { include: { entity: true } } } },
+    },
+  });
+  if (!cheque) throw new UserError("El cheque ya no existe.");
+  if (cheque.estado === "RECHAZADO") throw new UserError("Este cheque ya está marcado como rechazado.");
+
+  const date = parseFormDate(formData.get("date"));
+  const gastoFijo = parseNumeroOpcional(String(formData.get("gastoFijo") || ""), "gasto fijo");
+  const gastoPorcentaje = parseNumeroOpcional(String(formData.get("gastoPorcentaje") || ""), "porcentaje");
+  const gastoVariable = cheque.amount.times(gastoPorcentaje).dividedBy(100);
+
+  const notas: { accountId: string; total: Prisma.Decimal; motivo: string }[] = [];
+
+  if (cheque.entregadoEn) {
+    const cuenta = cheque.entregadoEn.accountId;
+    notas.push({
+      accountId: cuenta,
+      total: cheque.amount,
+      motivo: `Cheque ${cheque.numero} rechazado — se anula el pago`,
+    });
+    if (gastoFijo.greaterThan(0)) {
+      notas.push({ accountId: cuenta, total: gastoFijo, motivo: `Gastos por cheque ${cheque.numero} rechazado` });
+    }
+    if (gastoVariable.greaterThan(0)) {
+      notas.push({
+        accountId: cuenta,
+        total: gastoVariable,
+        motivo: `Gtos cheq rechazado ${gastoPorcentaje.toFixed(0)}% s/valor (${cheque.numero})`,
+      });
+    }
+  }
+
+  if (cheque.recibidoEn) {
+    notas.push({
+      accountId: cheque.recibidoEn.accountId,
+      total: cheque.amount,
+      motivo: `Cheque ${cheque.numero} rechazado — se anula el cobro`,
+    });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    for (const [i, nota] of notas.entries()) {
+      await tx.document.create({
+        data: {
+          accountId: nota.accountId,
+          type: "NOTA_DEBITO",
+          number: `ND-CHQ-${cheque.numero}${notas.length > 1 ? `-${i + 1}` : ""}`,
+          date,
+          currency: "ARS",
+          netAmount: nota.total,
+          totalAmount: nota.total,
+          reason: nota.motivo,
+          createdById: user.id,
+        },
+      });
+    }
+
+    await tx.cheque.update({ where: { id: chequeId }, data: { estado: "RECHAZADO" } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Cheque",
+      entityId: chequeId,
+      summary: `#${cheque.numero} rechazado — ${notas.length} nota(s) de débito por ${formatMoney(sumDecimals(notas.map((n) => n.total)))}`,
+    });
+  });
+
+  for (const slug of [
+    cheque.entregadoEn?.account.entity.slug,
+    cheque.recibidoEn?.account.entity.slug,
+  ]) {
+    if (slug) revalidatePath(`/cuentas-corrientes/${slug}`);
+  }
+  revalidatePath("/tesoreria/cheques");
 }

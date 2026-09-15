@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { formatMoney, sumDecimals } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, sumDecimals } from "@/lib/money";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
-import { actualizarEstadoCheque, cambiarChequesPorEfectivo } from "./actions";
+import { actualizarEstadoCheque, cambiarChequesPorEfectivo, rechazarCheque } from "./actions";
+import { RechazoChequeFields } from "@/components/RechazoChequeFields";
 import { FormModal } from "@/components/Modal";
 import { CambioChequesFields } from "@/components/CambioChequesFields";
 import { Wallet, Send, Landmark } from "lucide-react";
@@ -174,16 +175,34 @@ export default async function ChequesPage({
                   <td className="py-2 pr-4">
                     {/* Un cheque entregado no se toca desde acá: lo que lo movió fue un pago, y
                         deshacerlo por un lado dejaría el pago apuntando a un cheque que volvió. */}
-                    {c.estado === "EN_CARTERA" ? (
-                      <div className="flex flex-wrap gap-2">
+                    {/* El rechazo se puede marcar esté donde esté: un cheque vuelve rechazado
+                        tanto si lo tenemos como si ya se lo dimos a alguien. */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {c.estado === "EN_CARTERA" && (
                         <EstadoButton chequeId={c.id} estado="DEPOSITADO" label="Depositar" />
-                        <EstadoButton chequeId={c.id} estado="RECHAZADO" label="Rechazado" />
-                      </div>
-                    ) : c.estado === "ENTREGADO" ? (
-                      <span className="text-xs text-foreground/40">se entregó con un pago</span>
-                    ) : (
-                      <EstadoButton chequeId={c.id} estado="EN_CARTERA" label="Volver a cartera" />
-                    )}
+                      )}
+                      {c.estado === "DEPOSITADO" && (
+                        <EstadoButton chequeId={c.id} estado="EN_CARTERA" label="Volver a cartera" />
+                      )}
+                      {c.estado !== "RECHAZADO" && (
+                        <FormModal
+                          triggerLabel="Rechazado"
+                          title="Cheque rechazado"
+                          action={rechazarCheque}
+                        >
+                          <RechazoChequeFields
+                            chequeId={c.id}
+                            numero={c.numero}
+                            monto={formatNumeroEditable(c.amount)}
+                            aQuien={c.entregadoEn?.account.entity.name ?? null}
+                            deQuien={c.recibidoEn?.account.entity.name ?? null}
+                          />
+                        </FormModal>
+                      )}
+                      {c.estado === "ENTREGADO" && (
+                        <span className="text-xs text-foreground/40">se entregó con un pago</span>
+                      )}
+                    </div>
                   </td>
                 )}
               </tr>
