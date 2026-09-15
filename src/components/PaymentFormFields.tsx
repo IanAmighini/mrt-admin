@@ -6,6 +6,18 @@ import { PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS, RETENTION_KIND_ORDER } fr
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
+/** Lo mínimo de un cheque para poder elegirlo; ya serializado, porque esto corre en el navegador. */
+export type ChequeEnCartera = {
+  id: string;
+  numero: string;
+  banco: string | null;
+  /** El monto tal como lo lee el campo de importe, en formato argentino. */
+  amount: string;
+  montoLabel: string;
+  deQuien: string | null;
+  fechaCobro: string | null;
+};
+
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
@@ -28,6 +40,7 @@ export function PaymentFormFields({
   moneda,
   treasuries,
   proveedores,
+  cartera,
 }: {
   entities?: Entity[];
   entityNoun?: string;
@@ -38,6 +51,8 @@ export function PaymentFormFields({
   treasuries: Entity[];
   /** Solo para cobros de clientes: lista de proveedores, para la opción "directo a un proveedor". */
   proveedores?: Entity[];
+  /** Los cheques en cartera, para entregarle uno a un proveedor. */
+  cartera?: ChequeEnCartera[];
 }) {
   const isCobro = entityNoun === "Cliente";
   const defaultTreasuryId = treasuries.find((t) => t.name === "Banco Galicia")?.id ?? treasuries[0]?.id ?? "";
@@ -47,7 +62,12 @@ export function PaymentFormFields({
   const [entityId, setEntityId] = useState(fixedEntityId ?? "");
   const [monto, setMonto] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("EFECTIVO");
+  const [chequeId, setChequeId] = useState("");
   const esRetencion = method === "RETENCION";
+  const esCheque = method === "CHEQUE" || method === "ECHEQ";
+  // Al cobrar, el cheque entra y hay que describirlo. Al pagar, sale de la cartera: se elige uno de
+  // los que ya están, y así el mismo papel queda con su origen y su destino.
+  const eligeDeCartera = esCheque && !isCobro;
   const [cotizacion, setCotizacion] = useState("");
   const monedaCuenta: Currency =
     moneda ?? entities?.find((e) => e.id === entityId)?.moneda ?? "ARS";
@@ -170,6 +190,81 @@ export function PaymentFormFields({
               {acreditado ? formatMoney(acreditado, "USD") : "—"}
             </p>
           </div>
+        </div>
+      )}
+
+      {esCheque && (
+        <div className="space-y-2 rounded-lg border border-foreground/10 p-3">
+          {eligeDeCartera ? (
+            <>
+              <p className="text-sm">
+                Cheque a entregar
+                <span className="block text-xs text-foreground/50">
+                  De los que tenés en cartera. El monto del pago tiene que ser el del cheque: se
+                  entrega entero.
+                </span>
+              </p>
+              <select
+                name="chequeId"
+                required
+                value={chequeId}
+                onChange={(e) => {
+                  setChequeId(e.target.value);
+                  const elegido = cartera?.find((c) => c.id === e.target.value);
+                  if (elegido) setMonto(elegido.amount);
+                }}
+                className={inputClass}
+              >
+                <option value="">— Elegir —</option>
+                {(cartera ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    #{c.numero}
+                    {c.banco ? ` · ${c.banco}` : ""} · {c.montoLabel}
+                    {c.deQuien ? ` · de ${c.deQuien}` : ""}
+                    {c.fechaCobro ? ` · cobrable ${c.fechaCobro}` : ""}
+                  </option>
+                ))}
+              </select>
+              {(cartera ?? []).length === 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  No hay cheques en cartera. Se cargan al registrar el cobro del cliente que te lo
+                  dio.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="text-sm">
+                Datos del cheque
+                <span className="block text-xs text-foreground/50">
+                  Queda en cartera hasta que lo uses para pagarle a alguien.
+                </span>
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground/70" htmlFor="chequeNumero">
+                    Número
+                  </label>
+                  <input id="chequeNumero" name="chequeNumero" required className={inputClass} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground/70" htmlFor="chequeBanco">
+                    Banco
+                  </label>
+                  <input id="chequeBanco" name="chequeBanco" className={inputClass} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground/70" htmlFor="chequeFechaCobro">
+                    Cobrable desde
+                  </label>
+                  <input id="chequeFechaCobro" type="date" name="chequeFechaCobro" className={inputClass} />
+                </div>
+              </div>
+              <p className="text-xs text-foreground/50">
+                Dejá la fecha vacía si es al día.
+              </p>
+            </>
+          )}
         </div>
       )}
 

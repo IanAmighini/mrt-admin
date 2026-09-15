@@ -16,6 +16,7 @@ import {
   getTreasuries,
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
+import { getCarteraParaFormulario } from "@/lib/cheques";
 import { formatMoney, formatNumeroEditable, formatQuantity, toDecimal } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
@@ -107,6 +108,7 @@ export default async function EntityLedgerPage({
     recentCompras,
     treasuries,
     proveedores,
+    cartera,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
@@ -128,6 +130,7 @@ export default async function EntityLedgerPage({
     isCliente
       ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
+    isProveedor ? getCarteraParaFormulario() : Promise.resolve([]),
   ]);
 
   let card3Label = "Entregas";
@@ -226,6 +229,7 @@ export default async function EntityLedgerPage({
           canEdit={canEdit}
           treasuries={treasuries}
           proveedores={proveedores}
+          cartera={cartera}
           factura={
             // En un proveedor el botón sólo sirve para agrupar compras en su factura, así que sin
             // compras pendientes no se muestra: un botón "Factura" al lado de "Gasto", sin nada que

@@ -1,4 +1,5 @@
 import type {
+  ChequeEstado,
   Circuit,
   Currency,
   DocumentType,
@@ -91,6 +92,13 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   ECHEQ: "Echeq",
   RETENCION: "Retención sufrida",
   OTRO: "Otro",
+};
+
+export const CHEQUE_ESTADO_LABELS: Record<ChequeEstado, string> = {
+  EN_CARTERA: "En cartera",
+  ENTREGADO: "Entregado",
+  DEPOSITADO: "Depositado",
+  RECHAZADO: "Rechazado",
 };
 
 export const RETENTION_KIND_LABELS: Record<RetentionKind, string> = {

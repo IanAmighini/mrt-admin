@@ -36,6 +36,7 @@ model User {
   pedidos          Pedido[]
   auditLogs        AuditLog[]
   entregasPreforma EntregaPreforma[]
+  cheques          Cheque[]
 }
 
 enum AuditAction {
@@ -221,6 +222,14 @@ enum PaymentMethod {
   OTRO
 }
 
+/// Dónde está un cheque hoy.
+enum ChequeEstado {
+  EN_CARTERA
+  ENTREGADO
+  DEPOSITADO
+  RECHAZADO
+}
+
 /// Contra qué impuesto se imputa una retención sufrida.
 enum RetentionKind {
   IVA
@@ -369,6 +378,9 @@ model Payment {
    */
   treasuryId      String?
   treasury        Entity? @relation(fields: [treasuryId], references: [id])
+  /// El cheque que entró con este cobro, o el que salió con este pago.
+  chequeRecibido  Cheque? @relation("ChequeRecibido")
+  chequeEntregado Cheque? @relation("ChequeEntregado")
   /**
    * Cuando un cobro se asignó "directo a un proveedor", conecta el Payment del cobro con el
    * Payment del pago generado en la cuenta del proveedor (y viceversa). Sin relation formal a
@@ -381,6 +393,40 @@ model Payment {
 
   @@index([accountId])
   @@index([treasuryId])
+}
+
+/**
+ * Un cheque recibido de un cliente. Es UNO solo aunque pase por dos manos: entra con el cobro de un
+ * cliente y sale con el pago a un proveedor, y de ahí salen las dos preguntas que importan — de
+ * quién lo recibí y a quién se lo di.
+ * No toca la tesorería: eso lo sigue manejando el destino del pago, como siempre. Acá se sigue el
+ * papel, no la plata.
+ */
+model Cheque {
+  id         String       @id @default(cuid())
+  numero     String
+  banco      String?
+  /// Un echeq es bancario y va siempre en blanco; uno físico, generalmente en negro.
+  esEcheq    Boolean      @default(false)
+  amount     Decimal      @db.Decimal(14, 2)
+  /// Desde cuándo se puede cobrar. En uno al día, la fecha en que se recibió.
+  fechaCobro DateTime?
+  estado     ChequeEstado @default(EN_CARTERA)
+
+  /// El cobro con el que entró. Si ese cobro se borra, el cheque no existió: se va con él.
+  recibidoEnId  String?  @unique
+  recibidoEn    Payment? @relation("ChequeRecibido", fields: [recibidoEnId], references: [id], onDelete: Cascade)
+  /// El pago con el que salió. Borrar ese pago lo devuelve a la cartera en vez de borrarlo.
+  entregadoEnId String?  @unique
+  entregadoEn   Payment? @relation("ChequeEntregado", fields: [entregadoEnId], references: [id], onDelete: SetNull)
+
+  notes       String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([estado])
 }
 
 model PaymentAllocation {

@@ -19,6 +19,7 @@ import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impu
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
+import { crearChequeRecibido, devolverChequesALaCartera, entregarCheque, esMetodoCheque } from "@/lib/cheques";
 import { logAudit } from "@/lib/audit";
 import type { AuditAction } from "@prisma/client";
 
@@ -1038,6 +1039,38 @@ export async function deleteFactura(formData: FormData) {
 }
 
 /**
+ * El cheque de un cobro o de un pago. Cuando entra —cobro de un cliente— se crea; cuando sale
+ * —pago a un proveedor— se elige de la cartera y se marca entregado. Es el mismo papel las dos
+ * veces, y por eso se puede responder de quién vino y a quién se le dio.
+ */
+async function aplicarCheque(
+  tx: Prisma.TransactionClient,
+  params: {
+    formData: FormData;
+    paymentId: string;
+    method: PaymentMethod;
+    amount: Prisma.Decimal;
+    userId: string;
+  }
+) {
+  if (!esMetodoCheque(params.method)) return;
+
+  const chequeId = String(params.formData.get("chequeId") || "").trim();
+  if (chequeId) {
+    await entregarCheque(tx, { paymentId: params.paymentId, chequeId, amount: params.amount });
+    return;
+  }
+
+  await crearChequeRecibido(tx, {
+    paymentId: params.paymentId,
+    formData: params.formData,
+    amount: params.amount,
+    esEcheq: params.method === "ECHEQ",
+    userId: params.userId,
+  });
+}
+
+/**
  * Una retención sufrida cancela la deuda del cliente como cualquier pago, pero no es plata: nunca
  * llegó a una caja. El destino se descarta acá y no sólo en el formulario, porque si entrara igual
  * la tesorería contaría plata que no existe.
@@ -1214,6 +1247,8 @@ export async function createPaymentForEntity(formData: FormData) {
       });
     }
 
+    await aplicarCheque(tx, { formData, paymentId: payment.id, method, amount, userId: user.id });
+
     return payment;
   });
 
@@ -1264,9 +1299,13 @@ export async function deletePayment(formData: FormData) {
     : null;
 
   await prisma.$transaction(async (tx) => {
+    // Antes de borrar: la FK desvincula sola, pero el estado no vuelve solo y el cheque quedaría
+    // entregado a nadie, fuera de la cartera y sin poder usarse otra vez.
+    await devolverChequesALaCartera(tx, paymentId);
     await tx.paymentAllocation.deleteMany({ where: { paymentId } });
     await tx.payment.delete({ where: { id: paymentId } });
     if (linkedPayment) {
+      await devolverChequesALaCartera(tx, linkedPayment.id);
       await tx.paymentAllocation.deleteMany({ where: { paymentId: linkedPayment.id } });
       await tx.payment.delete({ where: { id: linkedPayment.id } });
     }
@@ -1332,6 +1371,9 @@ export async function updatePayment(formData: FormData) {
     : null;
 
   await prisma.$transaction(async (tx) => {
+    // Editar un pago rehace todo lo que colgaba de él, y el cheque entra en eso: vuelve a la
+    // cartera y se lo reasigna abajo con lo que venga del formulario.
+    await devolverChequesALaCartera(tx, paymentId);
     await tx.paymentAllocation.deleteMany({ where: { paymentId } });
     await tx.document.deleteMany({ where: { sourcePaymentId: paymentId } });
     // Solo el lado "cobro" (con el selector de Proveedor) puede rearmar el vínculo desde cero —
@@ -1358,6 +1400,12 @@ export async function updatePayment(formData: FormData) {
         linkedPaymentId: isCobro ? null : payment.linkedPaymentId,
       },
     });
+
+    // El cheque que ya existía se borró con `devolverChequesALaCartera` sólo si había salido; el que
+    // entró con este cobro sigue vivo, así que se actualiza en vez de duplicarlo.
+    const yaTiene = await tx.cheque.findUnique({ where: { recibidoEnId: paymentId } });
+    if (yaTiene) await tx.cheque.delete({ where: { id: yaTiene.id } });
+    await aplicarCheque(tx, { formData, paymentId, method, amount, userId: user.id });
   });
 
   const allocations = await allocateFifo(account.id, amount, account.entity.moneda);

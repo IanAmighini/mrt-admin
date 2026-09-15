@@ -10,7 +10,7 @@ import {
   createPaymentForEntity,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { FormModal } from "./Modal";
-import { PaymentFormFields } from "./PaymentFormFields";
+import { PaymentFormFields, type ChequeEnCartera } from "./PaymentFormFields";
 import { DocumentFormFields } from "./DocumentFormFields";
 import { FacturaFormFields, type ComprobanteFacturable } from "./FacturaFormFields";
 import { GastoFormFields } from "./GastoFormFields";
@@ -25,6 +25,7 @@ export function CuentaCorrientePanel({
   factura,
   treasuries,
   proveedores,
+  cartera,
 }: {
   entityId: string;
   entityType: Entity["type"];
@@ -43,6 +44,8 @@ export function CuentaCorrientePanel({
     sustantivo: string;
   };
   treasuries: Entity[];
+  /** Los cheques en cartera, para poder entregarle uno a un proveedor. */
+  cartera?: ChequeEnCartera[];
   /** Solo si esta ficha es de un cliente: lista de proveedores, para "directo a un proveedor". */
   proveedores?: Entity[];
 }) {
@@ -65,6 +68,7 @@ export function CuentaCorrientePanel({
                   entityNoun={isCliente ? "Cliente" : "Proveedor"}
                   treasuries={treasuries}
                   proveedores={isCliente ? proveedores : undefined}
+                  cartera={cartera}
                 />
               </FormModal>
             )}
