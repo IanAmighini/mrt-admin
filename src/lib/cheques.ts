@@ -23,7 +23,15 @@ export async function getCartera() {
  */
 export async function crearChequeRecibido(
   tx: Prisma.TransactionClient,
-  params: { paymentId: string; formData: FormData; amount: Prisma.Decimal; esEcheq: boolean; userId: string }
+  params: {
+    paymentId: string;
+    formData: FormData;
+    amount: Prisma.Decimal;
+    esEcheq: boolean;
+    userId: string;
+    /** Un cheque que se carga al pagar nace ya entregado: no pasó por la cartera. */
+    yaEntregado?: boolean;
+  }
 ) {
   const numero = String(params.formData.get("chequeNumero") || "").trim();
   if (!numero) throw new UserError("Falta el número del cheque.");
@@ -39,8 +47,11 @@ export async function crearChequeRecibido(
       amount: params.amount,
       // Sin fecha es un cheque al día: se puede cobrar desde que se recibió.
       fechaCobro: fechaRaw ? new Date(`${fechaRaw}T00:00:00`) : null,
-      estado: "EN_CARTERA",
-      recibidoEnId: params.paymentId,
+      estado: params.yaEntregado ? "ENTREGADO" : "EN_CARTERA",
+      // Al pagar, el cheque queda del lado de la salida; al cobrar, del lado de la entrada.
+      ...(params.yaEntregado
+        ? { entregadoEnId: params.paymentId }
+        : { recibidoEnId: params.paymentId }),
       createdById: params.userId,
     },
   });
@@ -72,11 +83,17 @@ export async function entregarCheque(
 }
 
 /**
- * Devuelve a la cartera los cheques que salieron con un pago que se está borrando o editando. La
- * FK los desvincula sola (`SetNull`), pero el estado no vuelve solo: sin esto quedarían
- * "entregados" a nadie, invisibles en la cartera y sin poder usarse otra vez.
+ * Deshace el lado de salida de un pago que se está borrando o editando.
+ *
+ * Un cheque que había entrado por un cobro vuelve a la cartera: la FK lo desvincula sola
+ * (`SetNull`), pero el estado no vuelve solo y quedaría "entregado" a nadie, invisible y sin poder
+ * usarse otra vez.
+ *
+ * Uno que nació con este pago —propio, o conseguido en un cambio— no tiene a dónde volver: nunca
+ * estuvo en cartera. Ese se borra, como se borra el que entró con un cobro que se elimina.
  */
 export async function devolverChequesALaCartera(tx: Prisma.TransactionClient, paymentId: string) {
+  await tx.cheque.deleteMany({ where: { entregadoEnId: paymentId, recibidoEnId: null } });
   await tx.cheque.updateMany({
     where: { entregadoEnId: paymentId },
     data: { estado: "EN_CARTERA", entregadoEnId: null },

@@ -200,13 +200,11 @@ export function PaymentFormFields({
               <p className="text-sm">
                 Cheque a entregar
                 <span className="block text-xs text-foreground/50">
-                  De los que tenés en cartera. El monto del pago tiene que ser el del cheque: se
-                  entrega entero.
+                  El monto del pago tiene que ser el del cheque: se entrega entero.
                 </span>
               </p>
               <select
                 name="chequeId"
-                required
                 value={chequeId}
                 onChange={(e) => {
                   setChequeId(e.target.value);
@@ -215,7 +213,7 @@ export function PaymentFormFields({
                 }}
                 className={inputClass}
               >
-                <option value="">— Elegir —</option>
+                <option value="">— Es un cheque que no está en cartera —</option>
                 {(cartera ?? []).map((c) => (
                   <option key={c.id} value={c.id}>
                     #{c.numero}
@@ -225,11 +223,29 @@ export function PaymentFormFields({
                   </option>
                 ))}
               </select>
-              {(cartera ?? []).length === 0 && (
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  No hay cheques en cartera. Se cargan al registrar el cobro del cliente que te lo
-                  dio.
-                </p>
+              {/* No todo cheque entró por un cobro: los hay propios y los que se consiguen
+                  cambiándolos. Obligar a elegir de la cartera dejaba esos pagos sin poder cargarse. */}
+              {!chequeId && (
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  <div className="space-y-1">
+                    <label className="text-xs text-foreground/70" htmlFor="chequeNumero">
+                      Número
+                    </label>
+                    <input id="chequeNumero" name="chequeNumero" required className={inputClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-foreground/70" htmlFor="chequeBanco">
+                      Banco
+                    </label>
+                    <input id="chequeBanco" name="chequeBanco" className={inputClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-foreground/70" htmlFor="chequeFechaCobro">
+                      Cobrable desde
+                    </label>
+                    <input id="chequeFechaCobro" type="date" name="chequeFechaCobro" className={inputClass} />
+                  </div>
+                </div>
               )}
             </>
           ) : (

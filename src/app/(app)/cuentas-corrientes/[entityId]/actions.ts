@@ -1051,6 +1051,7 @@ async function aplicarCheque(
     method: PaymentMethod;
     amount: Prisma.Decimal;
     userId: string;
+    esPago: boolean;
   }
 ) {
   if (!esMetodoCheque(params.method)) return;
@@ -1061,12 +1062,15 @@ async function aplicarCheque(
     return;
   }
 
+  // Sin cheque elegido de la cartera, se carga uno nuevo. Si es un pago, ese cheque no entró por
+  // ningún cobro —es propio, o conseguido en un cambio— y nace directamente entregado.
   await crearChequeRecibido(tx, {
     paymentId: params.paymentId,
     formData: params.formData,
     amount: params.amount,
     esEcheq: params.method === "ECHEQ",
     userId: params.userId,
+    yaEntregado: params.esPago,
   });
 }
 
@@ -1247,7 +1251,14 @@ export async function createPaymentForEntity(formData: FormData) {
       });
     }
 
-    await aplicarCheque(tx, { formData, paymentId: payment.id, method, amount, userId: user.id });
+    await aplicarCheque(tx, {
+      formData,
+      paymentId: payment.id,
+      method,
+      amount,
+      userId: user.id,
+      esPago: formData.get("isCobro") !== "1",
+    });
 
     return payment;
   });
@@ -1405,7 +1416,14 @@ export async function updatePayment(formData: FormData) {
     // entró con este cobro sigue vivo, así que se actualiza en vez de duplicarlo.
     const yaTiene = await tx.cheque.findUnique({ where: { recibidoEnId: paymentId } });
     if (yaTiene) await tx.cheque.delete({ where: { id: yaTiene.id } });
-    await aplicarCheque(tx, { formData, paymentId, method, amount, userId: user.id });
+    await aplicarCheque(tx, {
+      formData,
+      paymentId,
+      method,
+      amount,
+      userId: user.id,
+      esPago: formData.get("isCobro") !== "1",
+    });
   });
 
   const allocations = await allocateFifo(account.id, amount, account.entity.moneda);
