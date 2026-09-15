@@ -113,6 +113,7 @@ export default async function EntityLedgerPage({
     cartera,
     pagosSinOrden,
     resumenGastos,
+    insumos,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
@@ -137,6 +138,12 @@ export default async function EntityLedgerPage({
     isProveedor ? getCarteraParaFormulario() : Promise.resolve([]),
     isProveedor ? getPagosSinOrden(entity.id) : Promise.resolve([]),
     isProveedor ? getResumenDeGastos(entity.id) : Promise.resolve(null),
+    isProveedor
+      ? prisma.item.findMany({
+          select: { id: true, name: true, unit: true, category: true, unitsPerPallet: true, precioSopladoUsd: true },
+          orderBy: { name: "asc" },
+        })
+      : Promise.resolve([]),
   ]);
 
   const hayPanelIzquierdo = isCliente || recentCompras.length > 0;
@@ -245,6 +252,7 @@ export default async function EntityLedgerPage({
         </div>
         <CuentaCorrientePanel
           entityId={entity.id}
+          entityName={entity.name}
           entityType={entity.type}
           rubroGasto={entity.expenseCategory}
           moneda={entity.moneda}
@@ -253,6 +261,7 @@ export default async function EntityLedgerPage({
           treasuries={treasuries}
           proveedores={proveedores}
           cartera={cartera}
+          items={insumos.map((i) => ({ ...i, precioSopladoUsd: i.precioSopladoUsd?.toString() ?? null }))}
           pagosSinOrden={
             isProveedor
               ? pagosSinOrden.map((p) => ({

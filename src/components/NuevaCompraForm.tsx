@@ -58,17 +58,23 @@ const filaVacia = (key: number): Row => ({
   circuit: "BLANCO",
 });
 
-export function NuevaCompraForm({
-  action,
+export type { ItemInfo as ItemDeCompra, ProveedorInfo as ProveedorDeCompra };
+
+/**
+ * Los campos de una compra, sin el `<form>`: así los puede usar tanto la pantalla propia como el
+ * modal de "Cargar" de la ficha del proveedor, que trae su propio form.
+ */
+export function NuevaCompraFields({
   proveedores,
   items,
   fixedEntity,
+  textoBoton = "Crear compra",
 }: {
-  action: (formData: FormData) => void | Promise<void>;
   proveedores: ProveedorInfo[];
   items: ItemInfo[];
   /** Si se llega desde la ficha de un proveedor puntual, fija el proveedor y oculta el selector. */
   fixedEntity?: ProveedorInfo;
+  textoBoton?: string;
 }) {
   const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
   const [nextKey, setNextKey] = useState(1);
@@ -191,7 +197,7 @@ export function NuevaCompraForm({
   const totals = { BLANCO: totalBlanco, NEGRO: netos.NEGRO, total: totalBlanco + netos.NEGRO };
 
   return (
-    <form action={action} className="space-y-6">
+    <div className="space-y-6">
       <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
         <h2 className="text-sm font-semibold">Información general</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -448,9 +454,26 @@ export function NuevaCompraForm({
           type="submit"
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
         >
-          Crear compra
+          {textoBoton}
         </button>
       </div>
+    </div>
+  );
+}
+
+/** La pantalla propia: los mismos campos dentro de su form. */
+export function NuevaCompraForm({
+  action,
+  ...props
+}: {
+  action: (formData: FormData) => void | Promise<void>;
+  proveedores: ProveedorInfo[];
+  items: ItemInfo[];
+  fixedEntity?: ProveedorInfo;
+}) {
+  return (
+    <form action={action}>
+      <NuevaCompraFields {...props} />
     </form>
   );
 }

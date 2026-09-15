@@ -1685,6 +1685,7 @@ export async function deleteGasto(formData: FormData) {
  */
 export async function cargarEnCuenta(formData: FormData) {
   const tipo = String(formData.get("tipo") || "");
+  if (tipo === "COMPRA") return createCompra(formData);
   if (tipo === "GASTO") return createGasto(formData);
   if (tipo === "NOTA") return createDocumentForEntity(formData);
   throw new UserError("Elegí qué querés cargar.");

@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { ArrowLeft, Package, Receipt, Scale } from "lucide-react";
 import type { Entity } from "@prisma/client";
 import { GastoFormFields } from "./GastoFormFields";
 import { DocumentFormFields } from "./DocumentFormFields";
+import { NuevaCompraFields, type ItemDeCompra } from "./NuevaCompraForm";
 
-type Vista = "" | "GASTO" | "NOTA";
+type Vista = "" | "COMPRA" | "GASTO" | "NOTA";
 
 const opcionClass =
   "flex w-full items-start gap-3 rounded-lg border border-foreground/15 bg-background p-3 text-left transition-colors hover:border-primary hover:bg-foreground/5";
@@ -21,20 +21,24 @@ const opcionClass =
  */
 export function CargarEnCuentaFields({
   entityId,
+  entityName,
   rubroGasto,
   isTreasury,
+  items,
 }: {
   entityId: string;
+  entityName: string;
   rubroGasto?: Entity["expenseCategory"];
   isTreasury?: boolean;
+  /** Los insumos, para el formulario de compra. */
+  items: ItemDeCompra[];
 }) {
   const [vista, setVista] = useState<Vista>("");
 
   if (!vista) {
     return (
-      <div className="space-y-2">
-        {/* La compra es un formulario grande con sus líneas: tiene pantalla propia. */}
-        <Link href={`/compras/nueva?entityId=${entityId}`} className={opcionClass}>
+      <div className="mx-auto max-w-xl space-y-2">
+        <button type="button" onClick={() => setVista("COMPRA")} className={opcionClass}>
           <Package size={18} className="mt-0.5 shrink-0 text-foreground/40" />
           <span>
             <span className="block text-sm font-medium">Compra de insumos</span>
@@ -42,7 +46,7 @@ export function CargarEnCuentaFields({
               Lo que entra al depósito: aceite, envases, tapas, cajas, etiquetas. Suma stock.
             </span>
           </span>
-        </Link>
+        </button>
 
         <button type="button" onClick={() => setVista("GASTO")} className={opcionClass}>
           <Receipt size={18} className="mt-0.5 shrink-0 text-foreground/40" />
@@ -80,10 +84,25 @@ export function CargarEnCuentaFields({
         Elegir otra cosa
       </button>
 
-      {vista === "GASTO" ? (
-        <GastoFormFields entityId={entityId} defaultValues={{ expenseCategory: rubroGasto ?? undefined }} />
+      {/* La compra necesita todo el ancho por sus líneas; las otras dos se leen mejor angostas. */}
+      {vista === "COMPRA" ? (
+        <NuevaCompraFields
+          proveedores={[{ id: entityId, name: entityName }]}
+          fixedEntity={{ id: entityId, name: entityName }}
+          items={items}
+          textoBoton="Cargar la compra"
+        />
       ) : (
-        <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
+        <div className="mx-auto max-w-xl space-y-3">
+          {vista === "GASTO" ? (
+            <GastoFormFields
+              entityId={entityId}
+              defaultValues={{ expenseCategory: rubroGasto ?? undefined }}
+            />
+          ) : (
+            <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
+          )}
+        </div>
       )}
     </>
   );

@@ -16,9 +16,11 @@ import { crearOrdenPago } from "@/app/(app)/ordenes-pago/actions";
 import { DocumentFormFields } from "./DocumentFormFields";
 import { FacturaFormFields, type ComprobanteFacturable } from "./FacturaFormFields";
 import { CargarEnCuentaFields } from "./CargarEnCuentaFields";
+import type { ItemDeCompra } from "./NuevaCompraForm";
 
 export function CuentaCorrientePanel({
   entityId,
+  entityName,
   entityType,
   rubroGasto,
   moneda,
@@ -29,8 +31,10 @@ export function CuentaCorrientePanel({
   proveedores,
   cartera,
   pagosSinOrden,
+  items,
 }: {
   entityId: string;
+  entityName: string;
   entityType: Entity["type"];
   /** El rubro del proveedor, para que un gasto suyo arranque con él puesto. */
   rubroGasto?: Entity["expenseCategory"];
@@ -51,6 +55,8 @@ export function CuentaCorrientePanel({
   cartera?: ChequeEnCartera[];
   /** Los pagos en Blanco que todavía no están en una orden de pago. Sólo proveedores. */
   pagosSinOrden?: PagoSinOrden[];
+  /** Los insumos, para cargar una compra sin salir de la ficha. Sólo proveedores. */
+  items?: ItemDeCompra[];
   /** Solo si esta ficha es de un cliente: lista de proveedores, para "directo a un proveedor". */
   proveedores?: Entity[];
 }) {
@@ -86,12 +92,14 @@ export function CuentaCorrientePanel({
                 triggerLabel="Cargar"
                 title="Cargar en la cuenta"
                 action={cargarEnCuenta}
-                maxWidthClass="max-w-xl"
+                maxWidthClass="max-w-5xl"
               >
                 <CargarEnCuentaFields
                   entityId={entityId}
+                  entityName={entityName}
                   rubroGasto={rubroGasto}
                   isTreasury={isTreasury}
+                  items={items ?? []}
                 />
               </FormModal>
             ) : (
