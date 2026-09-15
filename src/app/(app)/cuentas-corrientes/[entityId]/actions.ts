@@ -1676,3 +1676,16 @@ export async function deleteGasto(formData: FormData) {
 
   revalidatePath(`/cuentas-corrientes/${gasto.account.entity.slug}`);
 }
+
+/**
+ * Las tres formas de cargar algo en la cuenta de un proveedor detrás de un solo botón. El
+ * formulario manda `tipo` y acá se reparte, así el modal es uno y la elección se hace adentro, con
+ * cada opción explicada — que es donde se decide mal cuando los botones están sueltos y sin
+ * contexto.
+ */
+export async function cargarEnCuenta(formData: FormData) {
+  const tipo = String(formData.get("tipo") || "");
+  if (tipo === "GASTO") return createGasto(formData);
+  if (tipo === "NOTA") return createDocumentForEntity(formData);
+  throw new UserError("Elegí qué querés cargar.");
+}

@@ -455,3 +455,35 @@ export function sumarSaldosEnPesos(
     ? { total: pesos.plus(dolares.times(cotizacion)), dolaresSinValuar: ZERO }
     : { total: pesos, dolaresSinValuar: dolares };
 }
+
+/**
+ * Para la ficha de un proveedor que no compra insumos: cuánto se le gastó en lo que va del año y
+ * cuándo fue la última vez que hubo algo en su cuenta. En uno de servicios, "Compras 0" e "Insumo
+ * entregado 0" no dicen nada; esto sí.
+ */
+export async function getResumenDeGastos(entityId: string) {
+  const desde = new Date(new Date().getFullYear(), 0, 1);
+
+  const [gastos, ultimoDoc, ultimoPago] = await Promise.all([
+    prisma.document.findMany({
+      where: { type: "GASTO", account: { entityId }, date: { gte: desde } },
+      select: { netAmount: true },
+    }),
+    prisma.document.findFirst({
+      where: { account: { entityId } },
+      orderBy: { date: "desc" },
+      select: { date: true },
+    }),
+    prisma.payment.findFirst({
+      where: { account: { entityId } },
+      orderBy: { date: "desc" },
+      select: { date: true },
+    }),
+  ]);
+
+  const fechas = [ultimoDoc?.date, ultimoPago?.date].filter((d): d is Date => Boolean(d));
+  return {
+    delAnio: sumDecimals(gastos.map((g) => g.netAmount)),
+    ultimoMovimiento: fechas.length > 0 ? new Date(Math.max(...fechas.map((d) => d.getTime()))) : null,
+  };
+}

@@ -4,9 +4,9 @@ import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import {
+  cargarEnCuenta,
   createDocumentForEntity,
   createFactura,
-  createGasto,
   createPaymentForEntity,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { FormModal } from "./Modal";
@@ -15,7 +15,7 @@ import { OrdenPagoFields, type PagoSinOrden } from "./OrdenPagoFields";
 import { crearOrdenPago } from "@/app/(app)/ordenes-pago/actions";
 import { DocumentFormFields } from "./DocumentFormFields";
 import { FacturaFormFields, type ComprobanteFacturable } from "./FacturaFormFields";
-import { GastoFormFields } from "./GastoFormFields";
+import { CargarEnCuentaFields } from "./CargarEnCuentaFields";
 
 export function CuentaCorrientePanel({
   entityId,
@@ -77,10 +77,31 @@ export function CuentaCorrientePanel({
                 />
               </FormModal>
             )}
-            <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
-              <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
-            </FormModal>
-            {isProveedor && pagosSinOrden && (
+            {/* Un proveedor tiene tres formas de cargar algo en la cuenta y elegir mal es fácil —una
+                factura de alquiler cargada como compra, o al revés— así que van detrás de un solo
+                botón que las explica. Un cliente sólo carga notas y ajustes: ahí el botón directo
+                es más corto. */}
+            {isProveedor ? (
+              <FormModal
+                triggerLabel="Cargar"
+                title="Cargar en la cuenta"
+                action={cargarEnCuenta}
+                maxWidthClass="max-w-xl"
+              >
+                <CargarEnCuentaFields
+                  entityId={entityId}
+                  rubroGasto={rubroGasto}
+                  isTreasury={isTreasury}
+                />
+              </FormModal>
+            ) : (
+              <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
+                <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
+              </FormModal>
+            )}
+            {/* Un array vacío es truthy: sin este largo el botón salía siempre, y abría un modal
+                que sólo podía decir que no había nada que agrupar. */}
+            {isProveedor && pagosSinOrden && pagosSinOrden.length > 0 && (
               <FormModal
                 triggerLabel="Orden de pago"
                 title="Nueva orden de pago"
@@ -88,16 +109,6 @@ export function CuentaCorrientePanel({
                 maxWidthClass="max-w-xl"
               >
                 <OrdenPagoFields entityId={entityId} pagos={pagosSinOrden} />
-              </FormModal>
-            )}
-            {isProveedor && (
-              <FormModal
-                triggerLabel="Gasto"
-                title="Nueva factura de gasto"
-                action={createGasto}
-                maxWidthClass="max-w-xl"
-              >
-                <GastoFormFields entityId={entityId} defaultValues={{ expenseCategory: rubroGasto ?? undefined }} />
               </FormModal>
             )}
             {factura && (

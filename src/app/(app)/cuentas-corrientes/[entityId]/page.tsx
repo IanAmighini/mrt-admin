@@ -11,6 +11,7 @@ import {
   getInvoiceableRemitos,
   getLitrosEntregados,
   getRecentCompras,
+  getResumenDeGastos,
   getRecentMovementsForEntity,
   getRecentRemitos,
   getTreasuries,
@@ -111,6 +112,7 @@ export default async function EntityLedgerPage({
     proveedores,
     cartera,
     pagosSinOrden,
+    resumenGastos,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
@@ -134,7 +136,10 @@ export default async function EntityLedgerPage({
       : Promise.resolve([]),
     isProveedor ? getCarteraParaFormulario() : Promise.resolve([]),
     isProveedor ? getPagosSinOrden(entity.id) : Promise.resolve([]),
+    isProveedor ? getResumenDeGastos(entity.id) : Promise.resolve(null),
   ]);
+
+  const hayPanelIzquierdo = isCliente || recentCompras.length > 0;
 
   let card3Label = "Entregas";
   let card3Value = "0";
@@ -145,16 +150,26 @@ export default async function EntityLedgerPage({
     card3Value = String(entregasCount);
     card4Value = formatQuantity(litros, "L");
   } else if (entity.type === "PROVEEDOR") {
-    card3Label = "Compras";
-    card3Value = String(compras.count);
-    card4Label = "Insumo entregado";
-    card4Value =
-      compras.totalByUnit.size === 1
-        ? formatQuantity(
-            Array.from(compras.totalByUnit.values())[0],
-            Array.from(compras.totalByUnit.keys())[0]
-          )
-        : String(compras.count);
+    if (compras.count === 0 && resumenGastos) {
+      // Un proveedor de servicios nunca va a tener compras: mostrarle dos ceros no informa nada.
+      card3Label = "Gastos del año";
+      card3Value = formatMoney(resumenGastos.delAnio);
+      card4Label = "Último movimiento";
+      card4Value = resumenGastos.ultimoMovimiento
+        ? resumenGastos.ultimoMovimiento.toLocaleDateString("es-AR")
+        : "—";
+    } else {
+      card3Label = "Compras";
+      card3Value = String(compras.count);
+      card4Label = "Insumo entregado";
+      card4Value =
+        compras.totalByUnit.size === 1
+          ? formatQuantity(
+              Array.from(compras.totalByUnit.values())[0],
+              Array.from(compras.totalByUnit.keys())[0]
+            )
+          : String(compras.count);
+    }
   } else {
     card3Label = "Entregas";
     card3Value = String(entregasCount);
@@ -216,10 +231,15 @@ export default async function EntityLedgerPage({
         />
       )}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
+      {/* Sin panel a la izquierda, la cuenta corriente ocupa el ancho entero en vez de dejar media
+          pantalla vacía al lado. */}
+      <div className={`grid gap-6 ${hayPanelIzquierdo ? "lg:grid-cols-2" : ""}`}>
+        <div className={hayPanelIzquierdo ? "space-y-6" : "hidden"}>
           {isCliente && <EntregasPanel entityId={entity.id} remitos={recentRemitos} canEdit={canEdit} />}
-          {isProveedor && (
+          {/* Sin compras el panel no tiene nada que mostrar, y en la mitad de los proveedores
+              —los de servicios— nunca va a tenerlo. Se esconde en vez de ocupar media pantalla
+              diciendo que está vacío; el botón para cargar una sigue en "Cargar". */}
+          {isProveedor && recentCompras.length > 0 && (
             <ComprasPanel entityId={entity.id} compras={recentCompras} canEdit={canEdit} />
           )}
         </div>
@@ -275,22 +295,28 @@ export default async function EntityLedgerPage({
         />
       </div>
 
-      <PricesSection
-        entityId={entity.id}
-        circuit="BLANCO"
-        products={products}
-        canEdit={canEdit}
-        currentPrices={blancoPrices}
-        priceHistory={blancoPriceHistory}
-      />
-      <PricesSection
-        entityId={entity.id}
-        circuit="NEGRO"
-        products={products}
-        canEdit={canEdit}
-        currentPrices={negroPrices}
-        priceHistory={negroPriceHistory}
-      />
+      {/* Los precios son los que le cobramos a un cliente: en un proveedor no se usan para nada
+          —ni en una compra ni en un gasto— y ocupaban media pantalla en cada ficha. */}
+      {isCliente && (
+        <>
+          <PricesSection
+            entityId={entity.id}
+            circuit="BLANCO"
+            products={products}
+            canEdit={canEdit}
+            currentPrices={blancoPrices}
+            priceHistory={blancoPriceHistory}
+          />
+          <PricesSection
+            entityId={entity.id}
+            circuit="NEGRO"
+            products={products}
+            canEdit={canEdit}
+            currentPrices={negroPrices}
+            priceHistory={negroPriceHistory}
+          />
+        </>
+      )}
     </div>
   );
 }
