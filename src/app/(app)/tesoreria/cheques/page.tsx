@@ -4,7 +4,9 @@ import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, sumDecimals } from "@/lib/money";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
-import { actualizarEstadoCheque } from "./actions";
+import { actualizarEstadoCheque, cambiarChequesPorEfectivo } from "./actions";
+import { FormModal } from "@/components/Modal";
+import { CambioChequesFields } from "@/components/CambioChequesFields";
 import { Wallet, Send, Landmark } from "lucide-react";
 import type { ChequeEstado } from "@prisma/client";
 
@@ -37,6 +39,11 @@ export default async function ChequesPage({
   const canEdit = user.role === "ADMIN";
   const filtro = FILTROS.some((f) => f.value === estado && f.value) ? (estado as ChequeEstado) : null;
 
+  const treasuries = await prisma.entity.findMany({
+    where: { type: "TESORERIA" },
+    orderBy: { name: "asc" },
+  });
+
   const cheques = await prisma.cheque.findMany({
     where: filtro ? { estado: filtro } : undefined,
     include: {
@@ -56,7 +63,19 @@ export default async function ChequesPage({
         <Link href="/tesoreria" className="text-sm underline underline-offset-2">
           ← Tesorería
         </Link>
-        <h1 className="mt-2 text-xl font-semibold mb-1">Cheques</h1>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-xl font-semibold mb-1">Cheques</h1>
+          {canEdit && (
+            <FormModal
+              triggerLabel="Cambiar cheques por efectivo"
+              title="Cambio de cheques por efectivo"
+              action={cambiarChequesPorEfectivo}
+              maxWidthClass="max-w-3xl"
+            >
+              <CambioChequesFields treasuries={treasuries} />
+            </FormModal>
+          )}
+        </div>
         <p className="text-sm text-foreground/60">
           El mismo cheque desde que entra con el cobro de un cliente hasta que se entrega o se
           deposita. No mueve la caja: eso lo sigue haciendo el destino del pago.
@@ -122,6 +141,13 @@ export default async function ChequesPage({
                     >
                       {c.recibidoEn.account.entity.name}
                     </Link>
+                  ) : c.cambiadoA ? (
+                    <>
+                      {c.cambiadoA}
+                      <span className="block text-xs text-foreground/50">cambiado por efectivo</span>
+                    </>
+                  ) : c.cambioEnId ? (
+                    <span className="text-foreground/50">cambiado por efectivo</span>
                   ) : (
                     <span className="text-foreground/40">—</span>
                   )}

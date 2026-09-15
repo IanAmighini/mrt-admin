@@ -277,13 +277,15 @@ model Document {
   sourcePaymentId  String?                   @unique
   sourcePayment    Payment?                  @relation("PaymentTreasuryDocument", fields: [sourcePaymentId], references: [id], onDelete: Cascade)
 
-  remitoLinks   DocumentLink[]      @relation("RemitoLinks")
-  facturaLinks  DocumentLink[]      @relation("FacturaLinks")
-  allocations   PaymentAllocation[]
-  lines         DocumentLine[]
-  purchaseLines PurchaseLine[]
-  itemMovements ItemMovement[]
-  taxes         DocumentTax[]
+  remitoLinks      DocumentLink[]      @relation("RemitoLinks")
+  facturaLinks     DocumentLink[]      @relation("FacturaLinks")
+  allocations      PaymentAllocation[]
+  lines            DocumentLine[]
+  purchaseLines    PurchaseLine[]
+  itemMovements    ItemMovement[]
+  taxes            DocumentTax[]
+  /// Los cheques que entraron con este movimiento, cuando es un cambio por efectivo.
+  chequesDelCambio Cheque[]            @relation("ChequeCambiado")
 
   @@index([accountId])
 }
@@ -420,6 +422,17 @@ model Cheque {
   entregadoEnId String?  @unique
   entregadoEn   Payment? @relation("ChequeEntregado", fields: [entregadoEnId], references: [id], onDelete: SetNull)
 
+  /**
+   * Cuando el cheque no vino de un cliente sino de un cambio por efectivo: a quién se lo cambiamos.
+   * Se escribe a mano porque esa empresa no es cliente ni proveedor — no hay cuenta con ella.
+   */
+  cambiadoA  String?
+  /**
+   * El movimiento de caja del que salió el efectivo de ese cambio.
+   */
+  cambioEnId String?
+  cambioEn   Document? @relation("ChequeCambiado", fields: [cambioEnId], references: [id], onDelete: Cascade)
+
   notes       String?
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
@@ -427,6 +440,7 @@ model Cheque {
   updatedAt   DateTime @updatedAt
 
   @@index([estado])
+  @@index([cambioEnId])
 }
 
 model PaymentAllocation {
