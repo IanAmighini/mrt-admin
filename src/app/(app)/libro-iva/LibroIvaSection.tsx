@@ -7,6 +7,8 @@ import { FormModal } from "@/components/Modal";
 import { ContribuyenteFields } from "@/components/ContribuyenteFields";
 import { updateContribuyente } from "./actions";
 import { getLibroIva, type RenglonIva, type TotalesIva } from "@/lib/libro-iva";
+import { DIRECCION_KEY } from "@/lib/orden-pago";
+import { getSetting } from "@/lib/settings";
 import type { Period } from "@/lib/period";
 
 const thClass = "py-2 pr-4 text-left font-medium";
@@ -21,7 +23,7 @@ export async function LibroIvaSection({
   /** Sólo Admin cambia el contribuyente; los demás lo ven pero no tienen por qué tocarlo. */
   canEdit?: boolean;
 }) {
-  const libro = await getLibroIva(period);
+  const [libro, direccion] = await Promise.all([getLibroIva(period), getSetting(DIRECCION_KEY, "")]);
   const aFavor = libro.saldoIva.lessThan(0);
 
   return (
@@ -40,7 +42,7 @@ export async function LibroIvaSection({
             title="Datos del contribuyente"
             action={updateContribuyente}
           >
-            <ContribuyenteFields defaultValues={libro.contribuyente} />
+            <ContribuyenteFields defaultValues={{ ...libro.contribuyente, direccion }} />
           </FormModal>
         )}
       </div>

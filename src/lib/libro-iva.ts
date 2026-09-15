@@ -17,7 +17,7 @@ export type Contribuyente = { nombre: string; cuit: string };
 
 export async function getContribuyente(): Promise<Contribuyente> {
   const [nombre, cuit] = await Promise.all([
-    getSetting(CONTRIBUYENTE_KEYS.nombre, "Molinos Rio Tala"),
+    getSetting(CONTRIBUYENTE_KEYS.nombre, "Molinos Río Tala"),
     getSetting(CONTRIBUYENTE_KEYS.cuit, "30-71569727-7"),
   ]);
   return { nombre, cuit };

@@ -17,8 +17,9 @@ import {
 } from "@/lib/ledger";
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { getCarteraParaFormulario } from "@/lib/cheques";
+import { getPagosSinOrden } from "@/lib/orden-pago";
 import { formatMoney, formatNumeroEditable, formatQuantity, toDecimal } from "@/lib/money";
-import { CIRCUIT_LABELS } from "@/lib/labels";
+import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
 import { createPrice } from "./actions";
 import { deleteEntity, updateEntity } from "@/app/(app)/clientes/actions";
@@ -109,6 +110,7 @@ export default async function EntityLedgerPage({
     treasuries,
     proveedores,
     cartera,
+    pagosSinOrden,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
@@ -131,6 +133,7 @@ export default async function EntityLedgerPage({
       ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
     isProveedor ? getCarteraParaFormulario() : Promise.resolve([]),
+    isProveedor ? getPagosSinOrden(entity.id) : Promise.resolve([]),
   ]);
 
   let card3Label = "Entregas";
@@ -230,6 +233,22 @@ export default async function EntityLedgerPage({
           treasuries={treasuries}
           proveedores={proveedores}
           cartera={cartera}
+          pagosSinOrden={
+            isProveedor
+              ? pagosSinOrden.map((p) => ({
+                  id: p.id,
+                  fecha: p.date.toLocaleDateString("es-AR"),
+                  metodo: PAYMENT_METHOD_LABELS[p.method],
+                  amount: formatNumeroEditable(p.amount),
+                  montoLabel: formatMoney(p.amount, p.currency),
+                  comprobante: p.chequeEntregado?.numero ?? p.reference ?? null,
+                  imputadoA:
+                    p.allocations.length > 0
+                      ? `imputado a ${p.allocations.map((a) => `#${a.document.number}`).join(", ")}`
+                      : null,
+                }))
+              : undefined
+          }
           factura={
             // En un proveedor el botón sólo sirve para agrupar compras en su factura, así que sin
             // compras pendientes no se muestra: un botón "Factura" al lado de "Gasto", sin nada que

@@ -30,3 +30,29 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* La orden de pago se imprime desde el navegador: de ahí sale el PDF que se firma o se manda.
+   Al imprimir se saca todo lo que no es la hoja —menú, barras, botones— para que entre en una
+   página sola y el papel arranque arriba de todo. */
+@media print {
+  body {
+    background: #fff;
+  }
+
+  /* El layout de la app envuelve la página en su sidebar y su header; en papel estorban. */
+  aside,
+  header nav,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}

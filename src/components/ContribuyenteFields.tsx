@@ -6,7 +6,7 @@ const submitClass =
 export function ContribuyenteFields({
   defaultValues,
 }: {
-  defaultValues: { nombre: string; cuit: string };
+  defaultValues: { nombre: string; cuit: string; direccion?: string };
 }) {
   return (
     <>
@@ -34,6 +34,19 @@ export function ContribuyenteFields({
           placeholder="30-71569727-7"
           className={inputClass}
         />
+      </div>
+      <div className="space-y-1">
+        <label className="text-sm" htmlFor="contribuyenteDireccion">
+          Dirección
+        </label>
+        <input
+          id="contribuyenteDireccion"
+          name="contribuyenteDireccion"
+          defaultValue={defaultValues.direccion ?? ""}
+          placeholder="Av. Bartolomé Mitre 262 · Villa Martelli, Buenos Aires"
+          className={inputClass}
+        />
+        <p className="text-xs text-foreground/50">Va en el encabezado de las órdenes de pago.</p>
       </div>
       <button type="submit" className={submitClass}>
         Guardar

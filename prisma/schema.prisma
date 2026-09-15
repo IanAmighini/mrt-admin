@@ -37,6 +37,7 @@ model User {
   auditLogs        AuditLog[]
   entregasPreforma EntregaPreforma[]
   cheques          Cheque[]
+  ordenPagos       OrdenPago[]
 }
 
 enum AuditAction {
@@ -136,6 +137,7 @@ model Entity {
   pedidos              Pedido[]
   treasuryPayments     Payment[]
   entregasPreforma     EntregaPreforma[]
+  ordenPagos           OrdenPago[]
 }
 
 enum Circuit {
@@ -379,10 +381,13 @@ model Payment {
    * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.
    */
   treasuryId      String?
-  treasury        Entity? @relation(fields: [treasuryId], references: [id])
+  treasury        Entity?    @relation(fields: [treasuryId], references: [id])
   /// El cheque que entró con este cobro, o el que salió con este pago.
-  chequeRecibido  Cheque? @relation("ChequeRecibido")
-  chequeEntregado Cheque? @relation("ChequeEntregado")
+  chequeRecibido  Cheque?    @relation("ChequeRecibido")
+  chequeEntregado Cheque?    @relation("ChequeEntregado")
+  /// La orden de pago que documenta este pago, si se generó.
+  ordenPagoId     String?
+  ordenPago       OrdenPago? @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
   /**
    * Cuando un cobro se asignó "directo a un proveedor", conecta el Payment del cobro con el
    * Payment del pago generado en la cuenta del proveedor (y viceversa). Sin relation formal a
@@ -441,6 +446,29 @@ model Cheque {
 
   @@index([estado])
   @@index([cambioEnId])
+}
+
+/**
+ * La orden de pago que se le entrega al proveedor: qué factura se le paga, con qué medios y cómo
+ * queda la cuenta. Sólo para pagos en blanco.
+ * No carga nada: agrupa pagos que ya existen. Un pago por medio —transferencia, echeq, efectivo— y
+ * la orden los junta, que es como se paga una factura con más de uno.
+ */
+model OrdenPago {
+  id       String   @id @default(cuid())
+  /// Correlativo, se muestra con cuatro dígitos: 19 → "0019".
+  numero   Int      @unique
+  date     DateTime
+  entityId String
+  entity   Entity   @relation(fields: [entityId], references: [id])
+  notes    String?
+
+  payments    Payment[]
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([entityId])
 }
 
 model PaymentAllocation {

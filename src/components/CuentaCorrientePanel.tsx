@@ -11,6 +11,8 @@ import {
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { FormModal } from "./Modal";
 import { PaymentFormFields, type ChequeEnCartera } from "./PaymentFormFields";
+import { OrdenPagoFields, type PagoSinOrden } from "./OrdenPagoFields";
+import { crearOrdenPago } from "@/app/(app)/ordenes-pago/actions";
 import { DocumentFormFields } from "./DocumentFormFields";
 import { FacturaFormFields, type ComprobanteFacturable } from "./FacturaFormFields";
 import { GastoFormFields } from "./GastoFormFields";
@@ -26,6 +28,7 @@ export function CuentaCorrientePanel({
   treasuries,
   proveedores,
   cartera,
+  pagosSinOrden,
 }: {
   entityId: string;
   entityType: Entity["type"];
@@ -46,6 +49,8 @@ export function CuentaCorrientePanel({
   treasuries: Entity[];
   /** Los cheques en cartera, para poder entregarle uno a un proveedor. */
   cartera?: ChequeEnCartera[];
+  /** Los pagos en Blanco que todavía no están en una orden de pago. Sólo proveedores. */
+  pagosSinOrden?: PagoSinOrden[];
   /** Solo si esta ficha es de un cliente: lista de proveedores, para "directo a un proveedor". */
   proveedores?: Entity[];
 }) {
@@ -75,6 +80,16 @@ export function CuentaCorrientePanel({
             <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
               <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
             </FormModal>
+            {isProveedor && pagosSinOrden && (
+              <FormModal
+                triggerLabel="Orden de pago"
+                title="Nueva orden de pago"
+                action={crearOrdenPago}
+                maxWidthClass="max-w-xl"
+              >
+                <OrdenPagoFields entityId={entityId} pagos={pagosSinOrden} />
+              </FormModal>
+            )}
             {isProveedor && (
               <FormModal
                 triggerLabel="Gasto"

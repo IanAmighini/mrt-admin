@@ -45,7 +45,11 @@ export type AccountStatement = {
   generatedAt: Date;
 };
 
-function documentSubtitle(doc: DocumentWithRelations): string | null {
+/** Solo lo que realmente lee, y no `DocumentWithRelations` entero: así sirve desde cualquier
+ *  consulta que traiga las líneas, sin arrastrar el resto de las relaciones. */
+export function documentSubtitle(
+  doc: Pick<DocumentWithRelations, "lines" | "purchaseLines" | "reason" | "currency" | "treasuryCategory">
+): string | null {
   const lineSummary =
     doc.lines.length > 0
       ? doc.lines

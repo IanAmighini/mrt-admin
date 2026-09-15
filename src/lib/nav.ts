@@ -36,6 +36,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/compras", label: "Compras y gastos", roles: ADMINISTRATIVOS },
   { href: "/pagos-clientes", label: "Pagos de Clientes", roles: ADMINISTRATIVOS },
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
+  { href: "/ordenes-pago", label: "Órdenes de pago", roles: ADMINISTRATIVOS },
   { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },
   // Cuelga de Tesorería, así que quien ve Tesorería llega por ahí y no necesita el ítem. La
   // secretaría no la ve pero igual tiene que poder marcar un cheque rechazado —a ella le avisan—

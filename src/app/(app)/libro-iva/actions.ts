@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
 import { setSetting } from "@/lib/settings";
 import { CONTRIBUYENTE_KEYS } from "@/lib/libro-iva";
+import { DIRECCION_KEY } from "@/lib/orden-pago";
 
 /** Los datos que encabezan el libro de IVA. Se guardan en Setting, como el resto de la config. */
 export async function updateContribuyente(formData: FormData) {
@@ -17,9 +18,12 @@ export async function updateContribuyente(formData: FormData) {
   if (!nombre) throw new UserError("Falta el nombre del contribuyente.");
   if (!cuit) throw new UserError("Falta el CUIT.");
 
+  const direccion = String(formData.get("contribuyenteDireccion") || "").trim();
+
   await Promise.all([
     setSetting(CONTRIBUYENTE_KEYS.nombre, nombre),
     setSetting(CONTRIBUYENTE_KEYS.cuit, cuit),
+    setSetting(DIRECCION_KEY, direccion),
   ]);
 
   await logAudit(prisma, {
@@ -31,4 +35,5 @@ export async function updateContribuyente(formData: FormData) {
   });
 
   revalidatePath("/libro-iva");
+  revalidatePath("/ordenes-pago");
 }
