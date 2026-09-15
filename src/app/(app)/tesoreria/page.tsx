@@ -14,10 +14,17 @@ export default async function TesoreriaPage() {
   await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const [treasuries, cartera] = await Promise.all([
     getTreasuries(),
-    prisma.cheque.findMany({ where: { estado: "EN_CARTERA" }, select: { amount: true } }),
+    prisma.cheque.findMany({ where: { estado: "EN_CARTERA" }, select: { amount: true, esEcheq: true } }),
   ]);
-  const carteraTotal = sumDecimals(cartera.map((c) => c.amount));
-  const carteraCount = `${cartera.length} cheque${cartera.length === 1 ? "" : "s"}`;
+
+  // El papel está en la caja y el echeq en el banco, así que cada uno cuelga de donde vive.
+  const resumen = (esEcheq: boolean) => {
+    const propios = cartera.filter((c) => c.esEcheq === esEcheq);
+    return {
+      total: sumDecimals(propios.map((c) => c.amount)),
+      count: `${propios.length} ${esEcheq ? "echeq" : "cheque"}${propios.length === 1 ? "" : "s"}`,
+    };
+  };
 
   const cards = await Promise.all(
     treasuries.map(async (treasury) => {
@@ -70,23 +77,26 @@ export default async function TesoreriaPage() {
                 </Link>
               )}
             </div>
-            {/* Los cheques físicos viven en la caja, así que la cartera cuelga de ahí. No suman al
-                saldo: no son plata hasta que se cobran. */}
-            {esLaCaja(treasury.name) && (
-              <Link
-                href="/tesoreria/cheques"
-                className="flex items-center justify-between rounded-lg border border-foreground/10 p-3 text-sm hover:bg-foreground/5 transition-colors"
-              >
-                <span className="flex items-center gap-2">
-                  <Wallet size={15} className="text-foreground/40" />
-                  Cheques en cartera
-                </span>
-                <span className="font-medium">
-                  {formatMoney(carteraTotal)}
-                  <span className="ml-2 text-xs text-foreground/50">{carteraCount}</span>
-                </span>
-              </Link>
-            )}
+            {/* No suman al saldo: un cheque no es plata hasta que se cobra. */}
+            {(() => {
+              const esEcheq = !esLaCaja(treasury.name);
+              const { total, count } = resumen(esEcheq);
+              return (
+                <Link
+                  href={`/tesoreria/cheques?tipo=${esEcheq ? "echeq" : "fisico"}`}
+                  className="flex items-center justify-between rounded-lg border border-foreground/10 p-3 text-sm hover:bg-foreground/5 transition-colors"
+                >
+                  <span className="flex items-center gap-2">
+                    <Wallet size={15} className="text-foreground/40" />
+                    {esEcheq ? "Echeqs en cartera" : "Cheques en cartera"}
+                  </span>
+                  <span className="font-medium">
+                    {formatMoney(total)}
+                    <span className="ml-2 text-xs text-foreground/50">{count}</span>
+                  </span>
+                </Link>
+              );
+            })()}
           </div>
         ))}
         {cards.length === 0 && (

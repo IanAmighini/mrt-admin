@@ -32,13 +32,16 @@ const botonClass =
 export default async function ChequesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ estado?: string }>;
+  searchParams: Promise<{ estado?: string; tipo?: string }>;
 }) {
-  const { estado } = await searchParams;
+  const { estado, tipo } = await searchParams;
   // Vive dentro de Tesorería, así que lo ven los mismos: la secretaría no.
   const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const canEdit = user.role === "ADMIN";
   const filtro = FILTROS.some((f) => f.value === estado && f.value) ? (estado as ChequeEstado) : null;
+  // El papel y el echeq se manejan distinto —uno está en la caja, el otro en el banco— así que la
+  // pantalla se puede acotar a uno de los dos.
+  const tipoFiltro = tipo === "echeq" ? true : tipo === "fisico" ? false : null;
 
   const treasuries = await prisma.entity.findMany({
     where: { type: "TESORERIA" },
@@ -46,7 +49,10 @@ export default async function ChequesPage({
   });
 
   const cheques = await prisma.cheque.findMany({
-    where: filtro ? { estado: filtro } : undefined,
+    where: {
+      ...(filtro ? { estado: filtro } : {}),
+      ...(tipoFiltro === null ? {} : { esEcheq: tipoFiltro }),
+    },
     include: {
       recibidoEn: { include: { account: { include: { entity: true } } } },
       entregadoEn: { include: { account: { include: { entity: true } } } },
@@ -78,6 +84,11 @@ export default async function ChequesPage({
           )}
         </div>
         <p className="text-sm text-foreground/60">
+          {tipoFiltro === true
+            ? "Echeqs — bancarios, por Banco Galicia. "
+            : tipoFiltro === false
+              ? "Cheques en papel — los que están en la caja. "
+              : ""}
           El mismo cheque desde que entra con el cobro de un cliente hasta que se entrega o se
           deposita. No mueve la caja: eso lo sigue haciendo el destino del pago.
         </p>
@@ -89,11 +100,20 @@ export default async function ChequesPage({
         <KpiCard label="Total listado" value={formatMoney(sumDecimals(cheques.map((c) => c.amount)))} icon={Landmark} color="green" caption={`${cheques.length} cheque(s)`} />
       </div>
 
+      {tipoFiltro !== null && (
+        <Link href="/tesoreria/cheques" className="inline-block text-sm underline underline-offset-2">
+          Ver cheques y echeqs juntos
+        </Link>
+      )}
+
       <div className="flex flex-wrap gap-1">
         {FILTROS.map((f) => (
           <Link
             key={f.value}
-            href={{ pathname: "/tesoreria/cheques", query: f.value ? { estado: f.value } : {} }}
+            href={{
+              pathname: "/tesoreria/cheques",
+              query: { ...(tipo ? { tipo } : {}), ...(f.value ? { estado: f.value } : {}) },
+            }}
             className={`rounded px-3 py-1.5 text-sm ${
               (filtro ?? "") === f.value
                 ? "bg-primary text-primary-foreground"
