@@ -9,8 +9,12 @@ export type NavItem = {
    * lista aparte porque el middleware usa NAV_ITEMS como única fuente de permisos: una ruta que
    * falte en esta lista queda sin dueño, y antes eso significaba "la ve cualquiera" — así es como
    * /cuentas-corrientes quedó abierta hasta que existió un rol que no debía verla.
+   *
+   * `true` la esconde del menú para todos; una lista de roles, sólo para esos. Lo segundo es para
+   * la ruta que cuelga de otra pantalla: quien llega por ahí no necesita el ítem, y quien no puede
+   * ver esa pantalla sí.
    */
-  hidden?: boolean;
+  hidden?: boolean | UserRole[];
 };
 
 const ALL_ROLES: UserRole[] = ["ADMIN", "SOLO_LECTURA", "SECRETARIA", "ENCARGADO_PRODUCCION"];
@@ -33,8 +37,15 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pagos-clientes", label: "Pagos de Clientes", roles: ADMINISTRATIVOS },
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
   { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },
-  // Cuelga de Tesorería y no del menú: el cheque es plata de la caja, no un trámite administrativo.
-  { href: "/tesoreria/cheques", label: "Cheques", roles: GERENCIALES, hidden: true },
+  // Cuelga de Tesorería, así que quien ve Tesorería llega por ahí y no necesita el ítem. La
+  // secretaría no la ve pero igual tiene que poder marcar un cheque rechazado —a ella le avisan—
+  // así que a ella sí se le muestra en el menú.
+  {
+    href: "/tesoreria/cheques",
+    label: "Cheques",
+    roles: ADMINISTRATIVOS,
+    hidden: ["ADMIN", "SOLO_LECTURA"],
+  },
   // Fuera de Reportes, que es gerencial: la secretaría lo coteja con ARCA antes de pasárselo al
   // contador, pero no tiene por qué ver el resto de los reportes.
   { href: "/libro-iva", label: "Libro de IVA", roles: ADMINISTRATIVOS },
@@ -63,5 +74,10 @@ export const ASSIGNABLE_ROLES: UserRole[] = [
 
 /** Los ítems que le corresponden a un rol en el menú lateral. */
 export function navItemsForRole(role: UserRole): NavItem[] {
-  return NAV_ITEMS.filter((item) => !item.hidden && item.roles.includes(role));
+  return NAV_ITEMS.filter((item) => {
+    if (!item.roles.includes(role)) return false;
+    if (item.hidden === true) return false;
+    if (Array.isArray(item.hidden)) return !item.hidden.includes(role);
+    return true;
+  });
 }

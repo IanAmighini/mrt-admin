@@ -35,9 +35,12 @@ export default async function ChequesPage({
   searchParams: Promise<{ estado?: string; tipo?: string }>;
 }) {
   const { estado, tipo } = await searchParams;
-  // Vive dentro de Tesorería, así que lo ven los mismos: la secretaría no.
-  const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
+  // La secretaría entra sólo por el rechazo: a ella le avisan cuando un cheque vuelve. No ve los
+  // totales ni puede depositar ni cambiar cheques por efectivo — eso sigue siendo de Tesorería.
+  const user = await requireRole(["ADMIN", "SOLO_LECTURA", "SECRETARIA"]);
+  const esDeTesoreria = user.role === "ADMIN" || user.role === "SOLO_LECTURA";
   const canEdit = user.role === "ADMIN";
+  const puedeRechazar = user.role === "ADMIN" || user.role === "SECRETARIA";
   const filtro = FILTROS.some((f) => f.value === estado && f.value) ? (estado as ChequeEstado) : null;
   // El papel y el echeq se manejan distinto —uno está en la caja, el otro en el banco— así que la
   // pantalla se puede acotar a uno de los dos.
@@ -67,9 +70,11 @@ export default async function ChequesPage({
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/tesoreria" className="text-sm underline underline-offset-2">
-          ← Tesorería
-        </Link>
+        {esDeTesoreria && (
+          <Link href="/tesoreria" className="text-sm underline underline-offset-2">
+            ← Tesorería
+          </Link>
+        )}
         <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
           <h1 className="text-xl font-semibold mb-1">Cheques</h1>
           {canEdit && (
@@ -94,11 +99,13 @@ export default async function ChequesPage({
         </p>
       </div>
 
+      {esDeTesoreria && (
       <div className="grid gap-4 sm:grid-cols-3">
         <KpiCard label="En cartera" value={formatMoney(sumDecimals(enCartera.map((c) => c.amount)))} icon={Wallet} color="amber" caption={`${enCartera.length} cheque(s)`} />
         <KpiCard label="Entregados" value={formatMoney(sumDecimals(entregados.map((c) => c.amount)))} icon={Send} color="blue" caption={`${entregados.length} cheque(s)`} />
         <KpiCard label="Total listado" value={formatMoney(sumDecimals(cheques.map((c) => c.amount)))} icon={Landmark} color="green" caption={`${cheques.length} cheque(s)`} />
       </div>
+      )}
 
       {tipoFiltro !== null && (
         <Link href="/tesoreria/cheques" className="inline-block text-sm underline underline-offset-2">
@@ -135,7 +142,7 @@ export default async function ChequesPage({
               <th className="py-2 pr-4">A quién</th>
               <th className="py-2 pr-4 text-right">Importe</th>
               <th className="py-2 pr-4">Estado</th>
-              {canEdit && <th className="py-2 pr-4">Acciones</th>}
+              {(canEdit || puedeRechazar) && <th className="py-2 pr-4">Acciones</th>}
             </tr>
           </thead>
           <tbody>
@@ -191,20 +198,21 @@ export default async function ChequesPage({
                     {CHEQUE_ESTADO_LABELS[c.estado]}
                   </span>
                 </td>
-                {canEdit && (
+                {(canEdit || puedeRechazar) && (
                   <td className="py-2 pr-4">
                     {/* Un cheque entregado no se toca desde acá: lo que lo movió fue un pago, y
                         deshacerlo por un lado dejaría el pago apuntando a un cheque que volvió. */}
                     {/* El rechazo se puede marcar esté donde esté: un cheque vuelve rechazado
                         tanto si lo tenemos como si ya se lo dimos a alguien. */}
                     <div className="flex flex-wrap items-center gap-2">
-                      {c.estado === "EN_CARTERA" && (
+                      {/* Depositar y volver a cartera mueven la cartera de Tesorería: sólo Admin. */}
+                      {canEdit && c.estado === "EN_CARTERA" && (
                         <EstadoButton chequeId={c.id} estado="DEPOSITADO" label="Depositar" />
                       )}
-                      {c.estado === "DEPOSITADO" && (
+                      {canEdit && c.estado === "DEPOSITADO" && (
                         <EstadoButton chequeId={c.id} estado="EN_CARTERA" label="Volver a cartera" />
                       )}
-                      {c.estado !== "RECHAZADO" && (
+                      {c.estado !== "RECHAZADO" && puedeRechazar && (
                         <FormModal
                           triggerLabel="Rechazado"
                           title="Cheque rechazado"
@@ -229,7 +237,7 @@ export default async function ChequesPage({
             ))}
             {cheques.length === 0 && (
               <tr>
-                <td colSpan={canEdit ? 7 : 6} className="py-6 text-center text-foreground/40">
+                <td colSpan={canEdit || puedeRechazar ? 7 : 6} className="py-6 text-center text-foreground/40">
                   {filtro
                     ? "No hay cheques en ese estado."
                     : "Todavía no hay cheques. Se cargan al registrar un cobro con método Cheque o Echeq."}

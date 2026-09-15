@@ -148,7 +148,8 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
  *  - La del cliente que lo dio: vuelve su deuda, porque su pago no valió.
  */
 export async function rechazarCheque(formData: FormData) {
-  const user = await requireRole(["ADMIN"]);
+  // También la secretaría: es a ella a quien le avisan que un cheque volvió.
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const chequeId = String(formData.get("chequeId") || "");
   const cheque = await prisma.cheque.findUnique({
