@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getTreasuries } from "@/lib/ledger";
+import { puedeVerRuta } from "@/lib/nav";
+import { CAJA_CHICA_SLUG } from "@/lib/caja";
 import { getAccountStatement, type StatementEntry } from "@/lib/account-statement";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
@@ -72,6 +74,11 @@ export default async function AccountLedgerPage({
   if (!account) notFound();
 
   const isTreasuryEntity = entity.type === "TESORERIA";
+  // Mismo corte que en la ficha: el libro mayor de una caja o del banco es Tesorería, aunque la
+  // ruta la compartan los clientes y los proveedores.
+  if (isTreasuryEntity && !puedeVerRuta(user.role, "/tesoreria")) {
+    redirect(entity.slug === CAJA_CHICA_SLUG ? "/caja-chica" : "/");
+  }
   const isClienteEntity = entity.type !== "PROVEEDOR" && entity.type !== "TESORERIA";
 
   // El "hasta" que elige el usuario es inclusivo; getAccountStatement lo espera exclusivo.

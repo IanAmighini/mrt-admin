@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import type { Account, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
+import { puedeVerRuta } from "@/lib/nav";
+import { CAJA_CHICA_SLUG } from "@/lib/caja";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import {
   getAccountBalance,
@@ -51,6 +53,13 @@ export default async function EntityLedgerPage({
   if (!entity) notFound();
   if (entityId !== entity.slug) redirect(`/cuentas-corrientes/${entity.slug}`);
 
+  // Una tesorería es plata de la empresa, no la cuenta de un tercero: la mira quien mira Tesorería.
+  // El middleware no alcanza —esta ruta es la misma para clientes y proveedores, que sí ve la
+  // secretaría— así que el corte va acá, con los mismos roles que declara el menú.
+  if (entity.type === "TESORERIA" && !puedeVerRuta(user.role, "/tesoreria")) {
+    redirect(entity.slug === CAJA_CHICA_SLUG ? "/caja-chica" : "/");
+  }
+
   const blancoAccount = entity.accounts.find((a) => a.circuit === "BLANCO");
   const negroAccount = entity.accounts.find((a) => a.circuit === "NEGRO");
   if (!blancoAccount || !negroAccount) notFound();
@@ -87,8 +96,12 @@ export default async function EntityLedgerPage({
       ])
     : [[], [], []];
 
-  const isCliente = entity.type !== "PROVEEDOR";
-  const isProveedor = entity.type !== "CLIENTE";
+  // Una tesorería no le compra ni le vende a nadie: su ficha es el saldo y sus movimientos. Sin
+  // esto entraba por la puerta de "cliente" y mostraba entregas y listados de precios, que para una
+  // caja no significan nada.
+  const isCaja = entity.type === "TESORERIA";
+  const isCliente = entity.type !== "PROVEEDOR" && !isCaja;
+  const isProveedor = entity.type !== "CLIENTE" && !isCaja;
   const isSoloCliente = entity.type === "CLIENTE";
 
   // Todas las consultas son independientes entre sí — se disparan juntas para no encadenar
@@ -184,21 +197,29 @@ export default async function EntityLedgerPage({
     card4Value = String(compras.count);
   }
 
+  const volverA = isCaja
+    ? { href: "/tesoreria", label: "Tesorería" }
+    : entity.type === "PROVEEDOR"
+      ? { href: "/proveedores", label: "Proveedores" }
+      : { href: "/clientes", label: "Clientes" };
+
   return (
     <div className="space-y-10">
       <div className="flex items-start justify-between">
         <div>
-          <Link
-            href={entity.type === "PROVEEDOR" ? "/proveedores" : "/clientes"}
-            className="text-sm underline underline-offset-2"
-          >
-            ← {entity.type === "PROVEEDOR" ? "Proveedores" : "Clientes"}
+          <Link href={volverA.href} className="text-sm underline underline-offset-2">
+            ← {volverA.label}
           </Link>
           <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
         </div>
         {canEdit && (
           <div className="flex items-center gap-3">
-            <FormModal triggerLabel="Editar" iconName="edit" title="Editar cliente/proveedor" action={updateEntity}>
+            <FormModal
+              triggerLabel="Editar"
+              iconName="edit"
+              title={isCaja ? "Editar la caja" : "Editar cliente/proveedor"}
+              action={updateEntity}
+            >
               <EntityFormFields
                 defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
                 showSupplierCategory={entity.type !== "CLIENTE"}
@@ -222,10 +243,10 @@ export default async function EntityLedgerPage({
         blancoSaldo={blancoSaldo}
         negroSaldo={negroSaldo}
         moneda={entity.moneda}
-        card3Label={card3Label}
-        card3Value={card3Value}
-        card4Label={card4Label}
-        card4Value={card4Value}
+        card3Label={isCaja ? undefined : card3Label}
+        card3Value={isCaja ? undefined : card3Value}
+        card4Label={isCaja ? undefined : card4Label}
+        card4Value={isCaja ? undefined : card4Value}
       />
 
       {entity.llevaCuentaPreformas && (

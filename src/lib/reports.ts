@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getVencimientos, litrosDeLinea } from "@/lib/ledger";
 import { getCostoInsumos } from "@/lib/dashboard-kpis";
+import { GASTOS_WHERE, montoDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
 import type { Period } from "@/lib/period";
@@ -487,6 +488,7 @@ export async function getCobranzasReport(period: Period, lado: CobranzasLado): P
 
 export type ComprasReport = {
   period: Period;
+  /** Por quién cobró: el proveedor de la factura, o la caja de la que salió la plata. */
   porProveedor: { entityName: string; entitySlug: string; count: number; byCurrency: Map<Currency, Prisma.Decimal> }[];
   porCategoria: { category: SupplierCategory; byCurrency: Map<Currency, Prisma.Decimal>; qtyByUnit: Map<string, Prisma.Decimal> }[];
   porInsumo: { itemSlug: string; itemName: string; unit: string; quantity: Prisma.Decimal; byCurrency: Map<Currency, Prisma.Decimal> }[];
@@ -610,6 +612,7 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
 export type GastosReport = {
   period: Period;
   porRubro: { category: ExpenseCategory; count: number; byCurrency: Map<Currency, Prisma.Decimal> }[];
+  /** Por quién cobró: el proveedor de la factura, o la caja de la que salió la plata. */
   porProveedor: { entityName: string; entitySlug: string; count: number; byCurrency: Map<Currency, Prisma.Decimal> }[];
   /** Un renglón por comprobante, con las columnas que pide el libro de IVA compras. */
   detalle: {
@@ -633,8 +636,11 @@ export type GastosReport = {
 };
 
 export async function getGastosReport(period: Period): Promise<GastosReport> {
+  // Las facturas de gasto de los proveedores y lo que sale de la caja sin factura. Se listan
+  // juntos porque es la misma pregunta —en qué se fue la plata este mes— y la caja es justamente
+  // por donde salen los sueldos, que es el gasto más grande de todos.
   const documents = await prisma.document.findMany({
-    where: { type: "GASTO", date: { gte: period.from, lt: period.to } },
+    where: { ...GASTOS_WHERE, date: { gte: period.from, lt: period.to } },
     include: { account: { include: { entity: true } }, taxes: true },
     orderBy: { date: "asc" },
   });
@@ -647,7 +653,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
 
   for (const doc of documents) {
     const { entity, circuit } = doc.account;
-    const total = toDecimal(doc.totalAmount);
+    const total = toDecimal(montoDelGasto(doc));
 
     if (doc.expenseCategory) {
       const rubro = porRubro.get(doc.expenseCategory) ?? {

@@ -21,13 +21,15 @@ export function EntitySummaryCards({
   negroSaldo: Prisma.Decimal;
   /** Los saldos están en esta moneda: en una cuenta en dólares, son dólares. */
   moneda?: Currency;
-  card3Label: string;
-  card3Value: string;
-  card4Label: string;
-  card4Value: string;
+  /** Sin las dos últimas —una caja no entrega ni compra— quedan sólo los saldos, a media pantalla. */
+  card3Label?: string;
+  card3Value?: string;
+  card4Label?: string;
+  card4Value?: string;
 }) {
+  const hayExtras = card3Label !== undefined && card4Label !== undefined;
   return (
-    <div className="grid gap-4 sm:grid-cols-4">
+    <div className={`grid gap-4 ${hayExtras ? "sm:grid-cols-4" : "sm:grid-cols-2"}`}>
       <Link href={`/cuentas-corrientes/${entitySlug}/blanco`}>
         <Card>
           <p className="text-sm text-foreground/60">Cuenta 1 (c/factura)</p>
@@ -40,14 +42,18 @@ export function EntitySummaryCards({
           <p className="text-2xl font-semibold">{formatMoney(negroSaldo, moneda)}</p>
         </Card>
       </Link>
-      <Card>
-        <p className="text-sm text-foreground/60">{card3Label}</p>
-        <p className="text-2xl font-semibold">{card3Value}</p>
-      </Card>
-      <Card>
-        <p className="text-sm text-foreground/60">{card4Label}</p>
-        <p className="text-2xl font-semibold">{card4Value}</p>
-      </Card>
+      {hayExtras && (
+        <>
+          <Card>
+            <p className="text-sm text-foreground/60">{card3Label}</p>
+            <p className="text-2xl font-semibold">{card3Value}</p>
+          </Card>
+          <Card>
+            <p className="text-sm text-foreground/60">{card4Label}</p>
+            <p className="text-2xl font-semibold">{card4Value}</p>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

@@ -409,10 +409,10 @@ function gastosSheets(report: GastosReport, generatedAt: Date): ExcelSheet<never
     }),
     sheet<GastosReport["porProveedor"][number]>({
       name: "Por proveedor",
-      title: "Gastos por proveedor",
+      title: "Gastos por proveedor o caja",
       subtitle,
       columns: [
-        { header: "Proveedor", value: (r) => r.entityName, width: 32 },
+        { header: "Proveedor o caja", value: (r) => r.entityName, width: 32 },
         { header: "Comprobantes", value: (r) => r.count, format: "integer", width: 14 },
         { header: "Importe ARS", value: (r) => ars(r.byCurrency), format: "money", width: 16 },
         { header: "Otras monedas", value: (r) => otrasMonedas(r.byCurrency), width: 18 },

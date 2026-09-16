@@ -8,6 +8,7 @@ import {
   type Circuit,
   type Currency,
   type DocumentType,
+  type ExpenseCategory,
   type PaymentMethod,
   type RetentionKind,
   type TreasuryMovementCategory,
@@ -51,6 +52,8 @@ function montoDeAjuste(formData: FormData) {
 }
 
 const MANUAL_TREASURY_CATEGORIES: TreasuryMovementCategory[] = [
+  // PASE no está: sus dos patas se escriben juntas desde la pantalla de caja.
+  "GASTO",
   "GASTO_BANCARIO",
   "IMPUESTO",
   "RETIRO",
@@ -58,6 +61,16 @@ const MANUAL_TREASURY_CATEGORIES: TreasuryMovementCategory[] = [
   "AJUSTE_ARQUEO",
   "OTRO",
 ];
+
+/** El rubro de un movimiento de caja cargado como gasto: es lo que lo hace contar en el mes. */
+function parseRubroDeCaja(
+  value: FormDataEntryValue | null,
+  category: TreasuryMovementCategory | null | undefined
+): ExpenseCategory | null {
+  if (category !== "GASTO") return null;
+  const raw = String(value || "");
+  return raw in EXPENSE_CATEGORY_LABELS ? (raw as ExpenseCategory) : null;
+}
 
 /** undefined = el form no tiene el campo (no tocar el valor existente al editar); null = limpiar. */
 function parseManualTreasuryCategory(
@@ -157,6 +170,13 @@ export async function updateDocument(formData: FormData) {
   if (!NON_FACTURA_TYPES.includes(document.type)) {
     throw new UserError("Este comprobante no es una nota ni un ajuste.");
   }
+  // Un pase tiene una pata en cada caja. Editar una sola dejaría a las dos cajas diciendo cosas
+  // distintas sobre la misma plata, así que se borra y se vuelve a cargar.
+  if (document.treasuryCategory === "PASE") {
+    throw new UserError(
+      "Un pase entre cajas no se edita: tiene una pata en cada caja. Borralo y cargalo de nuevo."
+    );
+  }
 
   const type = String(formData.get("type") || "") as DocumentType;
   if (!NON_FACTURA_TYPES.includes(type)) throw new UserError("Tipo de comprobante inválido.");
@@ -182,6 +202,7 @@ export async function updateDocument(formData: FormData) {
     : montoDeAjuste(formData);
 
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory"));
+  const expenseCategory = parseRubroDeCaja(formData.get("expenseCategory"), treasuryCategory);
 
   await prisma.$transaction(async (tx) => {
     // El desglose se reescribe entero: es más corto que conciliar fila por fila, y pasar de nota a
@@ -199,7 +220,7 @@ export async function updateDocument(formData: FormData) {
         exchangeRate,
         ...totals,
         reason,
-        ...(treasuryCategory !== undefined ? { treasuryCategory } : {}),
+        ...(treasuryCategory !== undefined ? { treasuryCategory, expenseCategory } : {}),
       },
     });
 
@@ -225,7 +246,7 @@ export async function deleteDocument(formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { account: { include: { entity: true } } },
+    include: { account: { include: { entity: true } }, contraparteDe: { select: { id: true } } },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
   if (!NON_FACTURA_TYPES.includes(document.type)) {
@@ -233,6 +254,10 @@ export async function deleteDocument(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    // La otra pata de un pase entre cajas. La FK se lleva sola a la que apunta a ésta, pero no al
+    // revés, y media plata en el aire es peor que no poder borrarla.
+    const otraPata = document.contraparteId ?? document.contraparteDe?.id;
+    if (otraPata) await tx.document.deleteMany({ where: { id: otraPata } });
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     // Una venta de insumo cuelga su movimiento de stock de este documento: son un solo hecho, así
     // que borrar el comprobante devuelve el stock. Sin esto la FK bloquea el borrado con un error
@@ -297,6 +322,7 @@ export async function createDocumentForEntity(formData: FormData) {
     : montoDeAjuste(formData);
 
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory")) || null;
+  const expenseCategory = parseRubroDeCaja(formData.get("expenseCategory"), treasuryCategory);
 
   const document = await prisma.$transaction(async (tx) => {
     const creado = await tx.document.create({
@@ -311,6 +337,7 @@ export async function createDocumentForEntity(formData: FormData) {
         ...totals,
         reason,
         treasuryCategory,
+        expenseCategory,
         createdById: user.id,
       },
     });

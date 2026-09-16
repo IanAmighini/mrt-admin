@@ -56,12 +56,14 @@ export async function GastosSection({ period }: { period: Period }) {
 
       {report.porProveedor.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold mb-2">Por proveedor</h2>
+          {/* "o caja": desde que lo que sale de la caja cuenta como gasto, acá aparece también la
+              caja de la que salió, que no es un proveedor de nadie. */}
+          <h2 className="text-sm font-semibold mb-2">Por proveedor o caja</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Proveedor</th>
+                  <th className="py-2 pr-4">Proveedor o caja</th>
                   <th className="py-2 pr-4">Comprobantes</th>
                   <th className="py-2 pr-4">Importe</th>
                 </tr>

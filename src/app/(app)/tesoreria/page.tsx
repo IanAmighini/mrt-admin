@@ -5,6 +5,7 @@ import { Wallet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatMoney, sumDecimals } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
+import { CAJA_CHICA_SLUG } from "@/lib/caja";
 
 /** La caja de efectivo, que es donde están los cheques en papel. Se identifica por nombre, igual
  *  que "Banco Galicia" en el formulario de pago. */
@@ -44,9 +45,9 @@ export default async function TesoreriaPage() {
       <div>
         <h1 className="text-xl font-semibold mb-1">Tesorería</h1>
         <p className="text-sm text-foreground/60">
-          Saldo de Banco Galicia y Caja Bufano — se actualiza solo con cada cobro/pago que se
-          asigna a una de las dos, más los movimientos manuales (comisiones, impuestos, retiros,
-          depósitos).
+          Saldo del banco y de las dos cajas — se actualiza solo con cada cobro/pago que se asigna
+          a una de ellas, más los movimientos manuales (comisiones, impuestos, retiros, depósitos)
+          y lo que se carga en la caja chica.
         </p>
       </div>
 
@@ -57,6 +58,17 @@ export default async function TesoreriaPage() {
               <h2 className="text-sm font-semibold">{treasury.name}</h2>
               <p className="text-lg font-semibold">{formatMoney(total)}</p>
             </div>
+            {treasury.slug === CAJA_CHICA_SLUG ? (
+              // La caja chica se lleva entera en Negro y tiene su propia pantalla, que es la que
+              // usa la secretaría: mostrar acá un recuadro de Blanco siempre en cero sería ruido.
+              <Link
+                href="/caja-chica"
+                className="block rounded-lg border border-foreground/10 p-3 text-sm hover:bg-foreground/5 transition-colors"
+              >
+                <p className="text-foreground/60">Efectivo del cajón</p>
+                <p className="font-medium">{negroSaldo ? formatMoney(negroSaldo) : "—"}</p>
+              </Link>
+            ) : (
             <div className="grid grid-cols-2 gap-3 text-sm">
               {blanco && (
                 <Link
@@ -77,8 +89,10 @@ export default async function TesoreriaPage() {
                 </Link>
               )}
             </div>
-            {/* No suman al saldo: un cheque no es plata hasta que se cobra. */}
-            {(() => {
+            )}
+            {/* No suman al saldo: un cheque no es plata hasta que se cobra. Los cheques viven en la
+                caja grande y los echeqs en el banco; la caja chica no guarda ninguno. */}
+            {treasury.slug !== CAJA_CHICA_SLUG && (() => {
               const esEcheq = !esLaCaja(treasury.name);
               const { total, count } = resumen(esEcheq);
               return (

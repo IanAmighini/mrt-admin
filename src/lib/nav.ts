@@ -38,6 +38,9 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
   { href: "/ordenes-pago", label: "Órdenes de pago", roles: ADMINISTRATIVOS },
   { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },
+  // La caja del cajón, que maneja la secretaría: la ve ella y también quien mira Tesorería, que es
+  // de donde sale la plata. El banco y la caja grande siguen siendo sólo de Tesorería.
+  { href: "/caja-chica", label: "Caja chica", roles: ADMINISTRATIVOS },
   // Cuelga de Tesorería, así que quien ve Tesorería llega por ahí y no necesita el ítem. La
   // secretaría no la ve pero igual tiene que poder marcar un cheque rechazado —a ella le avisan—
   // así que a ella sí se le muestra en el menú.
@@ -72,6 +75,16 @@ export const ASSIGNABLE_ROLES: UserRole[] = [
   "ENCARGADO_PRODUCCION",
   "SOLO_LECTURA",
 ];
+
+/**
+ * Si un rol puede entrar a una ruta puntual, según la misma lista que arma el menú y que usa el
+ * middleware. Sirve para las páginas que muestran cosas de otra sección: la cuenta corriente de una
+ * tesorería es la misma pantalla que la de un cliente, pero lo que muestra es de Tesorería.
+ */
+export function puedeVerRuta(role: UserRole, href: string) {
+  const item = NAV_ITEMS.find((i) => i.href === href);
+  return item ? item.roles.includes(role) : false;
+}
 
 /** Los ítems que le corresponden a un rol en el menú lateral. */
 export function navItemsForRole(role: UserRole): NavItem[] {

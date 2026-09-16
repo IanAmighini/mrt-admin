@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { TREASURY_MOVEMENT_CATEGORY_LABELS } from "@/lib/labels";
+import {
+  EXPENSE_CATEGORY_LABELS,
+  EXPENSE_CATEGORY_ORDER,
+  TREASURY_MOVEMENT_CATEGORY_LABELS,
+} from "@/lib/labels";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { ImpuestosFields, impuestosIniciales, type ImpuestosValores } from "./ImpuestosFields";
@@ -12,7 +16,9 @@ const submitClass =
 const toggleClass =
   "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
-const MANUAL_TREASURY_CATEGORIES = ["GASTO_BANCARIO", "IMPUESTO", "RETIRO", "DEPOSITO", "AJUSTE_ARQUEO", "OTRO"] as const;
+// "Pase entre cajas" no está: un pase tiene dos patas y se carga desde la pantalla de caja, que
+// escribe las dos juntas. Cargado acá quedaría media plata en el aire.
+const MANUAL_TREASURY_CATEGORIES = ["GASTO", "GASTO_BANCARIO", "IMPUESTO", "RETIRO", "DEPOSITO", "AJUSTE_ARQUEO", "OTRO"] as const;
 
 type TipoMovimiento = "NOTA_CREDITO" | "NOTA_DEBITO" | "AJUSTE";
 type CircuitoMovimiento = "BLANCO" | "NEGRO";
@@ -27,6 +33,8 @@ export type DocumentDefaults = {
   /** El neto en Blanco, el monto en Negro y en los ajustes. */
   amount?: string;
   ajusteEffect?: "SUMA" | "RESTA";
+  treasuryCategory?: string;
+  expenseCategory?: string;
   reason?: string;
   impuestos?: ImpuestosValores;
 };
@@ -57,6 +65,7 @@ export function DocumentFormFields({
   const [type, setType] = useState<TipoMovimiento>(defaultValues?.type ?? "NOTA_CREDITO");
   const [circuit, setCircuit] = useState<CircuitoMovimiento>(circuitoFijo ?? "BLANCO");
   const [currency, setCurrency] = useState(defaultValues?.currency ?? "ARS");
+  const [treasuryCategory, setTreasuryCategory] = useState(defaultValues?.treasuryCategory ?? "");
   const [monto, setMonto] = useState(defaultValues?.amount ?? "");
   const [impuestos, setImpuestos] = useState<ImpuestosValores>(() => impuestosIniciales(defaultValues?.impuestos));
 
@@ -210,11 +219,39 @@ export function DocumentFormFields({
             <label className="text-sm" htmlFor="treasuryCategory">
               Categoría
             </label>
-            <select id="treasuryCategory" name="treasuryCategory" defaultValue="" className={inputClass}>
+            <select
+              id="treasuryCategory"
+              name="treasuryCategory"
+              value={treasuryCategory}
+              onChange={(e) => setTreasuryCategory(e.target.value)}
+              className={inputClass}
+            >
               <option value="">— Elegir —</option>
               {MANUAL_TREASURY_CATEGORIES.map((value) => (
                 <option key={value} value={value}>
                   {TREASURY_MOVEMENT_CATEGORY_LABELS[value]}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {/* El rubro es lo que hace que el gasto de caja cuente como gasto del mes por categoría,
+            igual que la factura de un proveedor. */}
+        {isTreasury && treasuryCategory === "GASTO" && (
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="expenseCategory">
+              Rubro
+            </label>
+            <select
+              id="expenseCategory"
+              name="expenseCategory"
+              defaultValue={defaultValues?.expenseCategory ?? ""}
+              className={inputClass}
+            >
+              <option value="">— Sin rubro —</option>
+              {EXPENSE_CATEGORY_ORDER.map((c) => (
+                <option key={c} value={c}>
+                  {EXPENSE_CATEGORY_LABELS[c]}
                 </option>
               ))}
             </select>

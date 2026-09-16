@@ -1,7 +1,7 @@
 import type { Entity, ExpenseCategory, SupplierCategory } from "@prisma/client";
 import {
   EXPENSE_CATEGORY_LABELS,
-  EXPENSE_CATEGORY_ORDER,
+  EXPENSE_CATEGORY_PROVEEDOR_ORDER,
   SUPPLIER_CATEGORY_LABELS,
   SUPPLIER_CATEGORY_ORDER,
 } from "@/lib/labels";
@@ -24,7 +24,7 @@ export const RUBRO_GRUPOS: { label: string; opciones: { value: string; label: st
   },
   {
     label: "Servicios y gastos",
-    opciones: EXPENSE_CATEGORY_ORDER.map((c) => ({
+    opciones: EXPENSE_CATEGORY_PROVEEDOR_ORDER.map((c) => ({
       value: `gasto:${c}`,
       label: EXPENSE_CATEGORY_LABELS[c],
     })),

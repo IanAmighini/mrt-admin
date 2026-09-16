@@ -81,10 +81,16 @@ enum EntityType {
 enum TreasuryMovementCategory {
   COBRO
   PAGO_PROVEEDOR
+  /// Plata que sale de la caja y no es el pago de una cuenta corriente: sueldos, limpieza, el
+  /// monotributo. Lleva `expenseCategory`, y por eso cuenta como gasto del mes.
+  GASTO
   GASTO_BANCARIO
   IMPUESTO
   RETIRO
   DEPOSITO
+  /// Plata que pasa de una caja a otra. No es ingreso ni egreso de la empresa: las dos patas se
+  /// anulan entre sí.
+  PASE
   AJUSTE_ARQUEO
   OTRO
 }
@@ -182,6 +188,10 @@ enum ExpenseCategory {
   HONORARIOS
   SEGUROS
   FUMIGACION
+  SUELDOS
+  LIMPIEZA
+  MOVILIDAD
+  OFICINA
   OTRO
 }
 
@@ -278,6 +288,15 @@ model Document {
    */
   sourcePaymentId  String?                   @unique
   sourcePayment    Payment?                  @relation("PaymentTreasuryDocument", fields: [sourcePaymentId], references: [id], onDelete: Cascade)
+  /**
+   * La otra pata de un pase entre cajas. Un pase es un solo hecho —la plata sale de una caja y
+   * entra en otra— pero se escribe como dos movimientos, uno en cada libro, porque cada caja
+   * lleva su propio saldo. Esto los ata para que se borren juntos y para poder decir de dónde
+   * vino la plata sin repetir el dato en el texto.
+   */
+  contraparteId    String?                   @unique
+  contraparte      Document?                 @relation("PaseEntreCajas", fields: [contraparteId], references: [id], onDelete: Cascade)
+  contraparteDe    Document?                 @relation("PaseEntreCajas")
 
   remitoLinks      DocumentLink[]      @relation("RemitoLinks")
   facturaLinks     DocumentLink[]      @relation("FacturaLinks")

@@ -5,6 +5,7 @@ import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getDocumentEffect } from "@/lib/ledger";
 import { getAllItemStocks } from "@/lib/stock";
 import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
+import { GASTOS_WHERE } from "@/lib/caja";
 import { monthPeriod, type Period } from "@/lib/period";
 
 /**
@@ -201,10 +202,13 @@ async function getIngresosNetos(period: Period): Promise<Prisma.Decimal> {
  * Los gastos del período: flete, alquiler, luz, honorarios. De los dos circuitos, porque un gasto
  * en negro cuesta igual, y por el neto, porque el IVA de un gasto en blanco es crédito fiscal y no
  * costo.
+ *
+ * Incluye lo que sale de la caja sin factura —sueldos, limpieza, el remís—, que es plata que sale
+ * igual: mientras no estuvo, el margen del mes se veía mejor de lo que era.
  */
 async function getGastosNetos(period: Period): Promise<Prisma.Decimal> {
   const documents = await prisma.document.findMany({
-    where: { type: "GASTO", currency: "ARS", date: { gte: period.from, lt: period.to } },
+    where: { ...GASTOS_WHERE, currency: "ARS", date: { gte: period.from, lt: period.to } },
     select: { netAmount: true },
   });
   return sumDecimals(documents.map((d) => d.netAmount));

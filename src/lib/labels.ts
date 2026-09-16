@@ -47,8 +47,20 @@ export const EXPENSE_CATEGORY_ORDER: ExpenseCategory[] = [
   "HONORARIOS",
   "SEGUROS",
   "FUMIGACION",
+  "SUELDOS",
+  "LIMPIEZA",
+  "MOVILIDAD",
+  "OFICINA",
   "OTRO",
 ];
+
+/**
+ * Los rubros que puede tener un PROVEEDOR. Es la misma lista menos Sueldos: el sueldo sale de la
+ * caja y no hay proveedor al que deberle, así que ofrecerlo ahí sólo sirve para elegirlo por error.
+ */
+export const EXPENSE_CATEGORY_PROVEEDOR_ORDER: ExpenseCategory[] = EXPENSE_CATEGORY_ORDER.filter(
+  (c) => c !== "SUELDOS"
+);
 
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   FLETE: "Flete",
@@ -63,6 +75,10 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   HONORARIOS: "Honorarios profesionales",
   SEGUROS: "Seguros",
   FUMIGACION: "Fumigación",
+  SUELDOS: "Sueldos",
+  LIMPIEZA: "Artículos de limpieza",
+  MOVILIDAD: "Movilidad (remís, viáticos)",
+  OFICINA: "Librería y oficina",
   OTRO: "Otro",
 };
 
@@ -178,10 +194,12 @@ export const PEDIDO_STATUS_LABELS: Record<PedidoStatus, string> = {
 export const TREASURY_MOVEMENT_CATEGORY_LABELS: Record<TreasuryMovementCategory, string> = {
   COBRO: "Cobro",
   PAGO_PROVEEDOR: "Pago a proveedor",
+  GASTO: "Gasto de caja",
   GASTO_BANCARIO: "Gasto bancario",
   IMPUESTO: "Impuesto",
   RETIRO: "Retiro",
   DEPOSITO: "Depósito",
+  PASE: "Pase entre cajas",
   AJUSTE_ARQUEO: "Ajuste por arqueo",
   OTRO: "Otro",
 };
