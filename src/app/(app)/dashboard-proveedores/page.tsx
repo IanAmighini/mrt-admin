@@ -113,7 +113,7 @@ export default async function DashboardProveedoresPage() {
           <KpiCard
             label="Retiro societario"
             value={retiros.map((r) => formatMoney(r.monto, r.moneda)).join(" + ")}
-            caption={`saldo a favor en ${retiros.map((r) => r.nombre).join(", ")}`}
+            caption={`acumulado, saldo a favor en ${retiros.map((r) => r.nombre).join(", ")}`}
             icon={HandCoins}
             color="amber"
           />

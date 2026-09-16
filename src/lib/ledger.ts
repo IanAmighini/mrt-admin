@@ -467,6 +467,59 @@ export function separarRetiroSocietario<
   return { deuda, retiros };
 }
 
+/**
+ * Saldo de unas cuentas a una fecha (exclusiva): lo que sumaron los comprobantes menos lo pagado,
+ * contando sólo lo anterior al corte. `null` = hasta hoy.
+ */
+async function saldoAlCorte(accountIds: string[], corte: Date | null): Promise<Prisma.Decimal> {
+  const fecha = corte ? { date: { lt: corte } } : {};
+  const [documentos, pagos] = await Promise.all([
+    prisma.document.findMany({
+      where: { accountId: { in: accountIds }, ...fecha },
+      select: { type: true, totalAmount: true, remitoLinks: { select: { amount: true } } },
+    }),
+    prisma.payment.findMany({
+      where: { accountId: { in: accountIds }, ...fecha },
+      select: { amount: true },
+    }),
+  ]);
+  return sumDecimals(documentos.map(getDocumentEffect)).minus(sumDecimals(pagos.map((p) => p.amount)));
+}
+
+/** Lo que la cuenta está a favor nuestro, o cero si se le debe. */
+const aFavor = (saldo: Prisma.Decimal) => (saldo.lessThan(0) ? saldo.negated() : ZERO);
+
+/**
+ * Cuánto se retiró para los socios **en el período**, por la cuenta marcada para eso.
+ *
+ * Es cuánto creció el saldo a favor entre el principio y el fin: el acumulado sirve para el saldo
+ * de hoy, pero en un reporte mensual repetiría todos los meses lo que ya se había retirado antes.
+ * Y se mide sobre el saldo a favor y no sobre los pagos del mes, porque lo que se le paga de lo que
+ * sí debíamos es una deuda que se cancela, no un retiro.
+ */
+export async function getRetirosDelPeriodo(period: { from: Date; to: Date }) {
+  const entities = await prisma.entity.findMany({
+    where: { retiroSocietario: true },
+    include: { accounts: { select: { id: true } } },
+  });
+
+  return Promise.all(
+    entities.map(async (entity) => {
+      const ids = entity.accounts.map((a) => a.id);
+      const [inicio, cierre] = await Promise.all([
+        saldoAlCorte(ids, period.from),
+        saldoAlCorte(ids, period.to),
+      ]);
+      return {
+        nombre: entity.name,
+        moneda: entity.moneda,
+        delPeriodo: aFavor(cierre).minus(aFavor(inicio)),
+        acumulado: aFavor(cierre),
+      };
+    })
+  );
+}
+
 export function sumarSaldosEnPesos(
   filas: { entity: { moneda: Currency }; total: number }[],
   cotizacion: Prisma.Decimal | null

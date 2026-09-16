@@ -641,12 +641,13 @@ function resultadoSheets(report: ResultadoReport, generatedAt: Date): ExcelSheet
       ? [
           sheet<ResultadoReport["retiros"][number]>({
             name: "Retiros societarios",
-            title: "Retiros societarios (saldo a favor, no son gasto)",
+            title: "Retiros societarios del período (no son gasto)",
             subtitle,
             columns: [
               { header: "Cuenta", value: (r) => r.nombre, width: 32 },
               { header: "Moneda", value: (r) => r.moneda, width: 10 },
-              { header: "Importe", value: (r) => r.monto, format: "money", width: 18 },
+              { header: "Del período", value: (r) => r.delPeriodo, format: "money", width: 18 },
+              { header: "Acumulado", value: (r) => r.acumulado, format: "money", width: 18 },
             ],
             rows: report.retiros,
           }),

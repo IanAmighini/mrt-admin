@@ -96,15 +96,23 @@ export async function ResultadoSection({ period }: { period: Period }) {
           <div className="space-y-1">
             {report.retiros.map((r) => (
               <div key={r.nombre} className="flex items-baseline justify-between gap-4">
-                <span className="text-foreground/60">{r.nombre}</span>
-                <span className="tabular-nums font-semibold">{formatMoney(r.monto, r.moneda)}</span>
+                <span className="text-foreground/60">
+                  {r.nombre}
+                  <span className="block text-xs text-foreground/50">
+                    acumulado: {formatMoney(r.acumulado, r.moneda)}
+                  </span>
+                </span>
+                <span className="tabular-nums font-semibold">
+                  {formatMoney(r.delPeriodo, r.moneda)}
+                </span>
               </div>
             ))}
           </div>
           <p className="mt-2 text-xs text-foreground/50">
-            Saldo a favor nuestro en esa cuenta: plata que se llevaron los socios. No resta del
-            resultado —un retiro es reparto de lo ganado, no un costo de producir— y tampoco cuenta
-            como deuda del proveedor. Va en su moneda, sin convertir.
+            Lo que se le dio de más <strong>en este período</strong>: cuánto creció el saldo a favor
+            nuestro en esa cuenta. Lo que se le pagó de lo que sí se le debía no cuenta — eso es
+            cancelar una deuda, no retirar. No resta del resultado, porque un retiro es reparto de lo
+            ganado y no un costo de producir. Va en su moneda, sin convertir.
           </p>
         </section>
       )}

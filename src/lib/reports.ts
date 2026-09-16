@@ -10,12 +10,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
-import {
-  getEntitySaldos,
-  getVencimientos,
-  litrosDeLinea,
-  separarRetiroSocietario,
-} from "@/lib/ledger";
+import { getRetirosDelPeriodo, getVencimientos, litrosDeLinea } from "@/lib/ledger";
 import { getCostoInsumos, getRentabilidad } from "@/lib/dashboard-kpis";
 import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
@@ -821,10 +816,16 @@ export type ResultadoReport = {
   /** Los últimos meses cerrados hasta el del período, para ver si mejora o empeora. */
   meses: ResultadoMes[];
   /**
-   * Lo que se llevaron los socios, al cierre del período. No es gasto ni resta del resultado: es
-   * reparto de lo ganado, y se muestra para que no parezca que la plata sigue en la empresa.
+   * Lo que se llevaron los socios **en el período**, más el acumulado como referencia. No es gasto
+   * ni resta del resultado: es reparto de lo ganado, y se muestra para que no parezca que esa plata
+   * sigue en la empresa.
    */
-  retiros: { nombre: string; monto: Prisma.Decimal; moneda: Currency }[];
+  retiros: {
+    nombre: string;
+    moneda: Currency;
+    delPeriodo: Prisma.Decimal;
+    acumulado: Prisma.Decimal;
+  }[];
   /** Lo que el número NO está contando, para que se pueda discutir. */
   avisos: { itemsSinCosto: number; facturasSinCompra: { count: number; total: Prisma.Decimal } };
 };
@@ -840,18 +841,18 @@ const MESES_DEL_COMPARATIVO = 6;
  * número dejaría de ser comparable contra el mes anterior.
  */
 export async function getResultadoReport(period: Period): Promise<ResultadoReport> {
-  const [actual, gastos, saldos] = await Promise.all([
+  const [actual, gastos, retirados] = await Promise.all([
     getRentabilidad(period),
     prisma.document.findMany({
       where: { ...GASTOS_WHERE, currency: "ARS", date: { gte: period.from, lt: period.to } },
       select: { netAmount: true, expenseCategory: true, treasuryCategory: true },
     }),
-    getEntitySaldos(["PROVEEDOR", "AMBOS"]),
+    getRetirosDelPeriodo(period),
   ]);
 
-  // El saldo a favor en la cuenta por la que se retira: no toca el resultado —un retiro no es un
-  // costo de producir— pero sin mostrarlo el reporte diría que esa plata sigue adentro.
-  const { retiros } = separarRetiroSocietario(saldos);
+  // Sólo las cuentas donde efectivamente se retiró algo este mes: el acumulado se muestra al lado,
+  // pero una fila en cero no dice nada.
+  const retiros = retirados.filter((r) => !r.delPeriodo.isZero());
 
   const porRubro = new Map<ExpenseCategory | null, Prisma.Decimal>();
   for (const doc of gastos) {
