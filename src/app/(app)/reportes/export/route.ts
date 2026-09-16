@@ -7,6 +7,7 @@ import {
   getCobranzasReport,
   getComprasReport,
   getGastosReport,
+  getResultadoReport,
   getInsumosMinimoReport,
   getProduccionReport,
   getVencidosReport,
@@ -67,6 +68,9 @@ export async function GET(request: NextRequest) {
       break;
     case "gastos":
       data = { key, report: await getGastosReport(period) };
+      break;
+    case "resultado":
+      data = { key, report: await getResultadoReport(period) };
       break;
     case "produccion":
       data = { key, report: await getProduccionReport(period) };

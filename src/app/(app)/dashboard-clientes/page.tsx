@@ -269,7 +269,9 @@ async function ReportesGerenciales() {
             </div>
           </div>
           <p className="text-xs text-foreground/50 mt-2">
-            Todo en pesos y neto de IVA. No incluye sueldos, que todavía no se cargan.
+            Todo en pesos y neto de IVA. Los sueldos y lo que sale de la caja chica ya están
+            adentro. <Link href="/reportes?report=resultado" className="underline underline-offset-2">
+            Ver el mes a mes</Link>.
             {rentabilidad.itemsSinCosto > 0 &&
               ` Ojo: ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) no tienen costo unitario cargado, así que no se descontaron.`}
           </p>

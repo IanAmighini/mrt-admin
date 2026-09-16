@@ -23,6 +23,8 @@ import {
   type InsumosMinimoReport,
   type ProduccionReport,
   type ReportKey,
+  type ResultadoMes,
+  type ResultadoReport,
   type VencidosReport,
   type VentasReport,
 } from "@/lib/reports";
@@ -596,6 +598,63 @@ export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
 
 // ---------------------------------------------------------------------------
 
+function resultadoSheets(report: ResultadoReport, generatedAt: Date): ExcelSheet<never>[] {
+  const subtitle = periodSubtitle(report.period, generatedAt);
+
+  // La cascada como filas: cada una es un renglón con su nombre y su importe, que es como se lee un
+  // resultado. Las de subtotal van sin signo en el nombre para que se distingan de las que restan.
+  const cascada = [
+    { concepto: "Ventas netas", importe: report.ventas },
+    { concepto: "− Costo de insumos", importe: report.costoInsumos.negated() },
+    { concepto: "Margen bruto", importe: report.margenBruto },
+    { concepto: "− Gastos", importe: report.gastos.negated() },
+    { concepto: "Resultado", importe: report.resultado },
+  ];
+
+  return [
+    sheet<(typeof cascada)[number]>({
+      name: "Resultado",
+      title: "Resultado del período",
+      subtitle,
+      columns: [
+        { header: "Concepto", value: (r) => r.concepto, width: 28 },
+        { header: "Importe ARS", value: (r) => r.importe, format: "money", width: 18 },
+      ],
+      rows: cascada,
+    }),
+    sheet<ResultadoReport["porRubro"][number]>({
+      name: "Gastos por rubro",
+      title: "En qué se fueron los gastos",
+      subtitle,
+      columns: [
+        {
+          header: "Rubro",
+          value: (r) => (r.category ? EXPENSE_CATEGORY_LABELS[r.category] : "Sin rubro"),
+          width: 32,
+        },
+        { header: "Importe ARS", value: (r) => r.total, format: "money", width: 18 },
+      ],
+      rows: report.porRubro,
+      totals: ["Total", report.gastos],
+    }),
+    sheet<ResultadoMes>({
+      name: "Mes a mes",
+      title: "Resultado mes a mes",
+      subtitle,
+      columns: [
+        { header: "Mes", value: (r) => r.label, width: 20 },
+        { header: "Ventas", value: (r) => r.ventas, format: "money", width: 16 },
+        { header: "Insumos", value: (r) => r.costoInsumos, format: "money", width: 16 },
+        { header: "Gastos", value: (r) => r.gastos, format: "money", width: 16 },
+        { header: "Resultado", value: (r) => r.resultado, format: "money", width: 16 },
+      ],
+      rows: report.meses,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+
 export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
   | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
@@ -604,6 +663,7 @@ export type ReportData =
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
   | { key: "compras"; report: ComprasReport }
   | { key: "gastos"; report: GastosReport }
+  | { key: "resultado"; report: ResultadoReport }
   | { key: "produccion"; report: ProduccionReport };
 
 export function buildReportSheets(data: ReportData, generatedAt = new Date()): ExcelSheet<never>[] {
@@ -623,6 +683,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return comprasSheets(data.report, generatedAt);
     case "gastos":
       return gastosSheets(data.report, generatedAt);
+    case "resultado":
+      return resultadoSheets(data.report, generatedAt);
     case "produccion":
       return produccionSheets(data.report, generatedAt);
   }

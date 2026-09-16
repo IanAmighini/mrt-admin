@@ -1,5 +1,10 @@
 import "server-only";
-import type { DocumentType, Prisma } from "@prisma/client";
+import type {
+  DocumentType,
+  ExpenseCategory,
+  Prisma,
+  TreasuryMovementCategory,
+} from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
 import { esCaja } from "@/lib/pagos";
@@ -22,9 +27,33 @@ export const CIRCUITO_DE_CAJA = "NEGRO" as const;
  * Van juntos en el margen y en el reporte de gastos — la plata sale igual, y hasta ahora lo de la
  * caja no aparecía en ningún lado.
  */
-export const GASTOS_WHERE = {
-  OR: [{ type: "GASTO" as const }, { treasuryCategory: "GASTO" as const }],
+export const GASTOS_WHERE: Prisma.DocumentWhereInput = {
+  OR: [
+    { type: "GASTO" },
+    // Los de caja, más los impuestos y las comisiones del banco cargados como movimiento: es plata
+    // que sale igual, y sin esto el monotributo contaba o no según si lo cargó ella en la caja o
+    // vos en el banco. El signo es la guarda: un depósito o un retiro no son gasto, y un
+    // movimiento cargado como "suma al saldo" tampoco.
+    {
+      treasuryCategory: { in: ["GASTO", "IMPUESTO", "GASTO_BANCARIO"] },
+      totalAmount: { lt: 0 },
+    },
+  ],
 };
+
+/**
+ * El rubro con el que se muestra un gasto. Los movimientos de tesorería viejos no tienen rubro
+ * propio, pero su categoría ya dice de qué son.
+ */
+export function rubroDelGasto(doc: {
+  expenseCategory: ExpenseCategory | null;
+  treasuryCategory: TreasuryMovementCategory | null;
+}): ExpenseCategory | null {
+  if (doc.expenseCategory) return doc.expenseCategory;
+  if (doc.treasuryCategory === "IMPUESTO") return "IMPUESTOS";
+  if (doc.treasuryCategory === "GASTO_BANCARIO") return "BANCARIOS";
+  return null;
+}
 
 /**
  * Cuánto gastó un comprobante. El de un proveedor gasta su total (con IVA y percepciones); el de

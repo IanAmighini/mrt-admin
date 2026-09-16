@@ -11,11 +11,11 @@ import {
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getVencimientos, litrosDeLinea } from "@/lib/ledger";
-import { getCostoInsumos } from "@/lib/dashboard-kpis";
-import { GASTOS_WHERE, montoDelGasto } from "@/lib/caja";
+import { getCostoInsumos, getRentabilidad } from "@/lib/dashboard-kpis";
+import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
-import type { Period } from "@/lib/period";
+import { monthPeriod, periodLastDay, type Period } from "@/lib/period";
 
 export const REPORT_KEYS = [
   "remitos-vencidos",
@@ -24,6 +24,7 @@ export const REPORT_KEYS = [
   "cobranzas",
   "compras",
   "gastos",
+  "resultado",
   "produccion",
 ] as const;
 
@@ -36,6 +37,7 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
   cobranzas: "Cobranzas y pagos",
   compras: "Compras de insumos",
   gastos: "Gastos",
+  resultado: "Resultado del mes",
   produccion: "Producción",
 };
 
@@ -655,15 +657,18 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
     const { entity, circuit } = doc.account;
     const total = toDecimal(montoDelGasto(doc));
 
-    if (doc.expenseCategory) {
-      const rubro = porRubro.get(doc.expenseCategory) ?? {
-        category: doc.expenseCategory,
+    // Un impuesto o una comisión cargados como movimiento de tesorería no tienen rubro propio, pero
+    // su categoría ya dice de qué son: sin esto sumaban al total del mes sin aparecer en ninguna fila.
+    const rubroDelDoc = rubroDelGasto(doc);
+    if (rubroDelDoc) {
+      const rubro = porRubro.get(rubroDelDoc) ?? {
+        category: rubroDelDoc,
         count: 0,
         byCurrency: new Map(),
       };
       rubro.count++;
       addByCurrency(rubro.byCurrency, doc.currency, total);
-      porRubro.set(doc.expenseCategory, rubro);
+      porRubro.set(rubroDelDoc, rubro);
     }
 
     const proveedor = porProveedor.get(entity.slug) ?? {
@@ -693,7 +698,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
       entityName: entity.name,
       taxId: entity.taxId,
       circuit,
-      category: doc.expenseCategory,
+      category: rubroDelDoc,
       reason: doc.reason,
       neto: toDecimal(doc.netAmount),
       iva: toDecimal(doc.ivaAmount),
@@ -781,5 +786,93 @@ export async function getProduccionReport(period: Period): Promise<ProduccionRep
     litrosEnvasados,
     costoInsumos,
     totalPallets,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 8. Resultado del período
+// ---------------------------------------------------------------------------
+
+export type ResultadoMes = {
+  /** "Septiembre 2026". */
+  label: string;
+  from: Date;
+  ventas: Prisma.Decimal;
+  costoInsumos: Prisma.Decimal;
+  gastos: Prisma.Decimal;
+  resultado: Prisma.Decimal;
+};
+
+export type ResultadoReport = {
+  period: Period;
+  /** La cascada del período elegido: ventas − insumos = margen bruto − gastos = resultado. */
+  ventas: Prisma.Decimal;
+  costoInsumos: Prisma.Decimal;
+  margenBruto: Prisma.Decimal;
+  gastos: Prisma.Decimal;
+  resultado: Prisma.Decimal;
+  /** En qué se fueron los gastos del período. Sin rubro van juntos al final. */
+  porRubro: { category: ExpenseCategory | null; total: Prisma.Decimal }[];
+  /** Los últimos meses cerrados hasta el del período, para ver si mejora o empeora. */
+  meses: ResultadoMes[];
+  /** Lo que el número NO está contando, para que se pueda discutir. */
+  avisos: { itemsSinCosto: number; facturasSinCompra: { count: number; total: Prisma.Decimal } };
+};
+
+const MESES_DEL_COMPARATIVO = 6;
+
+/**
+ * Cuánto se ganó: ventas menos lo que costó producirlas menos los gastos, todo neto de IVA y en
+ * pesos. Es la misma cuenta que la tarjeta del dashboard —`getRentabilidad`— abierta por rubro y
+ * repetida mes a mes, que es lo que no se podía ver en ningún lado.
+ *
+ * Las cuentas en dólares quedan afuera: valuarlas necesitaría una cotización por comprobante y el
+ * número dejaría de ser comparable contra el mes anterior.
+ */
+export async function getResultadoReport(period: Period): Promise<ResultadoReport> {
+  const [actual, gastos] = await Promise.all([
+    getRentabilidad(period),
+    prisma.document.findMany({
+      where: { ...GASTOS_WHERE, currency: "ARS", date: { gte: period.from, lt: period.to } },
+      select: { netAmount: true, expenseCategory: true, treasuryCategory: true },
+    }),
+  ]);
+
+  const porRubro = new Map<ExpenseCategory | null, Prisma.Decimal>();
+  for (const doc of gastos) {
+    const rubro = rubroDelGasto(doc);
+    porRubro.set(rubro, (porRubro.get(rubro) ?? ZERO).plus(toDecimal(doc.netAmount)));
+  }
+
+  // El mes del período es el del último día incluido: con "este mes" elegido, el `to` exclusivo cae
+  // en el primero del siguiente y el comparativo arrancaría corrido.
+  const ultimo = periodLastDay(period);
+  const meses: ResultadoMes[] = [];
+  for (let i = MESES_DEL_COMPARATIVO - 1; i >= 0; i--) {
+    const mes = monthPeriod(new Date(ultimo.getFullYear(), ultimo.getMonth() - i, 1));
+    const r = await getRentabilidad(mes);
+    meses.push({
+      label: mes.from.toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
+      from: mes.from,
+      ventas: r.ingresos,
+      costoInsumos: r.costoInsumos,
+      gastos: r.gastos,
+      resultado: r.rentabilidad,
+    });
+  }
+
+  return {
+    period,
+    ventas: actual.ingresos,
+    costoInsumos: actual.costoInsumos,
+    margenBruto: actual.ingresos.minus(actual.costoInsumos),
+    gastos: actual.gastos,
+    resultado: actual.rentabilidad,
+    porRubro: Array.from(porRubro.entries())
+      .map(([category, total]) => ({ category, total }))
+      // De mayor a menor, que es como se mira "en qué se me fue la plata"; los sin rubro al final.
+      .sort((a, b) => (a.category === null ? 1 : b.category === null ? -1 : b.total.comparedTo(a.total))),
+    meses,
+    avisos: { itemsSinCosto: actual.itemsSinCosto, facturasSinCompra: actual.facturasSinCompra },
   };
 }
