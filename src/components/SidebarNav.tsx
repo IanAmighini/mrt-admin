@@ -6,10 +6,14 @@ import { usePathname } from "next/navigation";
 import {
   Banknote,
   Building2,
+  ChevronDown,
+  ChevronRight,
   ClipboardList,
+  Coins,
   Contact,
   Factory,
   FileSpreadsheet,
+  FileText,
   History,
   Home,
   Landmark,
@@ -24,7 +28,12 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import type { NavItem } from "@/lib/nav";
+import { NAV_GROUPS, type NavEntry, type NavItem } from "@/lib/nav";
+
+const ICONS_BY_GROUP: Record<string, LucideIcon> = {
+  [NAV_GROUPS.CAJA]: Coins,
+  [NAV_GROUPS.ADMINISTRACION]: FileText,
+};
 
 const ICONS_BY_HREF: Record<string, LucideIcon> = {
   "/": Home,
@@ -40,32 +49,71 @@ const ICONS_BY_HREF: Record<string, LucideIcon> = {
   "/pagos-clientes": Wallet,
   "/pagos-proveedores": Banknote,
   "/tesoreria": Landmark,
+  "/ordenes-pago": FileText,
+  "/libro-iva": FileSpreadsheet,
+  "/caja-chica": Coins,
+  "/tesoreria/cheques": Banknote,
   "/produccion": Factory,
   "/usuarios": UserCog,
   "/actividad": History,
 };
 
-export function SidebarNav({ items }: { items: NavItem[] }) {
+const filaClass = "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors";
+const filaActiva = "bg-primary text-primary-foreground font-medium";
+const filaQuieta = "text-foreground/70 hover:bg-foreground/5 hover:text-foreground";
+
+export function SidebarNav({ entries }: { entries: NavEntry[] }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  // Qué grupos abrió o cerró el usuario a mano. Sin entrada acá, un grupo está abierto sólo si la
+  // página que se está mirando es una de las suyas: el sentido de agruparlos era acortar el menú.
+  const [desplegados, setDesplegados] = useState<Record<string, boolean>>({});
 
-  const links = items.map((item) => {
-    const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+  const esActiva = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+
+  const link = (item: NavItem, dentroDeGrupo = false) => {
     const Icon = ICONS_BY_HREF[item.href] ?? Home;
     return (
       <Link
         key={item.href}
         href={item.href}
         onClick={() => setOpen(false)}
-        className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-          isActive
-            ? "bg-primary text-primary-foreground font-medium"
-            : "text-foreground/70 hover:bg-foreground/5 hover:text-foreground"
-        }`}
+        className={`${filaClass} ${esActiva(item.href) ? filaActiva : filaQuieta}`}
       >
-        <Icon size={17} strokeWidth={2} className="shrink-0" />
+        <Icon size={dentroDeGrupo ? 15 : 17} strokeWidth={2} className="shrink-0" />
         {item.label}
       </Link>
+    );
+  };
+
+  const links = entries.map((entry) => {
+    if (entry.kind === "item") return link(entry.item);
+
+    const tieneActiva = entry.items.some((i) => esActiva(i.href));
+    const abierto = desplegados[entry.label] ?? tieneActiva;
+    const Icon = ICONS_BY_GROUP[entry.label] ?? Home;
+    return (
+      <div key={entry.label} className="flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={() => setDesplegados((d) => ({ ...d, [entry.label]: !abierto }))}
+          aria-expanded={abierto}
+          className={`${filaClass} ${tieneActiva && !abierto ? filaActiva : filaQuieta}`}
+        >
+          <Icon size={17} strokeWidth={2} className="shrink-0" />
+          {entry.label}
+          {abierto ? (
+            <ChevronDown size={15} className="ml-auto shrink-0 opacity-50" />
+          ) : (
+            <ChevronRight size={15} className="ml-auto shrink-0 opacity-50" />
+          )}
+        </button>
+        {abierto && (
+          <div className="ml-4 flex flex-col gap-1 border-l border-foreground/10 pl-2">
+            {entry.items.map((i) => link(i, true))}
+          </div>
+        )}
+      </div>
     );
   });
 
