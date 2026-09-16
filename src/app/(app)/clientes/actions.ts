@@ -30,6 +30,7 @@ export async function createEntity(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
+  const retiroSocietario = formData.get("retiroSocietario") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
@@ -51,7 +52,7 @@ export async function createEntity(formData: FormData) {
     const entity = await tx.entity.create({
       data: {
         name, slug, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, retiroSocietario, moneda,
       },
     });
     const [blanco, negro] = await Promise.all([
@@ -92,6 +93,7 @@ export async function updateEntity(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
+  const retiroSocietario = formData.get("retiroSocietario") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
   const { supplierCategory, expenseCategory } = parseRubro(String(formData.get("rubro") || "").trim());
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
@@ -109,7 +111,7 @@ export async function updateEntity(formData: FormData) {
       where: { id: entityId },
       data: {
         name, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, retiroSocietario, moneda,
       },
       include: { accounts: true },
     });

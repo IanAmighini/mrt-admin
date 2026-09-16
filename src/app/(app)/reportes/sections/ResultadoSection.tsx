@@ -90,6 +90,25 @@ export async function ResultadoSection({ period }: { period: Period }) {
         )}
       </section>
 
+      {report.retiros.length > 0 && (
+        <section className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5">
+          <h2 className="text-sm font-semibold mb-1">Retiros societarios</h2>
+          <div className="space-y-1">
+            {report.retiros.map((r) => (
+              <div key={r.nombre} className="flex items-baseline justify-between gap-4">
+                <span className="text-foreground/60">{r.nombre}</span>
+                <span className="tabular-nums font-semibold">{formatMoney(r.monto, r.moneda)}</span>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-foreground/50">
+            Saldo a favor nuestro en esa cuenta: plata que se llevaron los socios. No resta del
+            resultado —un retiro es reparto de lo ganado, no un costo de producir— y tampoco cuenta
+            como deuda del proveedor. Va en su moneda, sin convertir.
+          </p>
+        </section>
+      )}
+
       <section>
         <h2 className="text-sm font-semibold mb-2">En qué se fueron los gastos</h2>
         <div className="overflow-x-auto">

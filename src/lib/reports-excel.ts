@@ -637,6 +637,21 @@ function resultadoSheets(report: ResultadoReport, generatedAt: Date): ExcelSheet
       rows: report.porRubro,
       totals: ["Total", report.gastos],
     }),
+    ...(report.retiros.length > 0
+      ? [
+          sheet<ResultadoReport["retiros"][number]>({
+            name: "Retiros societarios",
+            title: "Retiros societarios (saldo a favor, no son gasto)",
+            subtitle,
+            columns: [
+              { header: "Cuenta", value: (r) => r.nombre, width: 32 },
+              { header: "Moneda", value: (r) => r.moneda, width: 10 },
+              { header: "Importe", value: (r) => r.monto, format: "money", width: 18 },
+            ],
+            rows: report.retiros,
+          }),
+        ]
+      : []),
     sheet<ResultadoMes>({
       name: "Mes a mes",
       title: "Resultado mes a mes",

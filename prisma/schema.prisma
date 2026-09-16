@@ -132,6 +132,10 @@ model Entity {
   /// Si es true, la ficha muestra la cuenta de preformas: este proveedor fía la preforma y cobra
   /// sólo el soplado, así que además de la cuenta en pesos se le deben preformas en unidades.
   llevaCuentaPreformas Boolean           @default(false)
+  /// Si es true, cuando esta cuenta queda a favor nuestro ese saldo NO es un crédito con el
+  /// proveedor: es plata que se llevaron los socios. Se saca de la deuda con proveedores y se
+  /// muestra aparte como retiro societario.
+  retiroSocietario     Boolean           @default(false)
   /// Moneda en la que se lleva la cuenta corriente. En USD, los montos de sus comprobantes y pagos
   /// **son dólares**: el saldo sale en dólares sin convertir nada, y lo que se guarda de cada pago
   /// es la cotización con la que se hizo.

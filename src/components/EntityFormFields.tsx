@@ -150,6 +150,24 @@ export function EntityFormFields({
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
+            name="retiroSocietario"
+            defaultChecked={entity?.retiroSocietario ?? false}
+            className="mt-0.5"
+          />
+          <span>
+            Por acá se retira para los socios
+            <span className="block text-xs text-foreground/50">
+              Cuando la cuenta quede a favor nuestro, ese saldo no se cuenta como deuda del
+              proveedor: se muestra aparte como retiro societario. Lo que sí se le deba sigue siendo
+              deuda normal.
+            </span>
+          </span>
+        </label>
+      )}
+      {esProveedor && (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
             name="llevaCuentaPreformas"
             defaultChecked={entity?.llevaCuentaPreformas ?? false}
             className="mt-0.5"

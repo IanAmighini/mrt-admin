@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Banknote, Building2, Package, ShoppingCart } from "lucide-react";
+import { Banknote, Building2, HandCoins, Package, ShoppingCart } from "lucide-react";
 import type { Prisma, Currency } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import {
@@ -7,6 +7,7 @@ import {
   getRecentCompras,
   getRecentPayments,
   getUltimaCotizacion,
+  separarRetiroSocietario,
   sumarSaldosEnPesos,
 } from "@/lib/ledger";
 import {
@@ -43,10 +44,14 @@ export default async function DashboardProveedoresPage() {
     getUltimaCotizacion(),
   ]);
 
+  // El saldo a favor en la cuenta por la que se retira para los socios no es deuda de nadie: sale
+  // del total y se muestra por separado, que es lo que en realidad es.
+  const { deuda, retiros } = separarRetiroSocietario(saldos);
+
   // No se pueden sumar pesos con dólares: los saldos en dólares se valúan con la última cotización
   // cargada, y si todavía no hay ninguna se muestran aparte en vez de inventar una.
-  const { total: deudaTotal, dolaresSinValuar } = sumarSaldosEnPesos(saldos, cotizacion);
-  const hayCuentasEnDolares = saldos.some((s) => s.entity.moneda === "USD");
+  const { total: deudaTotal, dolaresSinValuar } = sumarSaldosEnPesos(deuda, cotizacion);
+  const hayCuentasEnDolares = deuda.some((s) => s.entity.moneda === "USD");
   const compraKpi = primaryAndExtra(comprasDelMes);
   const pagoKpi = primaryAndExtra(pagosDelMes);
 
@@ -66,7 +71,9 @@ export default async function DashboardProveedoresPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div
+        className={`grid gap-4 sm:grid-cols-2 ${retiros.length > 0 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}
+      >
         <KpiCard
           label="Deuda total a proveedores"
           value={
@@ -102,6 +109,15 @@ export default async function DashboardProveedoresPage() {
           icon={Package}
           color="amber"
         />
+        {retiros.length > 0 && (
+          <KpiCard
+            label="Retiro societario"
+            value={retiros.map((r) => formatMoney(r.monto, r.moneda)).join(" + ")}
+            caption={`saldo a favor en ${retiros.map((r) => r.nombre).join(", ")}`}
+            icon={HandCoins}
+            color="amber"
+          />
+        )}
       </div>
 
       <div className="grid gap-8 lg:grid-cols-2">

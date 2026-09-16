@@ -441,6 +441,32 @@ export async function getUltimaCotizacion(): Promise<Prisma.Decimal | null> {
  * Suma saldos de cuentas que pueden estar en monedas distintas, valuando los dólares con la última
  * cotización cargada. Sumarlos crudos daría un número sin sentido.
  */
+/**
+ * Aparta el saldo a favor de la cuenta por la que se retira plata para los socios.
+ *
+ * Ese saldo no es un crédito con el proveedor —no nos va a entregar mercadería por eso— así que
+ * sumarlo a la deuda la subestima, y de paso esconde cuánto se retiró. Sólo se aparta cuando la
+ * cuenta está a favor nuestro: si se le debe, es deuda como la de cualquier otro.
+ */
+export function separarRetiroSocietario<
+  T extends { entity: { moneda: Currency; retiroSocietario: boolean; name: string }; total: number },
+>(filas: T[]): { deuda: T[]; retiros: { nombre: string; monto: Prisma.Decimal; moneda: Currency }[] } {
+  const deuda: T[] = [];
+  const retiros: { nombre: string; monto: Prisma.Decimal; moneda: Currency }[] = [];
+  for (const fila of filas) {
+    if (fila.entity.retiroSocietario && fila.total < 0) {
+      retiros.push({
+        nombre: fila.entity.name,
+        monto: new Prisma.Decimal(-fila.total),
+        moneda: fila.entity.moneda,
+      });
+      continue;
+    }
+    deuda.push(fila);
+  }
+  return { deuda, retiros };
+}
+
 export function sumarSaldosEnPesos(
   filas: { entity: { moneda: Currency }; total: number }[],
   cotizacion: Prisma.Decimal | null
