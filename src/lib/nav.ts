@@ -38,9 +38,15 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
   { href: "/ordenes-pago", label: "Órdenes de pago", roles: ADMINISTRATIVOS },
   { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },
-  // La caja del cajón, que maneja la secretaría: la ve ella y también quien mira Tesorería, que es
-  // de donde sale la plata. El banco y la caja grande siguen siendo sólo de Tesorería.
-  { href: "/caja-chica", label: "Caja chica", roles: ADMINISTRATIVOS },
+  // Cuelga de Tesorería, igual que Cheques: quien ve Tesorería llega por la tarjeta de la caja y
+  // tenerlo además en el menú es repetirlo. La secretaría no ve Tesorería —ahí están el banco y la
+  // caja grande— pero la caja chica la maneja ella, así que a ella sí se le muestra.
+  {
+    href: "/caja-chica",
+    label: "Caja chica",
+    roles: ADMINISTRATIVOS,
+    hidden: ["ADMIN", "SOLO_LECTURA"],
+  },
   // Cuelga de Tesorería, así que quien ve Tesorería llega por ahí y no necesita el ítem. La
   // secretaría no la ve pero igual tiene que poder marcar un cheque rechazado —a ella le avisan—
   // así que a ella sí se le muestra en el menú.
