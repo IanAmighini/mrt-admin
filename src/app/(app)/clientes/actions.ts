@@ -30,7 +30,6 @@ export async function createEntity(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
-  const retiroSocietario = formData.get("retiroSocietario") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
@@ -51,8 +50,10 @@ export async function createEntity(formData: FormData) {
     );
     const entity = await tx.entity.create({
       data: {
+        // `retiroSocietario` no está: un proveedor nuevo nunca nace siendo por donde se retira
+        // para los socios. Se prende editándolo, y sólo lo ve Admin.
         name, slug, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, retiroSocietario, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, moneda,
       },
     });
     const [blanco, negro] = await Promise.all([
@@ -93,7 +94,12 @@ export async function updateEntity(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
-  const retiroSocietario = formData.get("retiroSocietario") !== null;
+  // Sólo se toca si el formulario traía la casilla: no la muestra ni el alta ni quien no es Admin,
+  // y ahí "no vino" significa "no la cambies", no "apagala".
+  const retiroSocietario =
+    formData.get("retiroSocietarioPresente") === null
+      ? undefined
+      : formData.get("retiroSocietario") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
   const { supplierCategory, expenseCategory } = parseRubro(String(formData.get("rubro") || "").trim());
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
@@ -111,7 +117,8 @@ export async function updateEntity(formData: FormData) {
       where: { id: entityId },
       data: {
         name, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, retiroSocietario, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, moneda,
+        ...(retiroSocietario !== undefined ? { retiroSocietario } : {}),
       },
       include: { accounts: true },
     });

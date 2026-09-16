@@ -222,6 +222,7 @@ export default async function EntityLedgerPage({
             >
               <EntityFormFields
                 defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
+                mostrarRetiroSocietario={user.role === "ADMIN"}
                 showSupplierCategory={entity.type !== "CLIENTE"}
                 entity={entity}
                 saldosIniciales={saldosIniciales}

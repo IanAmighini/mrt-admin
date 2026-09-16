@@ -7,12 +7,15 @@ const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
 
 export function EntityFormFields({
+  mostrarRetiroSocietario = false,
   defaultType,
   showSupplierCategory,
   entity,
   saldosIniciales,
 }: {
   defaultType: "CLIENTE" | "PROVEEDOR";
+  /** La casilla de retiro societario: sólo al editar, y sólo para Admin. */
+  mostrarRetiroSocietario?: boolean;
   showSupplierCategory?: boolean;
   /** Si viene, el formulario edita esta entidad en vez de crear una nueva. */
   entity?: Entity;
@@ -146,7 +149,14 @@ export function EntityFormFields({
           </span>
         </span>
       </label>
-      {esProveedor && (
+      {/* La marca de por dónde se retira para los socios no se ofrece al crear —un proveedor nuevo
+          nunca nace siendo eso— ni a quien no maneja la plata de los dueños: es un dato de ellos,
+          no de la ficha del proveedor. Se prende editando, y sólo Admin lo ve. */}
+      {esProveedor && mostrarRetiroSocietario && (
+        <>
+        {/* Marca que el formulario SÍ trae la casilla. Sin esto, guardar desde un formulario que
+            no la muestra la apagaría: una casilla sin tildar y una que no existe llegan igual. */}
+        <input type="hidden" name="retiroSocietarioPresente" value="1" />
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
@@ -163,6 +173,7 @@ export function EntityFormFields({
             </span>
           </span>
         </label>
+        </>
       )}
       {esProveedor && (
         <label className="flex items-start gap-2 text-sm">
