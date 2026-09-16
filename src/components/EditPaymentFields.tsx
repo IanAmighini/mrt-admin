@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { Currency, Entity, PaymentMethod } from "@prisma/client";
+import type { Circuit, Currency, Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { metodosDePago } from "@/lib/pagos";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
@@ -11,8 +12,6 @@ const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
 const toggleClass =
   "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
-
-const PAYMENT_METHODS: PaymentMethod[] = ["EFECTIVO", "TRANSFERENCIA", "CHEQUE", "ECHEQ", "OTRO"];
 
 export function EditPaymentFields({
   paymentId,
@@ -35,12 +34,22 @@ export function EditPaymentFields({
     /** Id de tesorería, PROVEEDOR_DIRECTO_VALUE, o "" si no tiene destino asignado. */
     destino?: string;
     proveedorId?: string;
+    /** La cuenta del proveedor que recibió el cobro directo, que puede no ser la de este pago. */
+    proveedorCircuit?: Circuit;
   };
   treasuries: Entity[];
   /** Solo si esta cuenta es de un cliente: lista de proveedores, para "directo a un proveedor". */
   proveedores?: Entity[];
 }) {
   const isCobro = proveedores !== undefined;
+
+  // Las mismas reglas que al cargar: en negro no hay echeq ni retención, y el banco no es destino.
+  const [circuit, setCircuit] = useState<Circuit>(defaultValues.circuit);
+  const [method, setMethod] = useState<PaymentMethod>(defaultValues.method);
+  const metodos = metodosDePago(circuit, { conRetencion: isCobro });
+  // Un pago viejo puede tener un método que hoy no se ofrece —una retención de un pago a proveedor,
+  // de antes de que dejara de ofrecerse— y esconderlo lo cambiaría solo al guardar.
+  const metodosVisibles = metodos.includes(method) ? metodos : [...metodos, method];
 
   // Mismo comportamiento que el alta: en una cuenta en dólares se escriben los pesos y la
   // cotización. Al editar se arranca de lo guardado, que ya está en dólares.
@@ -60,42 +69,41 @@ export function EditPaymentFields({
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>
         <div className="grid grid-cols-2 gap-2">
-          <label className={toggleClass}>
-            <input
-              type="radio"
-              name="circuit"
-              value="BLANCO"
-              defaultChecked={defaultValues.circuit === "BLANCO"}
-              className="sr-only"
-            />
-            Blanco (con factura)
-          </label>
-          <label className={toggleClass}>
-            <input
-              type="radio"
-              name="circuit"
-              value="NEGRO"
-              defaultChecked={defaultValues.circuit === "NEGRO"}
-              className="sr-only"
-            />
-            Negro (sin factura)
-          </label>
+          {(["BLANCO", "NEGRO"] as const).map((c) => (
+            <label key={c} className={toggleClass}>
+              <input
+                type="radio"
+                name="circuit"
+                value={c}
+                checked={circuit === c}
+                onChange={() => {
+                  setCircuit(c);
+                  if (!metodosDePago(c, { conRetencion: isCobro }).includes(method)) {
+                    setMethod("EFECTIVO");
+                  }
+                }}
+                className="sr-only"
+              />
+              {c === "BLANCO" ? "Blanco (con factura)" : "Negro (sin factura)"}
+            </label>
+          ))}
         </div>
       </div>
 
       <div className="space-y-1">
         <p className="text-sm">Método de pago</p>
         <div className="flex flex-wrap gap-2">
-          {PAYMENT_METHODS.map((method) => (
-            <label key={method} className={toggleClass}>
+          {metodosVisibles.map((m) => (
+            <label key={m} className={toggleClass}>
               <input
                 type="radio"
                 name="method"
-                value={method}
-                defaultChecked={defaultValues.method === method}
+                value={m}
+                checked={method === m}
+                onChange={() => setMethod(m)}
                 className="sr-only"
               />
-              {PAYMENT_METHOD_LABELS[method]}
+              {PAYMENT_METHOD_LABELS[m]}
             </label>
           ))}
         </div>
@@ -151,10 +159,12 @@ export function EditPaymentFields({
 
       <PaymentDestinoField
         isCobro={isCobro}
+        circuit={circuit}
         treasuries={treasuries}
         proveedores={proveedores}
         defaultDestino={defaultValues.destino ?? ""}
         defaultProveedorId={defaultValues.proveedorId}
+        defaultProveedorCircuit={defaultValues.proveedorCircuit}
         montoDelCobro={monto}
       />
 

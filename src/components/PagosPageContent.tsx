@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getRecentPayments, getTreasuries } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
-import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
 import { DeleteButton } from "./DeleteButton";
 import { PaymentFormFields } from "./PaymentFormFields";
@@ -96,7 +96,11 @@ export async function PagosPageContent({
                 const destinoLabel = payment.treasuryId
                   ? treasuryById.get(payment.treasuryId)?.name
                   : linkedPayment
-                    ? `Directo a ${linkedPayment.account.entity.name}`
+                    ? `Directo a ${linkedPayment.account.entity.name}${
+                        linkedPayment.account.circuit === payment.account.circuit
+                          ? ""
+                          : ` (${CIRCUIT_LABELS[linkedPayment.account.circuit]})`
+                      }`
                     : null;
                 const defaultDestino = payment.treasuryId ?? (linkedPayment ? PROVEEDOR_DIRECTO_VALUE : "");
                 return (
@@ -143,6 +147,7 @@ export async function PagosPageContent({
                                 reference: payment.reference ?? undefined,
                                 destino: defaultDestino,
                                 proveedorId: linkedPayment?.account.entityId,
+                                proveedorCircuit: linkedPayment?.account.circuit,
                               }}
                             />
                           </FormModal>

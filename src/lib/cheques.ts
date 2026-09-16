@@ -1,5 +1,5 @@
 import "server-only";
-import { Prisma, type ChequeEstado } from "@prisma/client";
+import { Prisma, type ChequeEstado, type Circuit } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
 import { formatMoney, formatNumeroEditable, parseNumeroEscrito } from "@/lib/money";
@@ -63,10 +63,17 @@ export async function crearChequeRecibido(
  */
 export async function entregarCheque(
   tx: Prisma.TransactionClient,
-  params: { paymentId: string; chequeId: string; amount: Prisma.Decimal }
+  params: { paymentId: string; chequeId: string; amount: Prisma.Decimal; circuit: Circuit }
 ) {
   const cheque = await tx.cheque.findUnique({ where: { id: params.chequeId } });
   if (!cheque) throw new UserError("El cheque ya no existe.");
+  // Un echeq queda registrado en el banco, así que no puede ser lo que cancela una deuda en negro
+  // —la misma razón por la que no se ofrece como método de pago de esa cuenta.
+  if (params.circuit === "NEGRO" && cheque.esEcheq) {
+    throw new UserError(
+      `El #${cheque.numero} es un echeq: queda registrado en el banco, así que no puede entregarse por una deuda en negro.`
+    );
+  }
   if (cheque.estado !== "EN_CARTERA") {
     throw new UserError(`El cheque #${cheque.numero} ya no está en cartera.`);
   }
@@ -122,6 +129,7 @@ export async function getCarteraParaFormulario() {
     id: c.id,
     numero: c.numero,
     banco: c.banco,
+    esEcheq: c.esEcheq,
     amount: formatNumeroEditable(c.amount),
     montoLabel: formatMoney(c.amount),
     deQuien: c.recibidoEn?.account.entity.name ?? null,

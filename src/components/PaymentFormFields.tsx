@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { Currency, Entity, PaymentMethod } from "@prisma/client";
+import type { Circuit, Currency, Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS, RETENTION_KIND_ORDER } from "@/lib/labels";
+import { metodosDePago } from "@/lib/pagos";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
@@ -11,6 +12,7 @@ export type ChequeEnCartera = {
   id: string;
   numero: string;
   banco: string | null;
+  esEcheq: boolean;
   /** El monto tal como lo lee el campo de importe, en formato argentino. */
   amount: string;
   montoLabel: string;
@@ -23,15 +25,6 @@ const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
 const toggleClass =
   "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
-
-const PAYMENT_METHODS: PaymentMethod[] = [
-  "EFECTIVO",
-  "TRANSFERENCIA",
-  "CHEQUE",
-  "ECHEQ",
-  "RETENCION",
-  "OTRO",
-];
 
 export function PaymentFormFields({
   entities,
@@ -55,19 +48,35 @@ export function PaymentFormFields({
   cartera?: ChequeEnCartera[];
 }) {
   const isCobro = entityNoun === "Cliente";
-  const defaultTreasuryId = treasuries.find((t) => t.name === "Banco Galicia")?.id ?? treasuries[0]?.id ?? "";
 
   // La moneda de la cuenta cambia qué se pide: en dólares se cargan los pesos que salieron y la
   // cotización, y se acredita la división.
   const [entityId, setEntityId] = useState(fixedEntityId ?? "");
   const [monto, setMonto] = useState("");
+  const [circuit, setCircuit] = useState<Circuit>("BLANCO");
   const [method, setMethod] = useState<PaymentMethod>("EFECTIVO");
   const [chequeId, setChequeId] = useState("");
+  // En negro no hay echeq ni retención, así que la fila de métodos es más corta. Una retención la
+  // practica el cliente al pagarnos: no existe cuando el que paga sos vos.
+  const metodos = metodosDePago(circuit, { conRetencion: isCobro });
+  // El banco no recibe plata en negro, así que ahí la caja es el único destino posible.
+  const defaultTreasuryId =
+    (circuit === "NEGRO"
+      ? treasuries.find((t) => t.name !== "Banco Galicia")
+      : treasuries.find((t) => t.name === "Banco Galicia")
+    )?.id ??
+    treasuries[0]?.id ??
+    "";
   const esRetencion = method === "RETENCION";
   const esCheque = method === "CHEQUE" || method === "ECHEQ";
   // Al cobrar, el cheque entra y hay que describirlo. Al pagar, sale de la cartera: se elige uno de
   // los que ya están, y así el mismo papel queda con su origen y su destino.
   const eligeDeCartera = esCheque && !isCobro;
+  // Entregar un echeq para cancelar una deuda en negro es la misma contradicción que cargarlo como
+  // método: queda registrado en el banco. Se saca de la lista en vez de dejar elegirlo y fallar.
+  const chequesQueSePuedenEntregar = (cartera ?? []).filter(
+    (c) => circuit === "BLANCO" || !c.esEcheq
+  );
   const [cotizacion, setCotizacion] = useState("");
   const monedaCuenta: Currency =
     moneda ?? entities?.find((e) => e.id === entityId)?.moneda ?? "ARS";
@@ -113,21 +122,33 @@ export function PaymentFormFields({
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>
         <div className="grid grid-cols-2 gap-2">
-          <label className={toggleClass}>
-            <input type="radio" name="circuit" value="BLANCO" defaultChecked className="sr-only" />
-            Blanco (con factura)
-          </label>
-          <label className={toggleClass}>
-            <input type="radio" name="circuit" value="NEGRO" className="sr-only" />
-            Negro (sin factura)
-          </label>
+          {(["BLANCO", "NEGRO"] as const).map((c) => (
+            <label key={c} className={toggleClass}>
+              <input
+                type="radio"
+                name="circuit"
+                value={c}
+                checked={circuit === c}
+                onChange={() => {
+                  setCircuit(c);
+                  // Lo elegido puede no existir en la otra cuenta: se vuelve al método de siempre
+                  // en vez de mandar un echeq en negro con la fila ya escondida.
+                  if (!metodosDePago(c, { conRetencion: isCobro }).includes(method)) {
+                    setMethod("EFECTIVO");
+                  }
+                }}
+                className="sr-only"
+              />
+              {c === "BLANCO" ? "Blanco (con factura)" : "Negro (sin factura)"}
+            </label>
+          ))}
         </div>
       </div>
 
       <div className="space-y-1">
         <p className="text-sm">Método de pago</p>
         <div className="flex flex-wrap gap-2">
-          {PAYMENT_METHODS.map((m) => (
+          {metodos.map((m) => (
             <label key={m} className={toggleClass}>
               <input
                 type="radio"
@@ -214,7 +235,7 @@ export function PaymentFormFields({
                 className={inputClass}
               >
                 <option value="">— Es un cheque que no está en cartera —</option>
-                {(cartera ?? []).map((c) => (
+                {chequesQueSePuedenEntregar.map((c) => (
                   <option key={c.id} value={c.id}>
                     #{c.numero}
                     {c.banco ? ` · ${c.banco}` : ""} · {c.montoLabel}
@@ -313,6 +334,7 @@ export function PaymentFormFields({
       ) : (
         <PaymentDestinoField
           isCobro={isCobro}
+          circuit={circuit}
           treasuries={treasuries}
           proveedores={proveedores}
           defaultDestino={defaultTreasuryId}

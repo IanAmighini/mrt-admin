@@ -131,6 +131,7 @@ export default async function AccountLedgerPage({
                 reference: payment.reference ?? undefined,
                 destino: defaultDestino,
                 proveedorId: linkedPayment?.account.entityId,
+                proveedorCircuit: linkedPayment?.account.circuit,
               }}
             />
           </FormModal>

@@ -17,8 +17,14 @@ import { requireRole } from "@/lib/auth-helpers";
 import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
 import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impuestos";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
-import { EXPENSE_CATEGORY_LABELS, PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS } from "@/lib/labels";
+import {
+  CIRCUIT_LABELS,
+  EXPENSE_CATEGORY_LABELS,
+  PAYMENT_METHOD_LABELS,
+  RETENTION_KIND_LABELS,
+} from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
+import { motivoMetodoInvalido, motivoTesoreriaInvalida } from "@/lib/pagos";
 import { crearChequeRecibido, devolverChequesALaCartera, entregarCheque, esMetodoCheque } from "@/lib/cheques";
 import { logAudit } from "@/lib/audit";
 import type { AuditAction } from "@prisma/client";
@@ -1050,6 +1056,7 @@ async function aplicarCheque(
     paymentId: string;
     method: PaymentMethod;
     amount: Prisma.Decimal;
+    circuit: Circuit;
     userId: string;
     esPago: boolean;
   }
@@ -1058,7 +1065,12 @@ async function aplicarCheque(
 
   const chequeId = String(params.formData.get("chequeId") || "").trim();
   if (chequeId) {
-    await entregarCheque(tx, { paymentId: params.paymentId, chequeId, amount: params.amount });
+    await entregarCheque(tx, {
+      paymentId: params.paymentId,
+      chequeId,
+      amount: params.amount,
+      circuit: params.circuit,
+    });
     return;
   }
 
@@ -1085,12 +1097,69 @@ function leerRetencion(formData: FormData, method: PaymentMethod) {
       retentionKind: null,
       destino: String(formData.get("destino") || ""),
       proveedorId: String(formData.get("proveedorId") || ""),
+      proveedorCircuit: leerCircuito(formData.get("proveedorCircuit")),
     };
   }
 
   const raw = String(formData.get("retentionKind") || "");
   if (!(raw in RETENTION_KIND_LABELS)) throw new UserError("Elegí el tipo de retención.");
-  return { retentionKind: raw as RetentionKind, destino: "", proveedorId: "" };
+  return { retentionKind: raw as RetentionKind, destino: "", proveedorId: "", proveedorCircuit: null };
+}
+
+/** El circuito que vino del formulario, o null si no vino ninguno (el campo puede no existir). */
+function leerCircuito(raw: FormDataEntryValue | null): Circuit | null {
+  const valor = String(raw || "");
+  return valor === "BLANCO" || valor === "NEGRO" ? valor : null;
+}
+
+/**
+ * Lo que no existe en la cuenta en negro: el echeq —que es bancario y queda registrado— y la
+ * retención, que la practica un cliente sobre una factura. El formulario ya no los ofrece; esto es
+ * lo que de verdad lo impide, porque un formulario se puede saltear y porque el pago también se
+ * edita desde otras dos pantallas.
+ */
+function validarMetodo(circuit: Circuit, method: PaymentMethod) {
+  const motivo = motivoMetodoInvalido(circuit, method);
+  if (motivo) throw new UserError(motivo);
+}
+
+/**
+ * Revisa el destino ANTES de crear el pago. `applyPaymentDestino` corre después de escribirlo, así
+ * que si el destino es inválido y recién ahí se rechaza, el pago ya quedó cargado sin destino y con
+ * el saldo movido. Las mismas comprobaciones se repiten allá: esto es sólo para fallar a tiempo.
+ */
+async function validarDestino(params: {
+  circuit: Circuit;
+  method: PaymentMethod;
+  isCobro: boolean;
+  destino: string;
+  proveedorId: string;
+  proveedorCircuit: Circuit | null;
+}) {
+  if (!params.destino) return;
+
+  if (params.destino === PROVEEDOR_DIRECTO_VALUE) {
+    if (!params.isCobro) throw new UserError('"Directo a un proveedor" solo aplica a cobros de clientes.');
+    if (!params.proveedorId) throw new UserError("Elegí a qué proveedor fue directo el pago.");
+    // El pago que se le genera al proveedor vive en su cuenta, así que le corren las reglas de esa
+    // cuenta y no las del cobro. Cuando son distintas hay que decirlo, o el mensaje habla de una
+    // cuenta en negro mientras la pantalla muestra un cobro en blanco.
+    const circuitProveedor = params.proveedorCircuit ?? params.circuit;
+    const motivo = motivoMetodoInvalido(circuitProveedor, params.method);
+    if (motivo) {
+      throw new UserError(
+        circuitProveedor === params.circuit
+          ? motivo
+          : `${motivo} El cobro es en ${CIRCUIT_LABELS[params.circuit].toLowerCase()}, pero se imputa a la cuenta en ${CIRCUIT_LABELS[circuitProveedor].toLowerCase()} del proveedor.`
+      );
+    }
+    return;
+  }
+
+  const tesoreria = await prisma.entity.findUnique({ where: { id: params.destino } });
+  if (!tesoreria || tesoreria.type !== "TESORERIA") throw new UserError("Destino inválido.");
+  const motivo = motivoTesoreriaInvalida(params.circuit, tesoreria.name);
+  if (motivo) throw new UserError(motivo);
 }
 
 /**
@@ -1112,6 +1181,10 @@ async function applyPaymentDestino(params: {
   isCobro: boolean;
   destino: string;
   proveedorId: string;
+  /** La cuenta del proveedor que se cancela con el cobro directo. Puede no ser la del cobro: la
+   * plata no cambia de circuito por pasar de mano, y un cobro en negro cancela igual una factura
+   * en blanco. Sin nada elegido se usa la del cobro, que es lo que hacía antes. */
+  proveedorCircuit: Circuit | null;
   /** Moneda de la cuenta desde la que se cobró. */
   monedaOrigen: Currency;
   /** Cotización tipeada en el formulario, si las dos cuentas van en monedas distintas. */
@@ -1125,8 +1198,13 @@ async function applyPaymentDestino(params: {
     if (!isCobro) throw new UserError('"Directo a un proveedor" solo aplica a cobros de clientes.');
     if (!proveedorId) throw new UserError("Elegí a qué proveedor fue directo el pago.");
 
+    const circuitProveedor = params.proveedorCircuit ?? payment.circuit;
+    // El pago que se le genera al proveedor vive en su cuenta, así que le corren las reglas de esa
+    // cuenta y no las del cobro: un echeq no puede terminar cancelando una deuda en negro.
+    validarMetodo(circuitProveedor, payment.method);
+
     const proveedorAccount = await prisma.account.findUnique({
-      where: { entityId_circuit: { entityId: proveedorId, circuit: payment.circuit } },
+      where: { entityId_circuit: { entityId: proveedorId, circuit: circuitProveedor } },
       include: { entity: { select: { name: true, moneda: true } } },
     });
     if (!proveedorAccount) throw new UserError("No se encontró la cuenta del proveedor elegido.");
@@ -1151,7 +1229,10 @@ async function applyPaymentDestino(params: {
         currency: monedaProveedor,
         exchangeRate: cotizacion,
         method: payment.method,
-        reference: `Cobro directo de ${entity.name}`,
+        reference:
+          circuitProveedor === payment.circuit
+            ? `Cobro directo de ${entity.name}`
+            : `Cobro directo de ${entity.name} (${CIRCUIT_LABELS[payment.circuit]})`,
         linkedPaymentId: payment.id,
         createdById: userId,
       },
@@ -1179,6 +1260,8 @@ async function applyPaymentDestino(params: {
   if (!treasuryAccount || treasuryAccount.entity.type !== "TESORERIA") {
     throw new UserError("Destino inválido.");
   }
+  const motivo = motivoTesoreriaInvalida(payment.circuit, treasuryAccount.entity.name);
+  if (motivo) throw new UserError(motivo);
 
   const category: TreasuryMovementCategory = isCobro ? "COBRO" : "PAGO_PROVEEDOR";
   const signedAmount = isCobro ? payment.amount : payment.amount.negated();
@@ -1218,7 +1301,12 @@ export async function createPaymentForEntity(formData: FormData) {
   const date = parseFormDate(formData.get("date"));
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
-  const { retentionKind, destino, proveedorId } = leerRetencion(formData, method);
+  const { retentionKind, destino, proveedorId, proveedorCircuit } = leerRetencion(formData, method);
+  // Si este pago entra (cobro a un cliente) o sale (pago a un proveedor): viene explícito del form
+  // porque una entidad AMBOS recibe las dos cosas según desde qué pantalla se cargue.
+  const isCobro = formData.get("isCobro") === "1";
+  validarMetodo(circuit, method);
+  await validarDestino({ circuit, method, isCobro, destino, proveedorId, proveedorCircuit });
 
   // En una cuenta en dólares se escribe lo que realmente salió del banco —pesos— y la cotización,
   // y el pago se acredita en dólares. Es la cuenta que hoy se hace a mano; guardarla acá deja
@@ -1256,14 +1344,13 @@ export async function createPaymentForEntity(formData: FormData) {
       paymentId: payment.id,
       method,
       amount,
+      circuit,
       userId: user.id,
-      esPago: formData.get("isCobro") !== "1",
+      esPago: !isCobro,
     });
 
     return payment;
   });
-
-  const isCobro = formData.get("isCobro") === "1";
 
   await applyPaymentDestino({
     userId: user.id,
@@ -1274,6 +1361,7 @@ export async function createPaymentForEntity(formData: FormData) {
     cotizacionProveedor: String(formData.get("cotizacionProveedor") || ""),
     destino,
     proveedorId,
+    proveedorCircuit,
   });
 
   await logAudit(prisma, {
@@ -1370,8 +1458,10 @@ export async function updatePayment(formData: FormData) {
   const { amount, exchangeRate } = montoDelPago(formData, account.entity.moneda);
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
-  const { retentionKind, destino, proveedorId } = leerRetencion(formData, method);
+  const { retentionKind, destino, proveedorId, proveedorCircuit } = leerRetencion(formData, method);
   const isCobro = formData.get("isCobro") === "1";
+  validarMetodo(circuit, method);
+  await validarDestino({ circuit, method, isCobro, destino, proveedorId, proveedorCircuit });
 
   const oldLinkedPaymentId = payment.linkedPaymentId;
   const oldLinkedPayment = oldLinkedPaymentId
@@ -1421,6 +1511,7 @@ export async function updatePayment(formData: FormData) {
       paymentId,
       method,
       amount,
+      circuit,
       userId: user.id,
       esPago: formData.get("isCobro") !== "1",
     });
@@ -1442,6 +1533,7 @@ export async function updatePayment(formData: FormData) {
     cotizacionProveedor: String(formData.get("cotizacionProveedor") || ""),
     destino,
     proveedorId,
+    proveedorCircuit,
   });
 
   await logAudit(prisma, {

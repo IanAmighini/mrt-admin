@@ -3,7 +3,12 @@ import "server-only";
 import { Prisma, type Account, type Currency, type Entity } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
-import { DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS, TREASURY_MOVEMENT_CATEGORY_LABELS } from "@/lib/labels";
+import {
+  CIRCUIT_LABELS,
+  DOCUMENT_TYPE_LABELS,
+  PAYMENT_METHOD_LABELS,
+  TREASURY_MOVEMENT_CATEGORY_LABELS,
+} from "@/lib/labels";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { getAccountDocuments, getDocumentEffect, getTreasuries, type DocumentWithRelations } from "@/lib/ledger";
 
@@ -145,7 +150,13 @@ export async function getAccountStatement({
     const destinoLabel = payment.treasuryId
       ? `→ ${treasuryById.get(payment.treasuryId)?.name ?? "tesorería"}`
       : linkedPayment
-        ? `→ directo a ${linkedPayment.account.entity.name}`
+        ? // La cuenta del proveedor puede no ser esta: un cobro en negro cancela igual una factura
+          // en blanco. Cuando cambia hay que decirlo, o el saldo del otro lado no se entiende.
+          `→ directo a ${linkedPayment.account.entity.name}${
+            linkedPayment.account.circuit === account.circuit
+              ? ""
+              : ` (${CIRCUIT_LABELS[linkedPayment.account.circuit]})`
+          }`
         : null;
     const subtitleParts = [
       payment.reference,
