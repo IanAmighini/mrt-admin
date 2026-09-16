@@ -94,10 +94,11 @@ export async function updateEntity(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
-  // Sólo se toca si el formulario traía la casilla: no la muestra ni el alta ni quien no es Admin,
-  // y ahí "no vino" significa "no la cambies", no "apagala".
+  // Sólo se toca si el formulario traía la casilla —ahí "no vino" significa "no la cambies", no
+  // "apagala"— y sólo si quien guarda es Admin: esconderla en la pantalla no alcanza, porque un
+  // formulario se puede armar a mano.
   const retiroSocietario =
-    formData.get("retiroSocietarioPresente") === null
+    user.role !== "ADMIN" || formData.get("retiroSocietarioPresente") === null
       ? undefined
       : formData.get("retiroSocietario") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
