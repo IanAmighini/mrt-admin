@@ -56,12 +56,12 @@ export const EXPENSE_CATEGORY_ORDER: ExpenseCategory[] = [
 ];
 
 /**
- * Los rubros que puede tener un PROVEEDOR. Es la misma lista menos Sueldos: el sueldo sale de la
- * caja y no hay proveedor al que deberle, así que ofrecerlo ahí sólo sirve para elegirlo por error.
+ * Los rubros que puede tener un PROVEEDOR. Es la lista entera, Sueldos incluido: un encargado que
+ * cobra parte por transferencia tiene ficha propia, con su sueldo cargado como gasto y el pago que
+ * lo cancela. Se había sacado cuando el sueldo sólo salía de la caja chica y no había a quién
+ * deberle; con el empleado como ficha eso dejó de ser cierto.
  */
-export const EXPENSE_CATEGORY_PROVEEDOR_ORDER: ExpenseCategory[] = EXPENSE_CATEGORY_ORDER.filter(
-  (c) => c !== "SUELDOS"
-);
+export const EXPENSE_CATEGORY_PROVEEDOR_ORDER: ExpenseCategory[] = EXPENSE_CATEGORY_ORDER;
 
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   FLETE: "Flete",
