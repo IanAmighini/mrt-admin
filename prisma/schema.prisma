@@ -115,8 +115,8 @@ enum SupplierCategory {
 }
 
 model Entity {
-  id                   String            @id @default(cuid())
-  slug                 String            @unique
+  id                   String                 @id @default(cuid())
+  slug                 String                 @unique
   name                 String
   type                 EntityType
   taxId                String?
@@ -128,25 +128,26 @@ model Entity {
   /// Para el proveedor que no vende insumos sino servicios: el rubro con el que se le cargan los
   /// gastos. Excluyente con `supplierCategory` — un proveedor es de una cosa o de la otra.
   expenseCategory      ExpenseCategory?
-  isWithholdingAgent   Boolean           @default(false)
+  isWithholdingAgent   Boolean                @default(false)
   /// Si es true, la ficha muestra la cuenta de preformas: este proveedor fía la preforma y cobra
   /// sólo el soplado, así que además de la cuenta en pesos se le deben preformas en unidades.
-  llevaCuentaPreformas Boolean           @default(false)
+  llevaCuentaPreformas Boolean                @default(false)
   /// Si es true, cuando esta cuenta queda a favor nuestro ese saldo NO es un crédito con el
   /// proveedor: es plata que se llevaron los socios. Se saca de la deuda con proveedores y se
   /// muestra aparte como retiro societario.
-  retiroSocietario     Boolean           @default(false)
+  retiroSocietario     Boolean                @default(false)
   /// Moneda en la que se lleva la cuenta corriente. En USD, los montos de sus comprobantes y pagos
   /// **son dólares**: el saldo sale en dólares sin convertir nada, y lo que se guarda de cada pago
   /// es la cotización con la que se hizo.
-  moneda               Currency          @default(ARS)
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  moneda               Currency               @default(ARS)
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
   accounts             Account[]
   prices               Price[]
   pedidos              Pedido[]
   treasuryPayments     Payment[]
   entregasPreforma     EntregaPreforma[]
+  saldosPreforma       PreformaSaldoInicial[]
   ordenPagos           OrdenPago[]
 }
 
@@ -755,12 +756,30 @@ model Preforma {
   name      String   @unique
   createdAt DateTime @default(now())
 
-  items    Item[]
-  entregas EntregaPreforma[]
+  items           Item[]
+  entregas        EntregaPreforma[]
+  saldosIniciales PreformaSaldoInicial[]
 }
 
 /// Preformas entregadas al proveedor que las fía, para bajar lo que se le debe. Se compran a otro
 /// proveedor y se entregan directo, sin pasar por el depósito, así que no hay movimiento de stock.
+/// Lo que ya se le debía de cada tipo de preforma antes de empezar a usar la app. La deuda sale
+/// de los remitos y las entregas, que arrancan vacíos: sin esto el saldo nace en cero y no es el
+/// que dice la planilla.
+model PreformaSaldoInicial {
+  id         String   @id @default(cuid())
+  entityId   String
+  entity     Entity   @relation(fields: [entityId], references: [id])
+  preformaId String
+  preforma   Preforma @relation(fields: [preformaId], references: [id])
+  /// En unidades, positivo = se le debe.
+  quantity   Decimal  @db.Decimal(14, 2)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([entityId, preformaId])
+  @@index([entityId])
+}
+
 model EntregaPreforma {
   id          String   @id @default(cuid())
   entityId    String

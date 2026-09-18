@@ -80,3 +80,57 @@ export async function deleteEntregaPreforma(formData: FormData) {
 
   revalidatePath(`/cuentas-corrientes/${entrega.entity.slug}`);
 }
+
+/**
+ * Deja los saldos iniciales de preformas en lo que dice el formulario: uno por tipo, con lo que ya
+ * se le debía antes de empezar a usar la app.
+ *
+ * Se escriben los tres de una porque se cargan mirando la misma planilla, y un campo vacío no es
+ * "no lo toques" sino cero: así se puede corregir uno a cero sin tener que borrarlo aparte.
+ */
+export async function guardarSaldosInicialesPreforma(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  if (!entityId) throw new UserError("Falta el proveedor.");
+
+  const entity = await prisma.entity.findUnique({
+    where: { id: entityId },
+    select: { name: true, slug: true },
+  });
+  if (!entity) throw new UserError("El proveedor ya no existe.");
+
+  const preformas = await prisma.preforma.findMany({ orderBy: { name: "asc" } });
+  const cargados: string[] = [];
+
+  await prisma.$transaction(async (tx) => {
+    for (const preforma of preformas) {
+      const raw = String(formData.get(`saldo_${preforma.id}`) || "").trim();
+      // El signo se toma como viene: negativo es saldo a favor nuestro, que puede pasar si se le
+      // entregaron preformas de más.
+      const quantity = raw ? parseNumeroEscrito(raw, `saldo inicial de ${preforma.name}`) : null;
+
+      if (quantity === null || quantity.isZero()) {
+        await tx.preformaSaldoInicial.deleteMany({ where: { entityId, preformaId: preforma.id } });
+        continue;
+      }
+
+      await tx.preformaSaldoInicial.upsert({
+        where: { entityId_preformaId: { entityId, preformaId: preforma.id } },
+        create: { entityId, preformaId: preforma.id, quantity },
+        update: { quantity },
+      });
+      cargados.push(`${preforma.name}: ${formatQuantity(quantity)}`);
+    }
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Saldo inicial de preformas",
+    entityId,
+    summary: `${entity.name} — ${cargados.join(" · ") || "sin saldos"}`,
+  });
+
+  revalidatePath(`/cuentas-corrientes/${entity.slug}`);
+}

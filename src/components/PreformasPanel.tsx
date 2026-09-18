@@ -1,12 +1,13 @@
 import type { Prisma, Preforma } from "@prisma/client";
 import type { DeudaPreforma } from "@/lib/preformas";
-import { formatQuantity } from "@/lib/money";
+import { formatNumeroEditable, formatQuantity } from "@/lib/money";
 import { toDateInputValue } from "@/lib/period";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import {
   createEntregaPreforma,
   deleteEntregaPreforma,
+  guardarSaldosInicialesPreforma,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/preformas-actions";
 
 type EntregaInfo = {
@@ -36,6 +37,9 @@ export function PreformasPanel({
   canEdit: boolean;
 }) {
   const hayDeuda = deudas.length > 0;
+  const inicialPorTipo = new Map(
+    deudas.filter((d) => !d.saldoInicial.isZero()).map((d) => [d.preformaId, formatNumeroEditable(d.saldoInicial)])
+  );
 
   return (
     <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
@@ -43,10 +47,49 @@ export function PreformasPanel({
         <div>
           <h2 className="text-sm font-semibold">Preformas</h2>
           <p className="text-xs text-foreground/50">
-            Se le deben las preformas de cada envase que sopló, hasta que se le entregan.
+            Se le deben las preformas de cada envase que sopló —más el 1% que se rompe al
+            soplar— hasta que se le entregan.
           </p>
         </div>
         {canEdit && preformas.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+          <FormModal
+            triggerLabel="Saldo inicial"
+            iconName="edit"
+            title="Saldo inicial de preformas"
+            action={guardarSaldosInicialesPreforma}
+          >
+            <input type="hidden" name="entityId" value={entityId} />
+            <p className="text-sm text-foreground/60">
+              Lo que ya se le debía de cada tipo <strong>antes</strong> de empezar a cargar en la
+              app. De acá en adelante la cuenta se mueve sola con los remitos y las entregas.
+            </p>
+            {preformas.map((p) => (
+              <div key={p.id} className="space-y-1">
+                <label className="text-sm" htmlFor={`saldo-${p.id}`}>
+                  {p.name}
+                </label>
+                <input
+                  id={`saldo-${p.id}`}
+                  name={`saldo_${p.id}`}
+                  inputMode="decimal"
+                  placeholder="134.751,02"
+                  defaultValue={inicialPorTipo.get(p.id) ?? ""}
+                  className={inputClass}
+                />
+              </div>
+            ))}
+            <p className="text-xs text-foreground/50">
+              En unidades y en positivo: es lo que se le debe. Vacío o cero borra el saldo inicial
+              de ese tipo.
+            </p>
+            <button
+              type="submit"
+              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+            >
+              Guardar
+            </button>
+          </FormModal>
           <FormModal triggerLabel="Registrar entrega" title="Entrega de preformas" action={createEntregaPreforma}>
             <input type="hidden" name="entityId" value={entityId} />
             <div className="grid gap-3 sm:grid-cols-2">
@@ -111,6 +154,7 @@ export function PreformasPanel({
               Registrar
             </button>
           </FormModal>
+          </div>
         )}
       </div>
 
@@ -120,7 +164,9 @@ export function PreformasPanel({
             <thead>
               <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4 font-medium">Preforma</th>
+                <th className="py-2 pr-4 text-right font-medium">Saldo inicial</th>
                 <th className="py-2 pr-4 text-right font-medium">Recibidas</th>
+                <th className="py-2 pr-4 text-right font-medium">Merma 1%</th>
                 <th className="py-2 pr-4 text-right font-medium">Entregadas</th>
                 <th className="py-2 text-right font-medium">Se le debe</th>
               </tr>
@@ -132,7 +178,13 @@ export function PreformasPanel({
                   <tr key={d.preformaId} className="border-b border-foreground/5 last:border-0">
                     <td className="py-2 pr-4 font-medium">{d.nombre}</td>
                     <td className="py-2 pr-4 text-right tabular-nums text-foreground/60">
+                      {d.saldoInicial.isZero() ? "—" : formatQuantity(d.saldoInicial)}
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums text-foreground/60">
                       {formatQuantity(d.recibidas)}
+                    </td>
+                    <td className="py-2 pr-4 text-right tabular-nums text-foreground/60">
+                      {d.merma.isZero() ? "—" : formatQuantity(d.merma)}
                     </td>
                     <td className="py-2 pr-4 text-right tabular-nums text-foreground/60">
                       {formatQuantity(d.entregadas)}
