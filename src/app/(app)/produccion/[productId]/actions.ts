@@ -2,10 +2,12 @@
 
 import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
-import type { SupplierCategory } from "@prisma/client";
+import type { ProductMovementType, SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { parseNumeroEscrito, toDecimal } from "@/lib/money";
+import { formatQuantity, parseNumeroEscrito, toDecimal } from "@/lib/money";
+import { formatProductBrandLabel } from "@/lib/product-label";
+import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { getSetting } from "@/lib/settings";
 import { logAudit } from "@/lib/audit";
 import { litrosPorPallet } from "@/lib/recipe-template";
@@ -236,4 +238,64 @@ export async function deleteRecipeLine(formData: FormData) {
 
   revalidatePath(`/produccion/${product?.slug ?? productId}`);
   revalidatePath("/produccion");
+}
+
+/**
+ * Un movimiento de stock del producto terminado, a mano: el ajuste después de contar unos pallets,
+ * o la merma por una rotura.
+ *
+ * **No toca los insumos**, y eso es lo que lo distingue de cargar una producción: acá el pallet ya
+ * existía —lo envasamos antes de usar la app, o la diferencia salió de un conteo—, así que
+ * descontar el aceite y los envases sería inventar un consumo. Producir es lo único que mueve las
+ * dos puntas, y desarmar un pallet también va por ahí —con pallets negativos—, no por acá.
+ *
+ * **Solo Admin**: es la única forma de cambiar el stock de un producto sin que haya pasado nada
+ * físico, así que pisa el saldo inicial. Que esté a mano de quien carga el día a día convierte el
+ * número del recuento en algo que se puede reescribir en cualquier momento.
+ */
+export async function createProductMovement(formData: FormData) {
+  const user = await requireRole(["ADMIN"]);
+
+  const productId = String(formData.get("productId") || "");
+  const product = await prisma.product.findUnique({ where: { id: productId } });
+  if (!product) throw new UserError("El producto ya no existe.");
+
+  const type = String(formData.get("type") || "") as ProductMovementType;
+  if (type !== "AJUSTE" && type !== "MERMA") {
+    throw new UserError(
+      "Desde acá sólo se cargan ajustes y mermas. Lo producido se carga en Producción, y lo entregado en el remito."
+    );
+  }
+
+  const fechaRaw = String(formData.get("date") || "");
+  if (!fechaRaw) throw new UserError("Falta la fecha.");
+  const date = new Date(`${fechaRaw}T00:00:00`);
+
+  const reason = String(formData.get("reason") || "").trim();
+  if (!reason) throw new UserError("El motivo es obligatorio.");
+
+  let quantity = parseNumeroEscrito(String(formData.get("quantity") || ""), "cantidad");
+  if (quantity.isZero()) throw new UserError("La cantidad no puede ser cero.");
+  // Una merma siempre resta; un ajuste lo decide el formulario.
+  if (type === "MERMA" || String(formData.get("effect") || "") === "RESTA") {
+    quantity = quantity.abs().negated();
+  } else {
+    quantity = quantity.abs();
+  }
+
+  await prisma.productMovement.create({
+    data: { productId, date, quantity, type, reason, createdById: user.id },
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Movimiento de producto",
+    entityId: productId,
+    summary: `${PRODUCT_MOVEMENT_TYPE_LABELS[type]} — ${formatProductBrandLabel(product)} ${product.presentation} — ${quantity.greaterThan(0) ? "+" : ""}${formatQuantity(quantity)}`,
+  });
+
+  revalidatePath(`/produccion/${product.slug}`);
+  revalidatePath("/produccion");
+  revalidatePath("/stock");
 }

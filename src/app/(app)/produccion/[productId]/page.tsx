@@ -4,9 +4,12 @@ import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
-import { getProductStock } from "@/lib/stock";
+import { getProductMovements, getProductStock } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
+import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
+import { toDateInputValue } from "@/lib/period";
 import {
+  createProductMovement,
   deleteRecipeLine,
   generateRecipeFromPresentation,
   updateProduct,
@@ -21,6 +24,8 @@ export default async function ProductDetailPage({
   const { productId } = await params;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
+  // El ajuste de stock es solo de Admin: ver createProductMovement.
+  const canAdjust = user.role === "ADMIN";
 
   const product = await findBySlugOrId(
     () =>
@@ -38,10 +43,12 @@ export default async function ProductDetailPage({
   if (!product) notFound();
   if (productId !== product.slug) redirect(`/produccion/${product.slug}`);
 
-  const [stock, items] = await Promise.all([
+  const [stock, movements, items] = await Promise.all([
     getProductStock(product.id),
+    getProductMovements(product.id),
     prisma.item.findMany({ orderBy: { name: "asc" } }),
   ]);
+  const movementsDesc = movements.slice().reverse();
 
   /** Cada rol del generador es una categoría de insumo. Filtrar no es cosmético: la sustitución al
    * producir y la limpieza de la receta deciden por categoría, así que una caja archivada bajo
@@ -335,6 +342,103 @@ export default async function ProductDetailPage({
                 <tr>
                   <td colSpan={canEdit ? 3 : 2} className="py-4 text-center text-foreground/40">
                     Este producto todavía no tiene receta cargada.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {canAdjust && (
+        <form
+          action={createProductMovement}
+          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
+        >
+          <h2 className="text-sm font-semibold">Ajustar el stock</h2>
+          <p className="text-xs text-foreground/50">
+            Mueve sólo el producto terminado: no descuenta insumos. Es para el saldo inicial, las
+            roturas y lo que aparece o falta después de un conteo. Lo que se envasa —y también el
+            reformateo, con pallets negativos— va por Producción, que sí mueve los insumos.
+          </p>
+          <input type="hidden" name="productId" value={product.id} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Tipo">
+              <select name="type" defaultValue="AJUSTE" className={selectClass}>
+                <option value="AJUSTE">Ajuste</option>
+                <option value="MERMA">Merma (rotura)</option>
+              </select>
+            </Field>
+            <Field label="Fecha">
+              <input
+                type="date"
+                name="date"
+                required
+                defaultValue={toDateInputValue(new Date())}
+                className={selectClass}
+              />
+            </Field>
+            <Field label="Cantidad (pallets)">
+              <input name="quantity" required inputMode="decimal" className={selectClass} />
+            </Field>
+            <Field label="Efecto (sólo el ajuste)">
+              <select name="effect" defaultValue="SUMA" className={selectClass}>
+                <option value="SUMA">Suma al stock</option>
+                <option value="RESTA">Resta del stock</option>
+              </select>
+            </Field>
+          </div>
+          <Field label="Motivo">
+            <input
+              name="reason"
+              required
+              placeholder="Conteo físico, stock inicial, pallet roto…"
+              className={selectClass}
+            />
+          </Field>
+          <button
+            type="submit"
+            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+          >
+            Registrar movimiento
+          </button>
+        </form>
+      )}
+
+      <div>
+        <h2 className="text-sm font-semibold mb-2">Kardex</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
+                <th className="py-2 pr-4">Fecha</th>
+                <th className="py-2 pr-4">Tipo</th>
+                <th className="py-2 pr-4">Cantidad</th>
+                <th className="py-2 pr-4">Motivo</th>
+                <th className="py-2 pr-4">Usuario</th>
+              </tr>
+            </thead>
+            <tbody>
+              {movementsDesc.map((m) => (
+                <tr key={m.id} className="border-b border-foreground/5">
+                  <td className="py-2 pr-4">{m.date.toLocaleDateString("es-AR")}</td>
+                  <td className="py-2 pr-4">{PRODUCT_MOVEMENT_TYPE_LABELS[m.type]}</td>
+                  <td
+                    className={`py-2 pr-4 tabular-nums ${
+                      m.quantity.isNegative() ? "text-red-600 dark:text-red-400" : ""
+                    }`}
+                  >
+                    {m.quantity.greaterThan(0) ? "+" : ""}
+                    {formatQuantity(m.quantity)}
+                  </td>
+                  <td className="py-2 pr-4">{m.reason}</td>
+                  <td className="py-2 pr-4">{m.createdBy.name}</td>
+                </tr>
+              ))}
+              {movementsDesc.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-4 text-center text-foreground/40">
+                    Sin movimientos todavía.
                   </td>
                 </tr>
               )}
