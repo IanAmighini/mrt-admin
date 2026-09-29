@@ -147,6 +147,8 @@ export function CuentaCorrientePanel({
                   isWithholdingAgent={factura.isWithholdingAgent}
                   comprobantes={factura.comprobantes}
                   sustantivo={factura.sustantivo}
+                  viajes={viajes}
+                  destinatarios={destinatarios}
                 />
               </FormModal>
             )}

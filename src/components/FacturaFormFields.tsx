@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
 import { DEFAULT_IVA_RATE, formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib/money";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -26,11 +27,17 @@ export function FacturaFormFields({
   comprobantes,
   /** "Remito" del lado de ventas, "Compra" del lado de proveedores. */
   sustantivo = "Remito",
+  viajes,
+  destinatarios,
 }: {
   accountId: string;
   isWithholdingAgent: boolean;
   comprobantes: ComprobanteFacturable[];
   sustantivo?: string;
+  /** Sólo hacen falta para la factura que no sale de un remito: la que sí lo hace hereda el
+   * viaje y el destinatario de lo que factura. */
+  viajes?: ViajeOption[];
+  destinatarios?: DestinatarioOption[];
 }) {
   // Arranca sin nada tildado: facturar de más por no mirar es peor que tener que tildar.
   const [elegidos, setElegidos] = useState<Record<string, boolean>>({});
@@ -225,6 +232,12 @@ export function FacturaFormFields({
           </div>
         )}
       </div>
+
+      <ViajeFields
+        viajes={viajes}
+        destinatarios={destinatarios}
+        ayudaViaje="Si la factura sale de un remito, hereda el viaje y el destinatario de ese remito y no hace falta tocar esto."
+      />
 
       <button type="submit" className={submitClass}>
         Crear factura
