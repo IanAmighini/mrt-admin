@@ -414,6 +414,11 @@ model Payment {
   /// Con qué cotización se pagó, cuando el pago se hizo en pesos contra una cuenta en dólares.
   /// Guardarla es lo que deja reconstruir cuántos pesos salieron del banco.
   exchangeRate  Decimal?       @db.Decimal(12, 4)
+  /// Los pesos que de verdad salieron, cuando la cuenta va en dólares. Es un dato, no una cuenta:
+  /// reconstruirlo como `amount × exchangeRate` no da lo mismo, porque los dólares se guardan
+  /// redondeados a dos decimales y ahí se pierden unos pesos. La caja tiene que decir lo que
+  /// realmente se movió.
+  amountArs     Decimal?       @db.Decimal(14, 2)
   method        PaymentMethod
   /// Solo cuando `method` es RETENCION: contra qué impuesto se imputa.
   retentionKind RetentionKind?

@@ -110,9 +110,13 @@ function parseAmount(value: FormDataEntryValue | null, field: string): Prisma.De
 function montoDelPago(
   formData: FormData,
   moneda: Currency
-): { amount: Prisma.Decimal; exchangeRate: Prisma.Decimal | null } {
+): { amount: Prisma.Decimal; exchangeRate: Prisma.Decimal | null; amountArs: Prisma.Decimal | null } {
   if (moneda === "ARS") {
-    return { amount: parseAmount(formData.get("amount"), "monto del pago"), exchangeRate: null };
+    return {
+      amount: parseAmount(formData.get("amount"), "monto del pago"),
+      exchangeRate: null,
+      amountArs: null,
+    };
   }
 
   const enPesos = parseAmount(formData.get("amount"), "monto del pago en pesos");
@@ -120,7 +124,10 @@ function montoDelPago(
   if (!exchangeRate.greaterThan(0)) {
     throw new UserError("La cotización tiene que ser mayor a cero.");
   }
-  return { amount: enPesos.dividedBy(exchangeRate), exchangeRate };
+  // Los pesos se devuelven tal como se escribieron. La división redondea a dos decimales al
+  // guardarse, así que multiplicar de vuelta no vuelve al mismo número: en un pago de
+  // $39.056.000 a 1522 se pierden $3,66, y esos pesos salieron de la caja igual.
+  return { amount: enPesos.dividedBy(exchangeRate), exchangeRate, amountArs: enPesos };
 }
 
 /**
@@ -1279,6 +1286,8 @@ async function applyPaymentDestino(params: {
     amount: Prisma.Decimal;
     /** La cotización con la que se hizo, cuando la cuenta va en dólares. */
     exchangeRate: Prisma.Decimal | null;
+    /** Los pesos que se escribieron, cuando la cuenta va en dólares. */
+    amountArs: Prisma.Decimal | null;
     method: PaymentMethod;
     circuit: Circuit;
   };
@@ -1376,9 +1385,12 @@ async function applyPaymentDestino(params: {
   // en una cuenta en dólares —la de Cristian— hay que multiplicarlo por la cotización antes de
   // tocar la caja. Sin esto, pagarle U$S 5.000 a 1.500 descontaba 5.000 pesos de Caja Bufano en
   // vez de 7.500.000: la caja quedaba con plata que ya no está.
+  // Los pesos que se escribieron al cargarlo. El `times` es el plan B para los pagos viejos,
+  // cargados antes de que se guardaran: pierde unos pesos por el redondeo, pero es muchísimo más
+  // cerca que copiar los dólares.
   const enPesos =
-    monedaOrigen === "USD" && payment.exchangeRate
-      ? payment.amount.times(payment.exchangeRate)
+    monedaOrigen === "USD"
+      ? (payment.amountArs ?? (payment.exchangeRate ? payment.amount.times(payment.exchangeRate) : payment.amount))
       : payment.amount;
   const signedAmount = isCobro ? enPesos : enPesos.negated();
   await prisma.document.create({
@@ -1430,7 +1442,7 @@ export async function createPaymentForEntity(formData: FormData) {
   // En una cuenta en dólares se escribe lo que realmente salió del banco —pesos— y la cotización,
   // y el pago se acredita en dólares. Es la cuenta que hoy se hace a mano; guardarla acá deja
   // reconstruir después cuántos pesos fueron y a cuánto.
-  const { amount, exchangeRate } = montoDelPago(formData, account.entity.moneda);
+  const { amount, exchangeRate, amountArs } = montoDelPago(formData, account.entity.moneda);
   // El viaje decide contra qué se imputa: un cobro del camión 4 cancela comprobantes del camión
   // 4 y ninguno más. Sin viaje se imputa contra lo que tampoco lo tiene.
   const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
@@ -1449,6 +1461,7 @@ export async function createPaymentForEntity(formData: FormData) {
         retentionKind,
         reference,
         entregaId,
+        amountArs,
         createdById: user.id,
       },
     });
@@ -1478,7 +1491,7 @@ export async function createPaymentForEntity(formData: FormData) {
 
   await applyPaymentDestino({
     userId: user.id,
-    payment: { id: payment.id, date, amount, exchangeRate, method, circuit },
+    payment: { id: payment.id, date, amount, exchangeRate, amountArs, method, circuit },
     entity: account.entity,
     isCobro,
     monedaOrigen: account.entity.moneda,
@@ -1579,7 +1592,7 @@ export async function updatePayment(formData: FormData) {
   const date = parseFormDate(formData.get("date"));
   // Misma conversión que al crear: en una cuenta en dólares se edita en pesos y se guarda la
   // división. Sin esto, editar un pago de esa cuenta guardaba los pesos como si fueran dólares.
-  const { amount, exchangeRate } = montoDelPago(formData, account.entity.moneda);
+  const { amount, exchangeRate, amountArs } = montoDelPago(formData, account.entity.moneda);
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
   const { retentionKind, destino, proveedorId, proveedorCircuit } = leerRetencion(formData, method);
@@ -1623,6 +1636,7 @@ export async function updatePayment(formData: FormData) {
         retentionKind,
         reference,
         entregaId,
+        amountArs,
         treasuryId: null,
         linkedPaymentId: isCobro ? null : payment.linkedPaymentId,
       },
@@ -1657,7 +1671,7 @@ export async function updatePayment(formData: FormData) {
 
   await applyPaymentDestino({
     userId: user.id,
-    payment: { id: paymentId, date, amount, exchangeRate, method, circuit },
+    payment: { id: paymentId, date, amount, exchangeRate, amountArs, method, circuit },
     entity: account.entity,
     isCobro,
     monedaOrigen: account.entity.moneda,
