@@ -23,6 +23,10 @@ type PedidoPendienteInfo = { id: string; orderNumber: string; status: string; li
 type PedidosByEntity = Record<string, PedidoPendienteInfo[]>;
 
 type ClienteInfo = { id: string; name: string };
+type ViajeInfo = { id: string; nombre: string; destino: string | null };
+type DestinatarioInfo = { id: string; nombre: string; taxId: string | null };
+type ViajesByEntity = Record<string, ViajeInfo[]>;
+type DestinatariosByEntity = Record<string, DestinatarioInfo[]>;
 
 type Row = {
   key: number;
@@ -49,6 +53,8 @@ export function NuevaEntregaForm({
   products,
   pricesByEntity,
   pedidosByEntity,
+  viajesByEntity,
+  destinatariosByEntity,
   fixedEntity,
 }: {
   action: (formData: FormData) => void | Promise<void>;
@@ -56,6 +62,10 @@ export function NuevaEntregaForm({
   products: ProductInfo[];
   pricesByEntity: PricesByEntity;
   pedidosByEntity: PedidosByEntity;
+  /** Los viajes y destinatarios de cada cliente. Los dos selectores aparecen sólo si el cliente
+   * elegido tiene alguno cargado, así que para casi todos el formulario queda igual. */
+  viajesByEntity: ViajesByEntity;
+  destinatariosByEntity: DestinatariosByEntity;
   /** Si se llega desde la ficha de un cliente puntual, fija el cliente y oculta el selector. */
   fixedEntity?: ClienteInfo;
 }) {
@@ -149,6 +159,8 @@ export function NuevaEntregaForm({
   const total = totals.facturado + totals.iva + totals.noFacturado;
 
   const pedidosPendientes = entityId ? (pedidosByEntity[entityId] ?? []) : [];
+  const viajes = entityId ? (viajesByEntity[entityId] ?? []) : [];
+  const destinatarios = entityId ? (destinatariosByEntity[entityId] ?? []) : [];
 
   return (
     <form action={action} className="space-y-6">
@@ -194,6 +206,37 @@ export function NuevaEntregaForm({
             </label>
             <input id="date" type="date" name="date" required className={inputClass} />
           </div>
+          {viajes.length > 0 && (
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="entregaId">
+                Viaje
+              </label>
+              <select id="entregaId" name="entregaId" className={inputClass} defaultValue="">
+                <option value="">— Sin viaje —</option>
+                {viajes.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.destino ? `${v.nombre} · ${v.destino}` : v.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {destinatarios.length > 0 && (
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="destinatarioId">
+                A nombre de
+              </label>
+              <select id="destinatarioId" name="destinatarioId" className={inputClass} defaultValue="">
+                <option value="">— El cliente mismo —</option>
+                {destinatarios.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nombre}
+                    {d.taxId ? ` · ${d.taxId}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 

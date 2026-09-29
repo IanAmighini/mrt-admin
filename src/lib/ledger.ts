@@ -41,6 +41,9 @@ const DOCUMENT_QUERY_INCLUDE = {
   purchaseLines: { include: { item: true } },
   // El desglose impositivo de un GASTO: lo necesita el formulario de edición para prellenarse.
   taxes: true,
+  // A nombre de quién salió y de qué viaje es: lo lee el estado de cuenta y el libro de IVA.
+  destinatario: true,
+  entrega: true,
 } satisfies Prisma.DocumentInclude;
 
 /**
@@ -117,24 +120,39 @@ export type PendingDocument = DocumentWithRelations & { pending: Prisma.Decimal 
 
 export async function getPendingDocuments(
   accountId: string,
-  currency?: Currency
+  currency?: Currency,
+  /**
+   * Con qué viaje se está imputando. `undefined` no filtra nada; un id deja sólo los
+   * comprobantes de ese viaje, y `null` sólo los que no tienen ninguno. Ver `allocateFifo`.
+   */
+  entregaId?: string | null
 ): Promise<PendingDocument[]> {
   const documents = await getAccountDocuments(accountId);
   return documents
     .filter((doc) => !currency || doc.currency === currency)
+    .filter((doc) => entregaId === undefined || doc.entregaId === entregaId)
     .map((doc) => ({ ...doc, pending: getDocumentPending(doc) }))
     .filter((doc) => !doc.pending.isZero());
 }
 
 export type FifoAllocation = { documentId: string; amount: Prisma.Decimal };
 
-/** Imputa `amount` a los comprobantes pendientes más antiguos primero (FIFO). */
+/**
+ * Imputa `amount` a los comprobantes pendientes más antiguos primero (FIFO).
+ *
+ * **Cada bolsa se imputa contra lo suyo.** Si el pago viene con viaje, sólo cancela comprobantes
+ * de ese viaje; si no tiene, sólo cancela los que tampoco lo tienen. Sin eso, el cobro del
+ * camión 4 se comería por antigüedad lo que quedaba del camión 3, que es justo lo que los
+ * viajes vienen a evitar. Pasar `undefined` mantiene el comportamiento viejo —toda la cuenta—,
+ * y es lo que usan las cuentas que no trabajan por viaje.
+ */
 export async function allocateFifo(
   accountId: string,
   amount: Prisma.Decimal,
-  currency: Currency
+  currency: Currency,
+  entregaId?: string | null
 ): Promise<FifoAllocation[]> {
-  const pending = (await getPendingDocuments(accountId, currency)).filter((doc) =>
+  const pending = (await getPendingDocuments(accountId, currency, entregaId)).filter((doc) =>
     doc.pending.greaterThan(0)
   );
 

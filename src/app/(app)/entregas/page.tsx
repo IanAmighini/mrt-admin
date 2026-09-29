@@ -28,13 +28,36 @@ export default async function EntregasPage({
 
   const pagoFilter = PAGO_FILTERS.some((f) => f.value === pago) ? (pago as "" | "pagado" | "sin_pagar") : "";
 
-  const [remitos, products, allPrices] = await Promise.all([
+  const [remitos, products, allPrices, todosLosViajes, todosLosDestinatarios] = await Promise.all([
     getRecentRemitos(500, undefined, q),
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
     }),
     getAllCurrentPrices(),
+    prisma.entrega.findMany({
+      orderBy: [{ fecha: "desc" }],
+      select: { id: true, nombre: true, destino: true, entityId: true },
+    }),
+    prisma.destinatario.findMany({
+      orderBy: { nombre: "asc" },
+      select: { id: true, nombre: true, taxId: true, entityId: true },
+    }),
   ]);
+
+  // Agrupados por cliente, igual que los precios: este listado mezcla remitos de todos y cada
+  // formulario de edicion tiene que ofrecer solo los del suyo.
+  const viajesByEntity = new Map<string, { id: string; nombre: string; destino: string | null }[]>();
+  for (const v of todosLosViajes) {
+    const lista = viajesByEntity.get(v.entityId) ?? [];
+    lista.push({ id: v.id, nombre: v.nombre, destino: v.destino });
+    viajesByEntity.set(v.entityId, lista);
+  }
+  const destinatariosByEntity = new Map<string, { id: string; nombre: string; taxId: string | null }[]>();
+  for (const d of todosLosDestinatarios) {
+    const lista = destinatariosByEntity.get(d.entityId) ?? [];
+    lista.push({ id: d.id, nombre: d.nombre, taxId: d.taxId });
+    destinatariosByEntity.set(d.entityId, lista);
+  }
 
   const pricesByEntity: Record<
     string,
@@ -179,8 +202,12 @@ export default async function EntregasPage({
                             dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
                             currency: doc.currency,
                             exchangeRate: doc.exchangeRate?.toString(),
+                            entregaId: doc.entregaId,
+                            destinatarioId: doc.destinatarioId,
                           }}
                           defaultLines={defaultLines}
+                          viajes={viajesByEntity.get(doc.account.entityId)}
+                          destinatarios={destinatariosByEntity.get(doc.account.entityId)}
                         />
                       </FormModal>
                       <DeleteButton

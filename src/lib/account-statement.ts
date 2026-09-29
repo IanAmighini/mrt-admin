@@ -53,7 +53,10 @@ export type AccountStatement = {
 /** Solo lo que realmente lee, y no `DocumentWithRelations` entero: así sirve desde cualquier
  *  consulta que traiga las líneas, sin arrastrar el resto de las relaciones. */
 export function documentSubtitle(
-  doc: Pick<DocumentWithRelations, "lines" | "purchaseLines" | "reason" | "currency" | "treasuryCategory">
+  doc: Pick<DocumentWithRelations, "lines" | "purchaseLines" | "reason" | "currency" | "treasuryCategory"> & {
+    destinatario?: { nombre: string } | null;
+    entrega?: { nombre: string } | null;
+  }
 ): string | null {
   const lineSummary =
     doc.lines.length > 0
@@ -71,11 +74,17 @@ export function documentSubtitle(
         ? doc.purchaseLines.map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`).join(" · ")
         : doc.reason;
 
-  return doc.treasuryCategory &&
+  const conCategoria =
+    doc.treasuryCategory &&
     doc.treasuryCategory !== "COBRO" &&
     doc.treasuryCategory !== "PAGO_PROVEEDOR"
-    ? [TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory], lineSummary].filter(Boolean).join(" · ")
-    : lineSummary;
+      ? [TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory], lineSummary].filter(Boolean).join(" · ")
+      : lineSummary;
+
+  // El viaje y a nombre de quién salió van adelante: en una cuenta que trabaja por camiones, eso
+  // es lo primero que se busca al leer una fila, antes que el detalle de lo entregado.
+  const encabezado = [doc.entrega?.nombre, doc.destinatario?.nombre].filter(Boolean).join(" — ");
+  return [encabezado || null, conCategoria].filter(Boolean).join(" · ") || null;
 }
 
 /**

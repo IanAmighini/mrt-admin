@@ -34,6 +34,8 @@ import { EntregasPanel } from "@/components/EntregasPanel";
 import { ComprasPanel } from "@/components/ComprasPanel";
 import { CuentaCorrientePanel } from "@/components/CuentaCorrientePanel";
 import { PreformasPanel } from "@/components/PreformasPanel";
+import { ViajesPanel } from "@/components/ViajesPanel";
+import { getDestinatarios, getEntregasDeEntidad, getEntregasParaElegir } from "@/lib/entregas";
 import { getDeudaPreformas } from "@/lib/preformas";
 
 export default async function EntityLedgerPage({
@@ -127,6 +129,9 @@ export default async function EntityLedgerPage({
     pagosSinOrden,
     resumenGastos,
     insumos,
+    viajes,
+    destinatarios,
+    viajesParaElegir,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
@@ -157,6 +162,9 @@ export default async function EntityLedgerPage({
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
+    isCliente ? getEntregasDeEntidad(entity.id) : Promise.resolve([]),
+    isCliente ? getDestinatarios(entity.id) : Promise.resolve([]),
+    isCliente ? getEntregasParaElegir(entity.id) : Promise.resolve([]),
   ]);
 
   const hayPanelIzquierdo = isCliente || recentCompras.length > 0;
@@ -265,6 +273,17 @@ export default async function EntityLedgerPage({
       <div className={`grid gap-6 ${hayPanelIzquierdo ? "lg:grid-cols-2" : ""}`}>
         <div className={hayPanelIzquierdo ? "space-y-6" : "hidden"}>
           {isCliente && <EntregasPanel entityId={entity.id} remitos={recentRemitos} canEdit={canEdit} />}
+          {isCliente && (
+            <ViajesPanel
+              entityId={entity.id}
+              entitySlug={entity.slug}
+              entityName={entity.name}
+              moneda={entity.moneda}
+              viajes={viajes}
+              destinatarios={destinatarios}
+              canEdit={canEdit}
+            />
+          )}
           {/* Sin compras el panel no tiene nada que mostrar, y en la mitad de los proveedores
               —los de servicios— nunca va a tenerlo. Se esconde en vez de ocupar media pantalla
               diciendo que está vacío; el botón para cargar una sigue en "Cargar". */}
@@ -273,6 +292,8 @@ export default async function EntityLedgerPage({
           )}
         </div>
         <CuentaCorrientePanel
+          viajes={viajesParaElegir}
+          destinatarios={destinatarios}
           entityId={entity.id}
           entityName={entity.name}
           entityType={entity.type}

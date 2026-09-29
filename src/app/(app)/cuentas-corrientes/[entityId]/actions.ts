@@ -197,6 +197,7 @@ export async function updateDocument(formData: FormData) {
   }
 
   const account = await getAccountOrThrow(document.accountId);
+  const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, account.entityId);
   const { taxRows, totals } = esNota(type)
     ? impuestosDeNota(formData, account.circuit)
     : montoDeAjuste(formData);
@@ -220,6 +221,8 @@ export async function updateDocument(formData: FormData) {
         exchangeRate,
         ...totals,
         reason,
+        destinatarioId,
+        entregaId,
         ...(treasuryCategory !== undefined ? { treasuryCategory, expenseCategory } : {}),
       },
     });
@@ -323,6 +326,9 @@ export async function createDocumentForEntity(formData: FormData) {
 
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory")) || null;
   const expenseCategory = parseRubroDeCaja(formData.get("expenseCategory"), treasuryCategory);
+  // Es lo que deja colgar del viaje la nota de crédito del 5%: sin esto bajaría el saldo general
+  // y no el del camión, que es donde se mira.
+  const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, entityId);
 
   const document = await prisma.$transaction(async (tx) => {
     const creado = await tx.document.create({
@@ -336,6 +342,8 @@ export async function createDocumentForEntity(formData: FormData) {
         exchangeRate,
         ...totals,
         reason,
+        destinatarioId,
+        entregaId,
         treasuryCategory,
         expenseCategory,
         createdById: user.id,
@@ -360,6 +368,48 @@ export async function createDocumentForEntity(formData: FormData) {
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
 }
 
+/**
+ * El destinatario y el viaje que trae el formulario, validados contra la entidad.
+ *
+ * Se comprueba que sean SUYOS y no solo que existan: si no, un formulario viejo o un POST armado
+ * a mano podría colgar el remito de Gonzalo del camión de otro cliente, y ahí el saldo de los dos
+ * viajes queda mal sin que nada avise.
+ */
+async function leerDestinatarioYEntrega(formData: FormData, entityId: string) {
+  const destinatarioId = String(formData.get("destinatarioId") || "") || null;
+  const entregaId = String(formData.get("entregaId") || "") || null;
+
+  if (destinatarioId) {
+    const destinatario = await prisma.destinatario.findUnique({ where: { id: destinatarioId } });
+    if (!destinatario || destinatario.entityId !== entityId) {
+      throw new UserError("El destinatario elegido no es de esta cuenta.");
+    }
+  }
+  if (entregaId) {
+    const entrega = await prisma.entrega.findUnique({ where: { id: entregaId } });
+    if (!entrega || entrega.entityId !== entityId) {
+      throw new UserError("El viaje elegido no es de esta cuenta.");
+    }
+  }
+
+  return { destinatarioId, entregaId };
+}
+
+/**
+ * Contra qué comprobantes se imputa un pago.
+ *
+ * Con viaje, sólo contra los de ese viaje. Sin viaje hay dos casos distintos y conviene no
+ * confundirlos: si el cliente **no trabaja por viajes**, se imputa contra toda la cuenta como
+ * siempre; si **sí los usa**, un pago sin viaje sólo cancela lo que tampoco tiene viaje, así que
+ * no se come lo del camión de nadie. Esto último es lo que hace que agregar viajes no cambie el
+ * comportamiento para los 17 clientes que no los van a usar.
+ */
+async function alcanceDeImputacion(entityId: string, entregaId: string | null) {
+  if (entregaId) return entregaId;
+  const tieneViajes = await prisma.entrega.count({ where: { entityId } });
+  return tieneViajes > 0 ? null : undefined;
+}
+
 /** Núcleo compartido por createRemito y updateRemito (que borra y vuelve a llamar a este núcleo)
  * — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
 async function createRemitoCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
@@ -378,6 +428,7 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
   const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
   const reason = String(formData.get("reason") || "").trim() || null;
+  const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, entityId);
 
   const productIds = formData.getAll("lineProductId").map(String);
   const quantities = formData.getAll("lineQuantity").map(String);
@@ -452,6 +503,8 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
           ivaAmount,
           totalAmount,
           reason,
+          destinatarioId,
+          entregaId,
           createdById: user.id,
         },
       });
@@ -924,6 +977,8 @@ export async function createFactura(formData: FormData) {
     .map((id, i) => ({ id, amount: parseNumeroOpcional(remitoAmounts[i] ?? "", "monto imputado") }))
     .filter((r) => r.id && r.amount.greaterThan(0));
 
+  const delFormulario = await leerDestinatarioYEntrega(formData, account.entityId);
+
   await prisma.$transaction(async (tx) => {
     const factura = await tx.document.create({
       data: {
@@ -940,6 +995,8 @@ export async function createFactura(formData: FormData) {
         retentionAmount,
         perceptionAmount,
         totalAmount,
+        destinatarioId: delFormulario.destinatarioId,
+        entregaId: delFormulario.entregaId,
         createdById: user.id,
       },
     });
@@ -969,6 +1026,22 @@ export async function createFactura(formData: FormData) {
       });
 
       await tx.documentLink.createMany({ data: linkData });
+
+      // La factura hereda el destinatario y el viaje de los remitos que cubre, cuando todos
+      // coinciden y el formulario no dijo otra cosa. Es lo normal —una factura sale por los
+      // remitos de un mismo cliente final y de un mismo camión— y evita volver a elegirlos;
+      // si vinieran mezclados se deja vacío, que es más honesto que quedarse con el primero.
+      const unanime = <T,>(valores: (T | null)[]): T | null => {
+        const unicos = Array.from(new Set(valores));
+        return unicos.length === 1 && unicos[0] !== null ? unicos[0] : null;
+      };
+      const heredado = {
+        destinatarioId: delFormulario.destinatarioId ?? unanime(remitos.map((r) => r.destinatarioId)),
+        entregaId: delFormulario.entregaId ?? unanime(remitos.map((r) => r.entregaId)),
+      };
+      if (heredado.destinatarioId || heredado.entregaId) {
+        await tx.document.update({ where: { id: factura.id }, data: heredado });
+      }
     }
 
     await logAudit(tx, {
@@ -1339,7 +1412,11 @@ export async function createPaymentForEntity(formData: FormData) {
   // y el pago se acredita en dólares. Es la cuenta que hoy se hace a mano; guardarla acá deja
   // reconstruir después cuántos pesos fueron y a cuánto.
   const { amount, exchangeRate } = montoDelPago(formData, account.entity.moneda);
-  const allocations = await allocateFifo(account.id, amount, account.entity.moneda);
+  // El viaje decide contra qué se imputa: un cobro del camión 4 cancela comprobantes del camión
+  // 4 y ninguno más. Sin viaje se imputa contra lo que tampoco lo tiene.
+  const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
+  const alcance = await alcanceDeImputacion(entityId, entregaId);
+  const allocations = await allocateFifo(account.id, amount, account.entity.moneda, alcance);
 
   const payment = await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.create({
@@ -1352,6 +1429,7 @@ export async function createPaymentForEntity(formData: FormData) {
         method,
         retentionKind,
         reference,
+        entregaId,
         createdById: user.id,
       },
     });
@@ -1487,6 +1565,7 @@ export async function updatePayment(formData: FormData) {
   const reference = String(formData.get("reference") || "").trim() || null;
   const { retentionKind, destino, proveedorId, proveedorCircuit } = leerRetencion(formData, method);
   const isCobro = formData.get("isCobro") === "1";
+  const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
   validarMetodo(circuit, method);
   await validarDestino({ circuit, method, isCobro, destino, proveedorId, proveedorCircuit });
 
@@ -1524,6 +1603,7 @@ export async function updatePayment(formData: FormData) {
         method,
         retentionKind,
         reference,
+        entregaId,
         treasuryId: null,
         linkedPaymentId: isCobro ? null : payment.linkedPaymentId,
       },
@@ -1544,7 +1624,12 @@ export async function updatePayment(formData: FormData) {
     });
   });
 
-  const allocations = await allocateFifo(account.id, amount, account.entity.moneda);
+  const allocations = await allocateFifo(
+    account.id,
+    amount,
+    account.entity.moneda,
+    await alcanceDeImputacion(entityId, entregaId)
+  );
   if (allocations.length > 0) {
     await prisma.paymentAllocation.createMany({
       data: allocations.map((a) => ({ paymentId, documentId: a.documentId, amount: a.amount })),

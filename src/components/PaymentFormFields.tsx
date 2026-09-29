@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Circuit, Currency, Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS, RETENTION_KIND_ORDER } from "@/lib/labels";
 import { metodosDePago } from "@/lib/pagos";
+import { ViajeFields, type ViajeOption } from "./ViajeFields";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
@@ -34,6 +35,8 @@ export function PaymentFormFields({
   treasuries,
   proveedores,
   cartera,
+  viajes,
+  defaultViajeId,
 }: {
   entities?: Entity[];
   entityNoun?: string;
@@ -46,6 +49,9 @@ export function PaymentFormFields({
   proveedores?: Entity[];
   /** Los cheques en cartera, para entregarle uno a un proveedor. */
   cartera?: ChequeEnCartera[];
+  /** Los viajes del cliente. Elegir uno acota la imputación a ese viaje. */
+  viajes?: ViajeOption[];
+  defaultViajeId?: string | null;
 }) {
   const isCobro = entityNoun === "Cliente";
 
@@ -355,6 +361,13 @@ export function PaymentFormFields({
           className={inputClass}
         />
       </div>
+
+      <ViajeFields
+        viajes={viajes}
+        mostrarDestinatario={false}
+        defaultViajeId={defaultViajeId}
+        ayudaViaje="El pago cancela comprobantes de ese viaje y de ninguno más. Sin viaje, sólo cancela lo que tampoco tiene viaje."
+      />
 
       <button type="submit" className={submitClass}>
         Registrar pago

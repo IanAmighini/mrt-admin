@@ -3,6 +3,7 @@ import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions"
 import type { PedidoPendiente } from "@/lib/pedidos";
 import { RemitoLinesFields } from "./RemitoLinesFields";
 import { PedidoLinkChecklist } from "./PedidoLinkChecklist";
+import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
 
 type PriceMap = Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
 
@@ -14,6 +15,8 @@ export function RemitoFormFields({
   defaultValues,
   defaultLines,
   pedidosPendientes,
+  viajes,
+  destinatarios,
 }: {
   entityId: string;
   products: Product[];
@@ -28,11 +31,17 @@ export function RemitoFormFields({
     currency?: string;
     exchangeRate?: string;
     reason?: string;
+    entregaId?: string | null;
+    destinatarioId?: string | null;
   };
   defaultLines?: { productId: string; quantity: string; pricePerBottle: string; circuit: "BLANCO" | "NEGRO" }[];
   /** Pedidos pendientes (no entregados) de este cliente — al tildarlos se marcan como
    * "Entregado" automáticamente al crear el remito. No se muestra al editar un remito existente. */
   pedidosPendientes?: PedidoPendiente[];
+  /** Los viajes y los destinatarios de este cliente. Vacíos en quien no los usa: ahí los
+   * selectores no se muestran y el formulario queda como estaba. */
+  viajes?: ViajeOption[];
+  destinatarios?: DestinatarioOption[];
 }) {
   return (
     <>
@@ -63,6 +72,12 @@ export function RemitoFormFields({
           <input name="exchangeRate" defaultValue={defaultValues?.exchangeRate} className={inputClass} />
         </Field>
       </div>
+      <ViajeFields
+        viajes={viajes}
+        destinatarios={destinatarios}
+        defaultViajeId={defaultValues?.entregaId}
+        defaultDestinatarioId={defaultValues?.destinatarioId}
+      />
       <RemitoLinesFields
         products={products.map((p) => ({
           id: p.id,
@@ -91,11 +106,15 @@ export function RemitoForm({
   products,
   priceMapByCircuit,
   pedidosPendientes,
+  viajes,
+  destinatarios,
 }: {
   entityId: string;
   products: Product[];
   priceMapByCircuit: PriceMap;
   pedidosPendientes?: PedidoPendiente[];
+  viajes?: ViajeOption[];
+  destinatarios?: DestinatarioOption[];
 }) {
   return (
     <form action={createRemito} className="space-y-4 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
@@ -105,6 +124,8 @@ export function RemitoForm({
         products={products}
         priceMapByCircuit={priceMapByCircuit}
         pedidosPendientes={pedidosPendientes}
+        viajes={viajes}
+        destinatarios={destinatarios}
       />
     </form>
   );

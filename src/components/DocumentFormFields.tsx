@@ -9,6 +9,7 @@ import {
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { ImpuestosFields, impuestosIniciales, type ImpuestosValores } from "./ImpuestosFields";
+import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
@@ -32,6 +33,8 @@ export type DocumentDefaults = {
   exchangeRate?: string;
   /** El neto en Blanco, el monto en Negro y en los ajustes. */
   amount?: string;
+  entregaId?: string | null;
+  destinatarioId?: string | null;
   ajusteEffect?: "SUMA" | "RESTA";
   treasuryCategory?: string;
   expenseCategory?: string;
@@ -52,9 +55,15 @@ export function DocumentFormFields({
   editingDocumentId,
   circuitoFijo,
   defaultValues,
+  viajes,
+  destinatarios,
 }: {
   fixedEntityId?: string;
   isTreasury?: boolean;
+  /** Para que la nota de crédito cuelgue del viaje —el descuento del 5% baja el saldo de ESE
+   * camión, no el general— y para poder decir a nombre de quién salió. */
+  viajes?: ViajeOption[];
+  destinatarios?: DestinatarioOption[];
   /** Si viene, el formulario edita ese comprobante en vez de crear uno nuevo. */
   editingDocumentId?: string;
   /** Al editar: el circuito de la cuenta, que no se puede cambiar desde acá. */
@@ -282,6 +291,13 @@ export function DocumentFormFields({
         </label>
         <input id="reason" name="reason" defaultValue={defaultValues?.reason} className={inputClass} />
       </div>
+
+      <ViajeFields
+        viajes={viajes}
+        destinatarios={destinatarios}
+        defaultViajeId={defaultValues?.entregaId}
+        defaultDestinatarioId={defaultValues?.destinatarioId}
+      />
 
       <button type="submit" className={submitClass}>
         {esEdicion ? "Guardar cambios" : "Crear"}

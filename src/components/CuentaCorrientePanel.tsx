@@ -17,6 +17,7 @@ import { DocumentFormFields } from "./DocumentFormFields";
 import { FacturaFormFields, type ComprobanteFacturable } from "./FacturaFormFields";
 import { CargarEnCuentaFields } from "./CargarEnCuentaFields";
 import type { ItemDeCompra } from "./NuevaCompraForm";
+import type { DestinatarioOption, ViajeOption } from "./ViajeFields";
 
 export function CuentaCorrientePanel({
   entityId,
@@ -32,6 +33,8 @@ export function CuentaCorrientePanel({
   cartera,
   pagosSinOrden,
   items,
+  viajes,
+  destinatarios,
 }: {
   entityId: string;
   entityName: string;
@@ -59,6 +62,10 @@ export function CuentaCorrientePanel({
   items?: ItemDeCompra[];
   /** Solo si esta ficha es de un cliente: lista de proveedores, para "directo a un proveedor". */
   proveedores?: Entity[];
+  /** Los viajes del cliente: el pago elige contra cuál se imputa, y la nota de crédito de cuál
+   * cuelga. Vacío en quien no los usa, y ahí los selectores ni aparecen. */
+  viajes?: ViajeOption[];
+  destinatarios?: DestinatarioOption[];
 }) {
   const isTreasury = entityType === "TESORERIA";
   const isCliente = entityType !== "PROVEEDOR";
@@ -80,6 +87,7 @@ export function CuentaCorrientePanel({
                   treasuries={treasuries}
                   proveedores={isCliente ? proveedores : undefined}
                   cartera={cartera}
+                  viajes={viajes}
                 />
               </FormModal>
             )}
@@ -104,7 +112,12 @@ export function CuentaCorrientePanel({
               </FormModal>
             ) : (
               <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
-                <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
+                <DocumentFormFields
+                  fixedEntityId={entityId}
+                  isTreasury={isTreasury}
+                  viajes={viajes}
+                  destinatarios={destinatarios}
+                />
               </FormModal>
             )}
             {/* Un array vacío es truthy: sin este largo el botón salía siempre, y abría un modal

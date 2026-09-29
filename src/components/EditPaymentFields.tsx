@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Circuit, Currency, Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { metodosDePago } from "@/lib/pagos";
+import { ViajeFields, type ViajeOption } from "./ViajeFields";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
@@ -19,6 +20,8 @@ export function EditPaymentFields({
   moneda = "ARS",
   treasuries,
   proveedores,
+  viajes,
+  defaultViajeId,
 }: {
   paymentId: string;
   /** Moneda de la cuenta del pago: en dólares se edita en pesos y se convierte, igual que al crear. */
@@ -40,6 +43,9 @@ export function EditPaymentFields({
   treasuries: Entity[];
   /** Solo si esta cuenta es de un cliente: lista de proveedores, para "directo a un proveedor". */
   proveedores?: Entity[];
+  /** Los viajes del cliente, para poder mover el pago de un camión a otro. */
+  viajes?: ViajeOption[];
+  defaultViajeId?: string | null;
 }) {
   const isCobro = proveedores !== undefined;
 
@@ -181,8 +187,15 @@ export function EditPaymentFields({
         />
       </div>
 
+      <ViajeFields
+        viajes={viajes}
+        mostrarDestinatario={false}
+        defaultViajeId={defaultViajeId}
+        ayudaViaje="El pago cancela comprobantes de ese viaje y de ninguno más. Sin viaje, sólo cancela lo que tampoco tiene viaje."
+      />
+
       <p className="text-xs text-foreground/50">
-        Si cambiás el monto o la cuenta, se vuelve a imputar por FIFO desde cero.
+        Si cambiás el monto, la cuenta o el viaje, se vuelve a imputar por FIFO desde cero.
       </p>
 
       <button type="submit" className={submitClass}>

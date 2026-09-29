@@ -39,6 +39,7 @@ import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { addDays, toDateInputValue } from "@/lib/period";
+import { getDestinatarios, getEntregasParaElegir } from "@/lib/entregas";
 
 const inputClass =
   "rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
@@ -85,7 +86,7 @@ export default async function AccountLedgerPage({
   const fromDate = from ? new Date(`${from}T00:00:00`) : null;
   const toDate = to ? addDays(new Date(`${to}T00:00:00`), 1) : null;
 
-  const [statement, products, items, blancoPrices, negroPrices, treasuries, proveedores] =
+  const [statement, products, items, blancoPrices, negroPrices, treasuries, proveedores, viajes, destinatarios] =
     await Promise.all([
       getAccountStatement({ accountId: account.id, from: fromDate, to: toDate }),
       prisma.product.findMany({
@@ -98,6 +99,8 @@ export default async function AccountLedgerPage({
       isClienteEntity
         ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
         : Promise.resolve([]),
+      isClienteEntity ? getEntregasParaElegir(entityId) : Promise.resolve([]),
+      isClienteEntity ? getDestinatarios(entityId) : Promise.resolve([]),
     ]);
 
   const priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> = {
@@ -140,6 +143,8 @@ export default async function AccountLedgerPage({
                 proveedorId: linkedPayment?.account.entityId,
                 proveedorCircuit: linkedPayment?.account.circuit,
               }}
+              viajes={viajes}
+              defaultViajeId={payment.entregaId}
             />
           </FormModal>
           <DeleteButton
@@ -159,6 +164,8 @@ export default async function AccountLedgerPage({
       dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
       currency: doc.currency,
       exchangeRate: doc.exchangeRate?.toString(),
+      entregaId: doc.entregaId,
+      destinatarioId: doc.destinatarioId,
     };
 
     const moveToBlanco =
@@ -192,6 +199,8 @@ export default async function AccountLedgerPage({
               editingDocumentId={doc.id}
               defaultValues={headerDefaults}
               defaultLines={defaultLines}
+              viajes={viajes}
+              destinatarios={destinatarios}
             />
           </FormModal>
           <DeleteButton

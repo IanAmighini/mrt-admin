@@ -38,6 +38,7 @@ model User {
   entregasPreforma EntregaPreforma[]
   cheques          Cheque[]
   ordenPagos       OrdenPago[]
+  entregas         Entrega[]
 }
 
 enum AuditAction {
@@ -149,6 +150,8 @@ model Entity {
   entregasPreforma     EntregaPreforma[]
   saldosPreforma       PreformaSaldoInicial[]
   ordenPagos           OrdenPago[]
+  destinatarios        Destinatario[]
+  entregas             Entrega[]
 }
 
 enum Circuit {
@@ -281,6 +284,16 @@ model Document {
   createdAt        DateTime     @default(now())
 
   /**
+   * A nombre de quién sale el papel, cuando no es el titular de la cuenta. La deuda sigue siendo
+   * de la cuenta; esto es sólo quién figura en el comprobante — y es lo que el libro de IVA
+   * declara, porque la factura lleva SU CUIT, no el del titular.
+   */
+  destinatarioId   String?
+  destinatario     Destinatario?             @relation(fields: [destinatarioId], references: [id])
+  /// El viaje al que pertenece este comprobante, si va agrupado en uno.
+  entregaId        String?
+  entrega          Entrega?                  @relation(fields: [entregaId], references: [id])
+  /**
    * Solo para AJUSTE en la cuenta de una Entity TESORERIA: qué tipo de movimiento es.
    */
   treasuryCategory TreasuryMovementCategory?
@@ -315,6 +328,8 @@ model Document {
   chequesDelCambio Cheque[]            @relation("ChequeCambiado")
 
   @@index([accountId])
+  @@index([destinatarioId])
+  @@index([entregaId])
 }
 
 /// Desglose impositivo de un comprobante: un renglón por alícuota de IVA y uno por cada percepción.
@@ -419,12 +434,20 @@ model Payment {
    * propósito — el borrado en cascada de la pareja se maneja a mano en la acción.
    */
   linkedPaymentId String?
+  /**
+   * El viaje contra el que se imputa este pago. Un pago con viaje sólo cancela comprobantes de
+   * ESE viaje, y uno sin viaje sólo cancela los que tampoco lo tienen: es lo que evita que el
+   * pago del camión 4 se coma lo que quedaba del camión 3.
+   */
+  entregaId       String?
+  entrega         Entrega?   @relation(fields: [entregaId], references: [id])
 
   allocations      PaymentAllocation[]
   treasuryDocument Document?           @relation("PaymentTreasuryDocument")
 
   @@index([accountId])
   @@index([treasuryId])
+  @@index([entregaId])
 }
 
 /**
@@ -796,4 +819,56 @@ model EntregaPreforma {
 
   @@index([entityId])
   @@index([preformaId])
+}
+
+/**
+ * A nombre de quién sale el papel cuando no es el titular de la cuenta.
+ * El caso real: los camiones de Gonzalo Morosoli retiran para SUS clientes —Don Ángel, Mer Can,
+ * Damelio Pascual— y la factura va con el CUIT de ellos, pero la deuda es de Gonzalo y se le
+ * reclama a él.
+ * **No es una Entity a propósito**: no tiene cuenta corriente, ni saldo, ni aparece en los
+ * dashboards. Darles ficha de cliente partiría el saldo del camión en cinco y llenaría el listado
+ * de vencidos con gente a la que nunca se le reclama. Lo único que hace falta de ellos es el
+ * nombre y el CUIT para que el comprobante y el libro de IVA salgan bien.
+ */
+model Destinatario {
+  id        String   @id @default(cuid())
+  nombre    String
+  taxId     String?
+  /// Por cuenta de quién se le entrega — el titular de la cuenta que paga.
+  entityId  String
+  entity    Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  documents Document[]
+
+  @@unique([entityId, nombre])
+  @@index([entityId])
+}
+
+/**
+ * Un viaje: el camión que sale con varios remitos de una vez, para distintos destinatarios.
+ * Agrupa comprobantes de las dos cuentas —los remitos en negro, los remitos y facturas en blanco
+ * de sus clientes— y los pagos, para que cada viaje lleve su propio saldo. Sin esto, un cobro se
+ * imputa por antigüedad sobre toda la cuenta y el pago del camión 4 cancela lo que quedaba del
+ * camión 3; y las entregas de Lanús se mezclan con las de Santa Fe.
+ */
+model Entrega {
+  id          String   @id @default(cuid())
+  entityId    String
+  entity      Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  /// Cómo se lo nombra: "Camión 4".
+  nombre      String
+  /// A dónde fue: "Santa Fe", "Lanús".
+  destino     String?
+  fecha       DateTime
+  notas       String?
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  documents Document[]
+  payments  Payment[]
+
+  @@index([entityId])
 }

@@ -188,12 +188,12 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
     // proveedor. Ni el remito de entrega ni la compra son comprobantes fiscales.
     prisma.document.findMany({
       where: { type: "FACTURA", ...enBlanco, ...enElPeriodo },
-      include: { account: { include: { entity: true } }, taxes: true },
+      include: { account: { include: { entity: true } }, destinatario: true, taxes: true },
       orderBy: [{ date: "asc" }, { number: "asc" }],
     }),
     prisma.document.findMany({
       where: { type: "GASTO", ...enBlanco, ...enElPeriodo },
-      include: { account: { include: { entity: true } }, taxes: true },
+      include: { account: { include: { entity: true } }, destinatario: true, taxes: true },
       orderBy: [{ date: "asc" }, { number: "asc" }],
     }),
     // Remitos en Blanco de los dos lados: no entran al libro, sirven para avisar de los que
@@ -207,7 +207,7 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
     // cuenta. Las de Negro no entran —no son comprobantes fiscales— y el ajuste tampoco.
     prisma.document.findMany({
       where: { type: { in: ["NOTA_CREDITO", "NOTA_DEBITO"] }, ...enBlanco, ...enElPeriodo },
-      include: { account: { include: { entity: true } }, taxes: true },
+      include: { account: { include: { entity: true } }, destinatario: true, taxes: true },
       orderBy: [{ date: "asc" }, { number: "asc" }],
     }),
     // Las retenciones que sufrimos: se cargan como pago del cliente, de cualquier circuito, porque
@@ -250,10 +250,17 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       totalAmount: Prisma.Decimal;
       currency: Currency;
       account: { entity: { name: string; taxId: string | null } };
+      destinatario?: { nombre: string; taxId: string | null } | null;
     },
     concepto: string | null,
     tipo?: string
   ): RenglonIva => {
+    // El libro declara a nombre de quién salió el comprobante, que no siempre es el titular de la
+    // cuenta: la factura de un camión de Gonzalo va con el CUIT de su cliente final aunque la
+    // deuda sea de Gonzalo. Sin esto el libro saldría con el CUIT equivocado, que es un error en
+    // el papel que va al contador, no una molestia de pantalla.
+    const aNombreDe = doc.destinatario ?? doc.account.entity;
+    const nombreDeclarado = "nombre" in aNombreDe ? aNombreDe.nombre : aNombreDe.name;
     // Una nota de crédito entra en negativo, así que la fila de TOTALES ya es lo que se declara.
     // `0 × −1` da −0, que se imprime "−$ 0,00": el cero no lleva signo.
     const signo = signoDe(doc.type);
@@ -262,8 +269,8 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       date: doc.date,
       number: doc.number,
       tipo: tipo ?? DOCUMENT_TYPE_LABELS[doc.type],
-      entityName: doc.account.entity.name,
-      taxId: doc.account.entity.taxId,
+      entityName: nombreDeclarado,
+      taxId: aNombreDe.taxId,
       concepto,
       neto: conSigno(toDecimal(doc.netAmount)),
       percepcion: conSigno(percepcionesDe(doc)),

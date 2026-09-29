@@ -17,7 +17,7 @@ export default async function NuevaEntregaPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [clientes, products, allPrices, allPedidos] = await Promise.all([
+  const [clientes, products, allPrices, allPedidos, todosLosViajes, todosLosDestinatarios] = await Promise.all([
     prisma.entity.findMany({
       where: { type: { in: ["CLIENTE", "AMBOS"] } },
       orderBy: { name: "asc" },
@@ -27,7 +27,24 @@ export default async function NuevaEntregaPage({
     }),
     getAllCurrentPrices(),
     getAllPedidosPendientes(),
+    prisma.entrega.findMany({
+      orderBy: [{ fecha: "desc" }],
+      select: { id: true, nombre: true, destino: true, entityId: true },
+    }),
+    prisma.destinatario.findMany({
+      orderBy: { nombre: "asc" },
+      select: { id: true, nombre: true, taxId: true, entityId: true },
+    }),
   ]);
+
+  const viajesByEntity: Record<string, { id: string; nombre: string; destino: string | null }[]> = {};
+  for (const v of todosLosViajes) {
+    (viajesByEntity[v.entityId] ??= []).push({ id: v.id, nombre: v.nombre, destino: v.destino });
+  }
+  const destinatariosByEntity: Record<string, { id: string; nombre: string; taxId: string | null }[]> = {};
+  for (const d of todosLosDestinatarios) {
+    (destinatariosByEntity[d.entityId] ??= []).push({ id: d.id, nombre: d.nombre, taxId: d.taxId });
+  }
 
   const pricesByEntity: Record<
     string,
@@ -91,6 +108,8 @@ export default async function NuevaEntregaPage({
           }))}
           pricesByEntity={pricesByEntity}
           pedidosByEntity={pedidosByEntity}
+          viajesByEntity={viajesByEntity}
+          destinatariosByEntity={destinatariosByEntity}
           fixedEntity={fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name } : undefined}
         />
       )}
