@@ -6,7 +6,9 @@ import {
   getEntitySaldos,
   getRecentPayments,
   getRecentRemitos,
+  getUltimaCotizacion,
   getVencimientos,
+  sumarSaldosEnPesos,
 } from "@/lib/ledger";
 import {
   getIngresos,
@@ -26,7 +28,7 @@ export default async function DashboardClientesPage() {
   const isAdmin = user.role === "ADMIN";
   const today = new Date();
 
-  const [entregas, pagos, saldos, vencimientos, ingresosDelMes, pagosDelMes, litros] = await Promise.all([
+  const [entregas, pagos, saldos, vencimientos, ingresosDelMes, pagosDelMes, litros, cotizacion] = await Promise.all([
     getRecentRemitos(5),
     getRecentPayments(["CLIENTE", "AMBOS"], 5),
     getEntitySaldos(["CLIENTE", "AMBOS"]),
@@ -34,6 +36,7 @@ export default async function DashboardClientesPage() {
     getIngresos(),
     getPagos(["CLIENTE", "AMBOS"]),
     getLitrosEnvasados(),
+    getUltimaCotizacion(),
   ]);
 
   const remitosVencidos = vencimientos.filter(
@@ -43,7 +46,12 @@ export default async function DashboardClientesPage() {
       doc.dueDate! < today
   );
 
-  const deudaTotal = sumDecimals(saldos.map((s) => s.total));
+  // Hay clientes que llevan la cuenta en dólares, así que sumar los saldos crudos daría un número
+  // sin sentido. Se valuán con la última cotización que alguien usó de verdad en la app —en un
+  // pago o en un comprobante— y no con una que haya que mantener aparte y se olvide de
+  // actualizar. Mismo criterio que el dashboard de proveedores.
+  const { total: deudaTotal, dolaresSinValuar } = sumarSaldosEnPesos(saldos, cotizacion);
+  const hayCuentasEnDolares = saldos.some((s) => s.entity.moneda === "USD");
   const ingresosArs = ingresosDelMes.get("ARS") ?? ZERO;
   const cobrosArs = pagosDelMes.get("ARS") ?? ZERO;
 
@@ -64,7 +72,21 @@ export default async function DashboardClientesPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Deuda total de clientes" value={formatMoney(deudaTotal)} icon={Users} color="red" />
+        <KpiCard
+          label="Deuda total de clientes"
+          value={
+            dolaresSinValuar.isZero()
+              ? formatMoney(deudaTotal)
+              : `${formatMoney(deudaTotal)} + ${formatMoney(dolaresSinValuar, "USD")}`
+          }
+          caption={
+            hayCuentasEnDolares && cotizacion
+              ? `dólares valuados a ${formatMoney(cotizacion)}`
+              : undefined
+          }
+          icon={Users}
+          color="red"
+        />
         <KpiCard label="Entregas del mes" value={formatMoney(ingresosArs)} icon={Send} color="blue" />
         <KpiCard label="Cobros del mes" value={formatMoney(cobrosArs)} icon={Wallet} color="green" />
         <KpiCard

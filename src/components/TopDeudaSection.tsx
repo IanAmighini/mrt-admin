@@ -1,9 +1,11 @@
 import Link from "next/link";
-import type { Prisma } from "@prisma/client";
+import type { Currency, Prisma } from "@prisma/client";
 import { formatMoney } from "@/lib/money";
 
 export type SaldoRow = {
-  entity: { id: string; name: string; slug: string };
+  /** `moneda` es la de la cuenta: sin ella, un saldo en dólares se imprime con signo de pesos y
+   * el ranking parece decir que debe mil veces menos de lo que debe. */
+  entity: { id: string; name: string; slug: string; moneda?: Currency };
   blancoSaldo: Prisma.Decimal | null;
   negroSaldo: Prisma.Decimal | null;
 };
@@ -44,7 +46,7 @@ export function TopDeudaSection({
                       {entity.name}
                     </Link>
                   </td>
-                  <td className="py-2 pr-4 font-medium">{saldo ? formatMoney(saldo) : "—"}</td>
+                  <td className="py-2 pr-4 font-medium">{saldo ? formatMoney(saldo, entity.moneda ?? "ARS") : "—"}</td>
                 </tr>
               );
             })}

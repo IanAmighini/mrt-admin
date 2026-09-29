@@ -65,9 +65,9 @@ export default async function ProveedoresPage() {
                   {rubroLabel(entity) ?? "—"}
                 </td>
                 <td className="py-2 pr-4">{entity.taxId || "—"}</td>
-                <td className="py-2 pr-4">{blancoSaldo ? formatMoney(blancoSaldo) : "—"}</td>
-                <td className="py-2 pr-4">{negroSaldo ? formatMoney(negroSaldo) : "—"}</td>
-                <td className="py-2 pr-4 font-medium">{formatMoney(total)}</td>
+                <td className="py-2 pr-4">{blancoSaldo ? formatMoney(blancoSaldo, entity.moneda) : "—"}</td>
+                <td className="py-2 pr-4">{negroSaldo ? formatMoney(negroSaldo, entity.moneda) : "—"}</td>
+                <td className="py-2 pr-4 font-medium">{formatMoney(total, entity.moneda)}</td>
               </tr>
             ))}
             {rows.length === 0 && (
