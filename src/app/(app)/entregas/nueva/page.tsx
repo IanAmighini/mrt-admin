@@ -28,10 +28,12 @@ export default async function NuevaEntregaPage({
     getAllCurrentPrices(),
     getAllPedidosPendientes(),
     prisma.entrega.findMany({
+      where: { entity: { llevaViajes: true } },
       orderBy: [{ fecha: "desc" }],
       select: { id: true, nombre: true, destino: true, entityId: true },
     }),
     prisma.destinatario.findMany({
+      where: { entity: { llevaViajes: true } },
       orderBy: { nombre: "asc" },
       select: { id: true, nombre: true, taxId: true, entityId: true },
     }),

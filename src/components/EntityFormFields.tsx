@@ -175,6 +175,24 @@ export function EntityFormFields({
         </label>
         </>
       )}
+      {(!esProveedor || entity?.llevaViajes) && (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            name="llevaViajes"
+            defaultChecked={entity?.llevaViajes ?? false}
+            className="mt-0.5"
+          />
+          <span>
+            Entrega por viajes
+            <span className="block text-xs text-foreground/50">
+              Para el distribuidor que retira camiones con varios remitos para sus propios
+              clientes. Suma a su ficha el panel de viajes y el de destinatarios, y hace que cada
+              cobro se impute contra el viaje que le digas en vez de contra lo más viejo.
+            </span>
+          </span>
+        </label>
+      )}
       {esProveedor && (
         <label className="flex items-start gap-2 text-sm">
           <input

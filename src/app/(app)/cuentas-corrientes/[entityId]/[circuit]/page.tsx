@@ -99,8 +99,8 @@ export default async function AccountLedgerPage({
       isClienteEntity
         ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
         : Promise.resolve([]),
-      isClienteEntity ? getEntregasParaElegir(entityId) : Promise.resolve([]),
-      isClienteEntity ? getDestinatarios(entityId) : Promise.resolve([]),
+      entity.llevaViajes ? getEntregasParaElegir(entityId) : Promise.resolve([]),
+      entity.llevaViajes ? getDestinatarios(entityId) : Promise.resolve([]),
     ]);
 
   const priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> = {

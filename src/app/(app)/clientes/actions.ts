@@ -30,6 +30,7 @@ export async function createEntity(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
+  const llevaViajes = formData.get("llevaViajes") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
@@ -53,7 +54,7 @@ export async function createEntity(formData: FormData) {
         // `retiroSocietario` no está: un proveedor nuevo nunca nace siendo por donde se retira
         // para los socios. Se prende editándolo, y sólo lo ve Admin.
         name, slug, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, llevaViajes, moneda,
       },
     });
     const [blanco, negro] = await Promise.all([
@@ -94,6 +95,7 @@ export async function updateEntity(formData: FormData) {
   const notes = String(formData.get("notes") || "").trim() || null;
   const isWithholdingAgent = formData.get("isWithholdingAgent") === "on";
   const llevaCuentaPreformas = formData.get("llevaCuentaPreformas") !== null;
+  const llevaViajes = formData.get("llevaViajes") !== null;
   // Sólo se toca si el formulario traía la casilla —ahí "no vino" significa "no la cambies", no
   // "apagala"— y sólo si quien guarda es Admin: esconderla en la pantalla no alcanza, porque un
   // formulario se puede armar a mano.
@@ -118,7 +120,7 @@ export async function updateEntity(formData: FormData) {
       where: { id: entityId },
       data: {
         name, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, llevaViajes, moneda,
         ...(retiroSocietario !== undefined ? { retiroSocietario } : {}),
       },
       include: { accounts: true },

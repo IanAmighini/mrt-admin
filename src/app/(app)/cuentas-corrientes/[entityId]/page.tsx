@@ -162,9 +162,9 @@ export default async function EntityLedgerPage({
           orderBy: { name: "asc" },
         })
       : Promise.resolve([]),
-    isCliente ? getEntregasDeEntidad(entity.id) : Promise.resolve([]),
-    isCliente ? getDestinatarios(entity.id) : Promise.resolve([]),
-    isCliente ? getEntregasParaElegir(entity.id) : Promise.resolve([]),
+    entity.llevaViajes ? getEntregasDeEntidad(entity.id) : Promise.resolve([]),
+    entity.llevaViajes ? getDestinatarios(entity.id) : Promise.resolve([]),
+    entity.llevaViajes ? getEntregasParaElegir(entity.id) : Promise.resolve([]),
   ]);
 
   const hayPanelIzquierdo = isCliente || recentCompras.length > 0;
@@ -273,7 +273,7 @@ export default async function EntityLedgerPage({
       <div className={`grid gap-6 ${hayPanelIzquierdo ? "lg:grid-cols-2" : ""}`}>
         <div className={hayPanelIzquierdo ? "space-y-6" : "hidden"}>
           {isCliente && <EntregasPanel entityId={entity.id} remitos={recentRemitos} canEdit={canEdit} />}
-          {isCliente && (
+          {entity.llevaViajes && (
             <ViajesPanel
               entityId={entity.id}
               entitySlug={entity.slug}
