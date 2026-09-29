@@ -1273,7 +1273,15 @@ async function validarDestino(params: {
  */
 async function applyPaymentDestino(params: {
   userId: string;
-  payment: { id: string; date: Date; amount: Prisma.Decimal; method: PaymentMethod; circuit: Circuit };
+  payment: {
+    id: string;
+    date: Date;
+    amount: Prisma.Decimal;
+    /** La cotización con la que se hizo, cuando la cuenta va en dólares. */
+    exchangeRate: Prisma.Decimal | null;
+    method: PaymentMethod;
+    circuit: Circuit;
+  };
   entity: { id: string; name: string };
   /** Si este pago es un cobro (entra plata, ej. desde la página/ficha de clientes) o un pago a
    * proveedor (sale plata) — viene explícito del form en vez de derivarse de entity.type porque
@@ -1364,7 +1372,15 @@ async function applyPaymentDestino(params: {
   if (motivo) throw new UserError(motivo);
 
   const category: TreasuryMovementCategory = isCobro ? "COBRO" : "PAGO_PROVEEDOR";
-  const signedAmount = isCobro ? payment.amount : payment.amount.negated();
+  // **La caja lleva pesos, siempre.** El monto del pago está en la moneda de la cuenta, así que
+  // en una cuenta en dólares —la de Cristian— hay que multiplicarlo por la cotización antes de
+  // tocar la caja. Sin esto, pagarle U$S 5.000 a 1.500 descontaba 5.000 pesos de Caja Bufano en
+  // vez de 7.500.000: la caja quedaba con plata que ya no está.
+  const enPesos =
+    monedaOrigen === "USD" && payment.exchangeRate
+      ? payment.amount.times(payment.exchangeRate)
+      : payment.amount;
+  const signedAmount = isCobro ? enPesos : enPesos.negated();
   await prisma.document.create({
     data: {
       accountId: treasuryAccount.id,
@@ -1372,9 +1388,12 @@ async function applyPaymentDestino(params: {
       number: `P-${payment.id.slice(-8)}`,
       date: payment.date,
       currency: "ARS",
-      netAmount: payment.amount,
+      netAmount: enPesos,
       totalAmount: signedAmount,
-      reason: `${isCobro ? "Cobro de" : "Pago a"} ${entity.name} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
+      reason:
+        monedaOrigen === "USD" && payment.exchangeRate
+          ? `${isCobro ? "Cobro de" : "Pago a"} ${entity.name} — ${PAYMENT_METHOD_LABELS[payment.method]} — ${formatMoney(payment.amount, "USD")} a ${payment.exchangeRate.toString()}`
+          : `${isCobro ? "Cobro de" : "Pago a"} ${entity.name} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
       treasuryCategory: category,
       sourcePaymentId: payment.id,
       createdById: userId,
@@ -1459,7 +1478,7 @@ export async function createPaymentForEntity(formData: FormData) {
 
   await applyPaymentDestino({
     userId: user.id,
-    payment: { id: payment.id, date, amount, method, circuit },
+    payment: { id: payment.id, date, amount, exchangeRate, method, circuit },
     entity: account.entity,
     isCobro,
     monedaOrigen: account.entity.moneda,
@@ -1638,7 +1657,7 @@ export async function updatePayment(formData: FormData) {
 
   await applyPaymentDestino({
     userId: user.id,
-    payment: { id: paymentId, date, amount, method, circuit },
+    payment: { id: paymentId, date, amount, exchangeRate, method, circuit },
     entity: account.entity,
     isCobro,
     monedaOrigen: account.entity.moneda,
