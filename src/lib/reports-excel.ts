@@ -22,6 +22,8 @@ import {
   type GastosReport,
   type InsumosMinimoReport,
   type ProduccionReport,
+  type StockReport,
+  type StockReportRow,
   type ReportKey,
   type ResultadoMes,
   type ResultadoReport,
@@ -392,6 +394,47 @@ function produccionSheets(report: ProduccionReport, generatedAt: Date): ExcelShe
 
 // ---------------------------------------------------------------------------
 
+function stockSheets(report: StockReport, generatedAt: Date): ExcelSheet<never>[] {
+  const subtitle = [
+    ...periodSubtitle(report.period, generatedAt),
+    report.recuentos.length > 0
+      ? `\u00daltimo recuento: ${report.recuentos[0].fecha.toLocaleDateString("es-AR")}`
+      : "Todav\u00eda no se carg\u00f3 ning\u00fan recuento.",
+    'La columna "Diferencia" es lo que apareci\u00f3 de m\u00e1s o de menos al contar: la merma que no qued\u00f3 registrada.',
+  ];
+
+  const columnas = (entrada: string, salida: string) => [
+    { header: "Detalle", value: (r: StockReportRow) => r.nombre, width: 40 },
+    { header: "Unidad", value: (r: StockReportRow) => r.unidad, width: 10 },
+    { header: "Inicial", value: (r: StockReportRow) => r.inicial, format: "number" as const },
+    { header: entrada, value: (r: StockReportRow) => r.ingresos, format: "number" as const },
+    { header: salida, value: (r: StockReportRow) => r.consumo, format: "number" as const },
+    { header: "Mermas", value: (r: StockReportRow) => r.mermas, format: "number" as const },
+    { header: "Ventas", value: (r: StockReportRow) => r.ventas, format: "number" as const },
+    { header: "Diferencia", value: (r: StockReportRow) => r.ajustes, format: "number" as const },
+    { header: "Final", value: (r: StockReportRow) => r.final, format: "number" as const },
+  ];
+
+  return [
+    sheet<StockReportRow>({
+      name: "Producto terminado",
+      title: "Producto terminado",
+      subtitle,
+      columns: columnas("Producido", "Entregado"),
+      rows: report.productos,
+    }),
+    sheet<StockReportRow>({
+      name: "Insumos",
+      title: "Insumos",
+      subtitle,
+      columns: columnas("Ingresos", "Consumo"),
+      rows: report.insumos,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+
 function gastosSheets(report: GastosReport, generatedAt: Date): ExcelSheet<never>[] {
   const subtitle = periodSubtitle(report.period, generatedAt);
 
@@ -680,7 +723,8 @@ export type ReportData =
   | { key: "compras"; report: ComprasReport }
   | { key: "gastos"; report: GastosReport }
   | { key: "resultado"; report: ResultadoReport }
-  | { key: "produccion"; report: ProduccionReport };
+  | { key: "produccion"; report: ProduccionReport }
+  | { key: "stock"; report: StockReport };
 
 export function buildReportSheets(data: ReportData, generatedAt = new Date()): ExcelSheet<never>[] {
   switch (data.key) {
@@ -703,6 +747,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return resultadoSheets(data.report, generatedAt);
     case "produccion":
       return produccionSheets(data.report, generatedAt);
+    case "stock":
+      return stockSheets(data.report, generatedAt);
   }
 }
 

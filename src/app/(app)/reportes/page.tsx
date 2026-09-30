@@ -18,6 +18,7 @@ import { ComprasSection } from "./sections/ComprasSection";
 import { GastosSection } from "./sections/GastosSection";
 import { ResultadoSection } from "./sections/ResultadoSection";
 import { ProduccionSection } from "./sections/ProduccionSection";
+import { StockSection } from "./sections/StockSection";
 
 const inputClass =
   "rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
@@ -37,6 +38,7 @@ const USA_PERIODO: Record<ReportKey, boolean> = {
   gastos: true,
   resultado: true,
   produccion: true,
+  stock: true,
 };
 
 /** Los tabs que se pueden acotar por circuito. */
@@ -49,6 +51,7 @@ const USA_CIRCUITO: Record<ReportKey, boolean> = {
   gastos: false,
   resultado: false,
   produccion: false,
+  stock: false,
 };
 
 const CIRCUIT_FILTERS: { value: string; label: string }[] = [
@@ -214,6 +217,7 @@ export default async function ReportesPage({
       {report === "gastos" && <GastosSection period={period} />}
       {report === "resultado" && <ResultadoSection period={period} />}
       {report === "produccion" && <ProduccionSection period={period} />}
+      {report === "stock" && <StockSection period={period} />}
     </div>
   );
 }

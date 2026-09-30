@@ -26,6 +26,7 @@ export const REPORT_KEYS = [
   "gastos",
   "resultado",
   "produccion",
+  "stock",
 ] as const;
 
 export type ReportKey = (typeof REPORT_KEYS)[number];
@@ -39,6 +40,7 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
   gastos: "Gastos",
   resultado: "Resultado del mes",
   produccion: "Producción",
+  stock: "Stock y recuentos",
 };
 
 /** Reportes que son una foto del momento y no de un período: el nombre del archivo lleva "al <fecha>". */
@@ -891,5 +893,145 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
     meses,
     retiros,
     avisos: { itemsSinCosto: actual.itemsSinCosto, facturasSinCompra: actual.facturasSinCompra },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 9. Stock — de dónde salió cada movimiento entre dos recuentos
+// ---------------------------------------------------------------------------
+
+/** Un movimiento cuyo motivo dice que salió de contar el depósito, no de una operación. */
+const ES_DE_RECUENTO = ["recuento", "stock inicial", "conteo"];
+
+function esDeRecuento(reason: string) {
+  const texto = reason.toLowerCase();
+  return ES_DE_RECUENTO.some((marca) => texto.includes(marca));
+}
+
+export type StockReportRow = {
+  id: string;
+  slug: string;
+  nombre: string;
+  unidad: string;
+  /** Sólo en producto terminado, para mostrar las cajas sueltas en vez de una fracción. */
+  boxesPerPallet: number | null;
+  categoria: string;
+  inicial: Prisma.Decimal;
+  ingresos: Prisma.Decimal;
+  /** Lo que se llevó la producción (o las entregas, en producto terminado). Siempre positivo. */
+  consumo: Prisma.Decimal;
+  mermas: Prisma.Decimal;
+  /** Lo que apareció (+) o faltó (−) al contar. Es la diferencia que nadie explicó. */
+  ajustes: Prisma.Decimal;
+  ventas: Prisma.Decimal;
+  final: Prisma.Decimal;
+};
+
+export type StockReport = {
+  period: Period;
+  /** Las fechas en que se contó el depósito, de la más nueva a la más vieja. */
+  recuentos: { fecha: Date; insumos: number; productos: number }[];
+  insumos: StockReportRow[];
+  productos: StockReportRow[];
+  /** Lo que no cierra: la suma de las diferencias de recuento del período. */
+  totalAjustes: { insumos: number; productos: number };
+};
+
+/**
+ * Qué pasó con el stock en el período, renglón por renglón.
+ *
+ * La gracia está en la columna de **ajustes**: todo lo demás —ingresos, consumo, mermas, ventas—
+ * tiene un comprobante detrás que lo explica. El ajuste es lo que apareció de más o de menos al
+ * contar, o sea la merma que nadie registró. Entre dos recuentos, esa columna es la respuesta a
+ * "¿cuánto se perdió sin que lo anotáramos?".
+ *
+ * No hace falta un modelo de "recuento": un recuento **es** un puñado de ajustes con la misma
+ * fecha, y de ahí sale la lista de arriba.
+ */
+export async function getStockReport(period: Period): Promise<StockReport> {
+  const [items, productos, itemMovs, productMovs] = await Promise.all([
+    prisma.item.findMany({ where: { llevaStock: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
+    prisma.product.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }] }),
+    prisma.itemMovement.findMany({ where: { date: { lt: period.to } } }),
+    prisma.productMovement.findMany({ where: { date: { lt: period.to } } }),
+  ]);
+
+  const enElPeriodo = <T extends { date: Date }>(m: T) => m.date >= period.from;
+
+  const filaDeItem = (item: (typeof items)[number]): StockReportRow => {
+    const movs = itemMovs.filter((m) => m.itemId === item.id);
+    const delPeriodo = movs.filter(enElPeriodo);
+    const suma = (tipos: string[]) =>
+      sumDecimals(delPeriodo.filter((m) => tipos.includes(m.type)).map((m) => toDecimal(m.quantity)));
+    const inicial = sumDecimals(movs.filter((m) => !enElPeriodo(m)).map((m) => toDecimal(m.quantity)));
+    return {
+      id: item.id,
+      slug: item.slug,
+      nombre: item.name,
+      unidad: item.unit,
+      boxesPerPallet: null,
+      categoria: item.category,
+      inicial,
+      ingresos: suma(["INGRESO"]),
+      consumo: suma(["CONSUMO_PRODUCCION", "CONSUMO_PALLET"]).negated(),
+      mermas: suma(["MERMA"]),
+      ajustes: suma(["AJUSTE"]),
+      ventas: suma(["VENTA"]).negated(),
+      final: inicial.plus(sumDecimals(delPeriodo.map((m) => toDecimal(m.quantity)))),
+    };
+  };
+
+  const filaDeProducto = (prod: (typeof productos)[number]): StockReportRow => {
+    const movs = productMovs.filter((m) => m.productId === prod.id);
+    const delPeriodo = movs.filter(enElPeriodo);
+    const suma = (tipos: string[]) =>
+      sumDecimals(delPeriodo.filter((m) => tipos.includes(m.type)).map((m) => toDecimal(m.quantity)));
+    const inicial = sumDecimals(movs.filter((m) => !enElPeriodo(m)).map((m) => toDecimal(m.quantity)));
+    return {
+      id: prod.id,
+      slug: prod.slug,
+      nombre: `${formatProductBrandLabel(prod)} — ${prod.presentation}`,
+      unidad: "pallets",
+      boxesPerPallet: prod.boxesPerPallet,
+      categoria: "PRODUCTO",
+      inicial,
+      ingresos: suma(["PRODUCCION"]),
+      consumo: suma(["ENTREGA", "CONSUMO_ARMADO_CAJA"]).negated(),
+      mermas: suma(["MERMA"]),
+      ajustes: suma(["AJUSTE"]),
+      ventas: ZERO,
+      final: inicial.plus(sumDecimals(delPeriodo.map((m) => toDecimal(m.quantity)))),
+    };
+  };
+
+  // Un recuento es un día en el que se contó: se agrupa por fecha, mirando el motivo.
+  const porFecha = new Map<string, { fecha: Date; insumos: number; productos: number }>();
+  for (const m of itemMovs) {
+    if (!esDeRecuento(m.reason)) continue;
+    const clave = m.date.toISOString().slice(0, 10);
+    const fila = porFecha.get(clave) ?? { fecha: m.date, insumos: 0, productos: 0 };
+    fila.insumos += 1;
+    porFecha.set(clave, fila);
+  }
+  for (const m of productMovs) {
+    if (!esDeRecuento(m.reason)) continue;
+    const clave = m.date.toISOString().slice(0, 10);
+    const fila = porFecha.get(clave) ?? { fecha: m.date, insumos: 0, productos: 0 };
+    fila.productos += 1;
+    porFecha.set(clave, fila);
+  }
+
+  const insumos = items.map(filaDeItem);
+  const productosFilas = productos.map(filaDeProducto);
+
+  return {
+    period,
+    recuentos: Array.from(porFecha.values()).sort((a, b) => b.fecha.getTime() - a.fecha.getTime()),
+    insumos,
+    productos: productosFilas,
+    totalAjustes: {
+      insumos: insumos.filter((f) => !f.ajustes.isZero()).length,
+      productos: productosFilas.filter((f) => !f.ajustes.isZero()).length,
+    },
   };
 }
