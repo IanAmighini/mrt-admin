@@ -130,11 +130,16 @@ model Entity {
   /// gastos. Excluyente con `supplierCategory` — un proveedor es de una cosa o de la otra.
   expenseCategory      ExpenseCategory?
   isWithholdingAgent   Boolean                @default(false)
-  /// Si es true, la ficha del cliente trabaja por viajes: el camión que sale con varios remitos
-  /// para sus propios clientes. Es de uno solo —el distribuidor que retira para terceros— y por
-  /// eso va apagado por defecto: al resto de los clientes, un selector de viaje vacío en cada
-  /// formulario sólo les agrega un campo que nunca van a usar.
+  /// Si es true, la cuenta de esta ficha se divide en partes con saldo propio. Es de dos casos
+  /// puntuales —los camiones de un distribuidor, el alquiler y los gastos comunes de un mismo
+  /// dueño— y por eso va apagado por defecto: al resto, un selector vacío en cada formulario sólo
+  /// les agrega un campo que nunca van a usar.
   llevaViajes          Boolean                @default(false)
+  /// Cómo se llaman esas partes en ESTA ficha, en singular: "Viaje" para los camiones de Gonzalo,
+  /// "Subcuenta" para el alquiler y los gastos de Goloeste. El mecanismo es el mismo; lo único que
+  /// cambia es la palabra, y usar la de cada negocio es lo que hace que la pantalla se entienda
+  /// sin explicación. Vacío = "Viaje", que fue el primer caso.
+  rotuloSubcuenta      String?
   /// Si es true, la ficha muestra la cuenta de preformas: este proveedor fía la preforma y cobra
   /// sólo el soplado, así que además de la cuenta en pesos se le deben preformas en unidades.
   llevaCuentaPreformas Boolean                @default(false)

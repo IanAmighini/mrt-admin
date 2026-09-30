@@ -1,6 +1,20 @@
 export type ViajeOption = { id: string; nombre: string; destino: string | null };
 export type DestinatarioOption = { id: string; nombre: string; taxId: string | null };
 
+/**
+ * Concordancia de género para el rótulo que elige cada ficha. "Viaje" es masculino y "Subcuenta"
+ * femenino, y un botón que dice "Nuevo subcuenta" se lee como un error de la app. La regla del
+ * -a alcanza para las palabras que se usan acá; si alguna vez no alcanza, se agrega al helper.
+ */
+export function generoDe(rotulo: string) {
+  const femenino = rotulo.trim().toLowerCase().endsWith("a");
+  return {
+    nuevo: femenino ? "Nueva" : "Nuevo",
+    este: femenino ? "esta" : "este",
+    articulo: femenino ? "la" : "el",
+  };
+}
+
 export function etiquetaDeViaje(viaje: ViajeOption) {
   return viaje.destino ? `${viaje.nombre} · ${viaje.destino}` : viaje.nombre;
 }
@@ -16,9 +30,10 @@ export function ViajeFields({
   destinatarios = [],
   defaultViajeId,
   defaultDestinatarioId,
-  /** En un pago no hay a quién emitirle el papel: sólo se elige contra qué viaje se imputa. */
+  /** En un pago no hay a quién emitirle el papel: sólo se elige contra qué parte se imputa. */
   mostrarDestinatario = true,
   ayudaViaje,
+  rotulo = "Viaje",
 }: {
   viajes?: ViajeOption[];
   destinatarios?: DestinatarioOption[];
@@ -26,6 +41,8 @@ export function ViajeFields({
   defaultDestinatarioId?: string | null;
   mostrarDestinatario?: boolean;
   ayudaViaje?: string;
+  /** Cómo llama esta ficha a sus partes: "Viaje", "Subcuenta". */
+  rotulo?: string;
 }) {
   const hayViajes = viajes.length > 0;
   const hayDestinatarios = mostrarDestinatario && destinatarios.length > 0;
@@ -36,7 +53,7 @@ export function ViajeFields({
       {hayViajes && (
         <div className="space-y-1">
           <label className="text-sm" htmlFor="viaje-entregaId">
-            Viaje
+            {rotulo}
           </label>
           <select
             id="viaje-entregaId"
@@ -44,7 +61,7 @@ export function ViajeFields({
             defaultValue={defaultViajeId ?? ""}
             className={selectClass}
           >
-            <option value="">— Sin viaje —</option>
+            <option value="">— Sin {rotulo.toLowerCase()} —</option>
             {viajes.map((v) => (
               <option key={v.id} value={v.id}>
                 {etiquetaDeViaje(v)}
@@ -76,7 +93,7 @@ export function ViajeFields({
       )}
       <p className="col-span-2 text-xs text-foreground/50">
         {ayudaViaje ??
-          "El viaje agrupa lo del camión y hace que los pagos de ese viaje se imputen ahí adentro. El destinatario es a nombre de quién sale el papel: la deuda sigue siendo de esta cuenta, pero la factura y el libro de IVA salen con su CUIT."}
+          `${rotulo} separa esta parte de la cuenta, con su propio saldo, y hace que los pagos que le pongas se imputen ahí adentro. El destinatario es a nombre de quién sale el papel: la deuda sigue siendo de esta cuenta, pero la factura y el libro de IVA salen con su CUIT.`}
       </p>
     </div>
   );

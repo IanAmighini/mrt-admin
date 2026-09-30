@@ -35,6 +35,7 @@ export function CuentaCorrientePanel({
   items,
   viajes,
   destinatarios,
+  rotuloSubcuenta,
 }: {
   entityId: string;
   entityName: string;
@@ -66,6 +67,8 @@ export function CuentaCorrientePanel({
    * cuelga. Vacío en quien no los usa, y ahí los selectores ni aparecen. */
   viajes?: ViajeOption[];
   destinatarios?: DestinatarioOption[];
+  /** Cómo llama esta ficha a las partes de su cuenta: "Viaje", "Subcuenta". */
+  rotuloSubcuenta?: string;
 }) {
   const isTreasury = entityType === "TESORERIA";
   const isCliente = entityType !== "PROVEEDOR";
@@ -88,6 +91,7 @@ export function CuentaCorrientePanel({
                   proveedores={isCliente ? proveedores : undefined}
                   cartera={cartera}
                   viajes={viajes}
+                  rotuloSubcuenta={rotuloSubcuenta}
                 />
               </FormModal>
             )}
@@ -108,6 +112,8 @@ export function CuentaCorrientePanel({
                   rubroGasto={rubroGasto}
                   isTreasury={isTreasury}
                   items={items ?? []}
+                  viajes={viajes}
+                  rotuloSubcuenta={rotuloSubcuenta}
                 />
               </FormModal>
             ) : (
@@ -117,6 +123,7 @@ export function CuentaCorrientePanel({
                   isTreasury={isTreasury}
                   viajes={viajes}
                   destinatarios={destinatarios}
+                  rotuloSubcuenta={rotuloSubcuenta}
                 />
               </FormModal>
             )}

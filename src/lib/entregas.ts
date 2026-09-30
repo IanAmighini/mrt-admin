@@ -50,6 +50,9 @@ export type EntregaConSaldo = {
   total: Prisma.Decimal;
   cobrado: Prisma.Decimal;
   saldo: Prisma.Decimal;
+  /** El saldo abierto por circuito. Una parte puede tocar los dos —un camión lleva remitos en
+   * negro y facturas en blanco— y sin esto no hay forma de decir qué quedó afuera de cada cuenta. */
+  saldoPorCircuito: Record<"BLANCO" | "NEGRO", Prisma.Decimal>;
   comprobantes: number;
 };
 
@@ -61,13 +64,28 @@ export async function getEntregasDeEntidad(entityId: string): Promise<EntregaCon
   const entregas = await prisma.entrega.findMany({
     where: { entityId },
     orderBy: [{ fecha: "desc" }, { createdAt: "desc" }],
-    include: { documents: { select: DOC_SELECT }, payments: { select: { amount: true } } },
+    include: {
+      documents: { select: DOC_SELECT },
+      payments: { select: { amount: true, account: { select: { circuit: true } } } },
+    },
   });
 
   return entregas.map((e) => {
     const total = totalDeDocumentos(e.documents);
     const cobrado = sumDecimals(e.payments.map((p) => toDecimal(p.amount)));
+    const saldoPorCircuito = { BLANCO: ZERO, NEGRO: ZERO };
+    for (const doc of e.documents) {
+      saldoPorCircuito[doc.account.circuit] = saldoPorCircuito[doc.account.circuit].plus(
+        getDocumentEffect(doc)
+      );
+    }
+    for (const pago of e.payments) {
+      saldoPorCircuito[pago.account.circuit] = saldoPorCircuito[pago.account.circuit].minus(
+        toDecimal(pago.amount)
+      );
+    }
     return {
+      saldoPorCircuito,
       id: e.id,
       nombre: e.nombre,
       destino: e.destino,

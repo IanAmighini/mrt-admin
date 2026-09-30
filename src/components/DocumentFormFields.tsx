@@ -57,6 +57,7 @@ export function DocumentFormFields({
   defaultValues,
   viajes,
   destinatarios,
+  rotuloSubcuenta,
 }: {
   fixedEntityId?: string;
   isTreasury?: boolean;
@@ -64,6 +65,7 @@ export function DocumentFormFields({
    * camión, no el general— y para poder decir a nombre de quién salió. */
   viajes?: ViajeOption[];
   destinatarios?: DestinatarioOption[];
+  rotuloSubcuenta?: string;
   /** Si viene, el formulario edita ese comprobante en vez de crear uno nuevo. */
   editingDocumentId?: string;
   /** Al editar: el circuito de la cuenta, que no se puede cambiar desde acá. */
@@ -295,6 +297,7 @@ export function DocumentFormFields({
       <ViajeFields
         viajes={viajes}
         destinatarios={destinatarios}
+        rotulo={rotuloSubcuenta}
         defaultViajeId={defaultValues?.entregaId}
         defaultDestinatarioId={defaultValues?.destinatarioId}
       />

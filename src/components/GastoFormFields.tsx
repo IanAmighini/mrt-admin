@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ViajeFields, type ViajeOption } from "./ViajeFields";
 import { EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_ORDER } from "@/lib/labels";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { ImpuestosFields } from "./ImpuestosFields";
@@ -27,6 +28,7 @@ export type GastoDefaults = {
   retentionAmount?: string;
   /** Los montos del desglose, con las mismas claves que los campos: `ivaBase_21`, `percepcionIibb`… */
   tributos?: Record<string, string>;
+  entregaId?: string | null;
 };
 
 export function GastoFormFields({
@@ -34,6 +36,8 @@ export function GastoFormFields({
   proveedores,
   editingDocumentId,
   defaultValues,
+  viajes,
+  rotuloSubcuenta,
 }: {
   /** Si viene, el proveedor queda fijo (se abre desde su ficha). */
   entityId?: string;
@@ -43,6 +47,10 @@ export function GastoFormFields({
   /** Si viene, el formulario edita ese gasto en vez de crear uno nuevo. */
   editingDocumentId?: string;
   defaultValues?: GastoDefaults;
+  /** Las partes en que se divide la cuenta de este proveedor, si la divide: el alquiler y los
+   * gastos comunes de Goloeste. Vacío en los demás y ahí el selector no aparece. */
+  viajes?: ViajeOption[];
+  rotuloSubcuenta?: string;
 }) {
   const [circuit, setCircuit] = useState<"BLANCO" | "NEGRO">(defaultValues?.circuit ?? "BLANCO");
   const [currency, setCurrency] = useState(defaultValues?.currency ?? "ARS");
@@ -256,6 +264,13 @@ export function GastoFormFields({
           {formatMoney(totalVivo, currency as "ARS" | "USD")}
         </span>
       </div>
+
+      <ViajeFields
+        viajes={viajes}
+        mostrarDestinatario={false}
+        rotulo={rotuloSubcuenta}
+        defaultViajeId={defaultValues?.entregaId}
+      />
 
       <button type="submit" className={submitClass}>
         {editingDocumentId ? "Guardar cambios" : "Cargar gasto"}

@@ -37,6 +37,7 @@ export function PaymentFormFields({
   cartera,
   viajes,
   defaultViajeId,
+  rotuloSubcuenta,
 }: {
   entities?: Entity[];
   entityNoun?: string;
@@ -52,6 +53,7 @@ export function PaymentFormFields({
   /** Los viajes del cliente. Elegir uno acota la imputación a ese viaje. */
   viajes?: ViajeOption[];
   defaultViajeId?: string | null;
+  rotuloSubcuenta?: string;
 }) {
   const isCobro = entityNoun === "Cliente";
 
@@ -365,8 +367,9 @@ export function PaymentFormFields({
       <ViajeFields
         viajes={viajes}
         mostrarDestinatario={false}
+        rotulo={rotuloSubcuenta}
         defaultViajeId={defaultViajeId}
-        ayudaViaje="El pago cancela comprobantes de ese viaje y de ninguno más. Sin viaje, sólo cancela lo que tampoco tiene viaje."
+        ayudaViaje={`El pago cancela comprobantes de ${(rotuloSubcuenta ?? "ese viaje").toLowerCase() === "viaje" ? "ese viaje" : `esa ${(rotuloSubcuenta ?? "").toLowerCase()}`} y de ninguna otra parte. Sin elegir nada, sólo cancela lo que tampoco la tiene.`}
       />
 
       <button type="submit" className={submitClass}>

@@ -22,6 +22,7 @@ export function EditPaymentFields({
   proveedores,
   viajes,
   defaultViajeId,
+  rotuloSubcuenta,
 }: {
   paymentId: string;
   /** Moneda de la cuenta del pago: en dólares se edita en pesos y se convierte, igual que al crear. */
@@ -46,6 +47,7 @@ export function EditPaymentFields({
   /** Los viajes del cliente, para poder mover el pago de un camión a otro. */
   viajes?: ViajeOption[];
   defaultViajeId?: string | null;
+  rotuloSubcuenta?: string;
 }) {
   const isCobro = proveedores !== undefined;
 
@@ -190,8 +192,9 @@ export function EditPaymentFields({
       <ViajeFields
         viajes={viajes}
         mostrarDestinatario={false}
+        rotulo={rotuloSubcuenta}
         defaultViajeId={defaultViajeId}
-        ayudaViaje="El pago cancela comprobantes de ese viaje y de ninguno más. Sin viaje, sólo cancela lo que tampoco tiene viaje."
+        ayudaViaje={`El pago cancela comprobantes de ${(rotuloSubcuenta ?? "ese viaje").toLowerCase() === "viaje" ? "ese viaje" : `esa ${(rotuloSubcuenta ?? "").toLowerCase()}`} y de ninguna otra parte. Sin elegir nada, sólo cancela lo que tampoco la tiene.`}
       />
 
       <p className="text-xs text-foreground/50">

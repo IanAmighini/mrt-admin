@@ -175,7 +175,7 @@ export function EntityFormFields({
         </label>
         </>
       )}
-      {(!esProveedor || entity?.llevaViajes) && (
+      <div className="space-y-2">
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
@@ -184,15 +184,32 @@ export function EntityFormFields({
             className="mt-0.5"
           />
           <span>
-            Entrega por viajes
+            Dividir la cuenta en partes
             <span className="block text-xs text-foreground/50">
-              Para el distribuidor que retira camiones con varios remitos para sus propios
-              clientes. Suma a su ficha el panel de viajes y el de destinatarios, y hace que cada
-              cobro se impute contra el viaje que le digas en vez de contra lo más viejo.
+              Para el distribuidor que retira camiones con varios remitos, o el proveedor que te
+              cobra dos cosas distintas —el alquiler y los gastos comunes—. Cada parte lleva su
+              propio saldo, y un pago cancela sólo lo de la parte que elijas en vez de lo más viejo
+              de toda la cuenta.
             </span>
           </span>
         </label>
-      )}
+        <div className="space-y-1 pl-6">
+          <label className="text-sm" htmlFor="rotuloSubcuenta">
+            Cómo se llaman esas partes, en singular
+          </label>
+          <input
+            id="rotuloSubcuenta"
+            name="rotuloSubcuenta"
+            placeholder="Viaje"
+            defaultValue={entity?.rotuloSubcuenta ?? ""}
+            className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+          />
+          <p className="text-xs text-foreground/50">
+            Es la palabra que va a aparecer en los formularios y en el panel de la ficha:
+            “Viaje” para los camiones, “Subcuenta” para el alquiler y los gastos. Vacío = Viaje.
+          </p>
+        </div>
+      </div>
       {esProveedor && (
         <label className="flex items-start gap-2 text-sm">
           <input

@@ -68,6 +68,7 @@ export default async function AccountLedgerPage({
   if (entityParam !== entity.slug) redirect(`/cuentas-corrientes/${entity.slug}/${circuitSlug}`);
   const entityId = entity.id;
   const monedaCuenta = entity.moneda;
+  const rotuloSubcuenta = entity.rotuloSubcuenta ?? "Viaje";
 
   const account = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId, circuit } },
@@ -144,6 +145,7 @@ export default async function AccountLedgerPage({
                 proveedorCircuit: linkedPayment?.account.circuit,
               }}
               viajes={viajes}
+              rotuloSubcuenta={rotuloSubcuenta}
               defaultViajeId={payment.entregaId}
             />
           </FormModal>
@@ -201,6 +203,7 @@ export default async function AccountLedgerPage({
               defaultLines={defaultLines}
               viajes={viajes}
               destinatarios={destinatarios}
+              rotuloSubcuenta={rotuloSubcuenta}
             />
           </FormModal>
           <DeleteButton

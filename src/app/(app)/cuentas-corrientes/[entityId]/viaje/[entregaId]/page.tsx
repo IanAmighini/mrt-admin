@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { getEntregaDetalle } from "@/lib/entregas";
 import { formatMoney } from "@/lib/money";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { generoDe } from "@/components/ViajeFields";
 
 /**
  * El cuadro de un viaje: lo que se le cargó, lo que pagó y el saldo que queda, en una sola
@@ -23,6 +24,7 @@ export default async function ViajePage({
 
   const { entrega, movimientos, total, cobrado, saldo } = detalle;
   const moneda = entrega.entity.moneda;
+  const rotulo = entrega.entity.rotuloSubcuenta ?? "Viaje";
 
   return (
     <div className="space-y-6">
@@ -41,7 +43,9 @@ export default async function ViajePage({
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-foreground/50">Saldo del viaje</p>
+            <p className="text-xs text-foreground/50">
+              Saldo de {generoDe(rotulo).este} {rotulo.toLowerCase()}
+            </p>
             <p
               className={`text-2xl font-semibold tabular-nums ${
                 saldo.isNegative() ? "text-green-700 dark:text-green-400" : ""
@@ -122,8 +126,8 @@ export default async function ViajePage({
             {movimientos.length === 0 && (
               <tr>
                 <td colSpan={6} className="py-8 text-center text-foreground/40">
-                  Todavía no hay nada cargado en este viaje. Los remitos y los pagos se le asignan
-                  desde su propio formulario, eligiéndolo en &quot;Viaje&quot;.
+                  Todavía no hay nada acá. Los comprobantes y los pagos se asignan desde su propio
+                  formulario, eligiendo &quot;{rotulo}&quot;.
                 </td>
               </tr>
             )}

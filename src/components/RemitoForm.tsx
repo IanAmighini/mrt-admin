@@ -17,6 +17,7 @@ export function RemitoFormFields({
   pedidosPendientes,
   viajes,
   destinatarios,
+  rotuloSubcuenta,
 }: {
   entityId: string;
   products: Product[];
@@ -42,6 +43,7 @@ export function RemitoFormFields({
    * selectores no se muestran y el formulario queda como estaba. */
   viajes?: ViajeOption[];
   destinatarios?: DestinatarioOption[];
+  rotuloSubcuenta?: string;
 }) {
   return (
     <>
@@ -75,6 +77,7 @@ export function RemitoFormFields({
       <ViajeFields
         viajes={viajes}
         destinatarios={destinatarios}
+        rotulo={rotuloSubcuenta}
         defaultViajeId={defaultValues?.entregaId}
         defaultDestinatarioId={defaultValues?.destinatarioId}
       />

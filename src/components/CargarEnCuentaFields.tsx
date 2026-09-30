@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ViajeOption } from "./ViajeFields";
 import { ArrowLeft, Package, Receipt, Scale } from "lucide-react";
 import type { Entity } from "@prisma/client";
 import { GastoFormFields } from "./GastoFormFields";
@@ -25,6 +26,8 @@ export function CargarEnCuentaFields({
   rubroGasto,
   isTreasury,
   items,
+  viajes,
+  rotuloSubcuenta,
 }: {
   entityId: string;
   entityName: string;
@@ -32,6 +35,9 @@ export function CargarEnCuentaFields({
   isTreasury?: boolean;
   /** Los insumos, para el formulario de compra. */
   items: ItemDeCompra[];
+  /** Las partes de la cuenta de este proveedor, si la divide. */
+  viajes?: ViajeOption[];
+  rotuloSubcuenta?: string;
 }) {
   const [vista, setVista] = useState<Vista>("");
 
@@ -98,9 +104,16 @@ export function CargarEnCuentaFields({
             <GastoFormFields
               entityId={entityId}
               defaultValues={{ expenseCategory: rubroGasto ?? undefined }}
+              viajes={viajes}
+              rotuloSubcuenta={rotuloSubcuenta}
             />
           ) : (
-            <DocumentFormFields fixedEntityId={entityId} isTreasury={isTreasury} />
+            <DocumentFormFields
+              fixedEntityId={entityId}
+              isTreasury={isTreasury}
+              viajes={viajes}
+              rotuloSubcuenta={rotuloSubcuenta}
+            />
           )}
         </div>
       )}

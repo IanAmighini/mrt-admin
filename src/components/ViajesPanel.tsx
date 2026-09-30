@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { Truck } from "lucide-react";
+import type { Prisma } from "@prisma/client";
 import { formatMoney } from "@/lib/money";
 import type { EntregaConSaldo } from "@/lib/entregas";
-import type { DestinatarioOption } from "./ViajeFields";
+import { generoDe, type DestinatarioOption } from "./ViajeFields";
 import { FormModal } from "./Modal";
 import { DeleteButton } from "./DeleteButton";
 import {
@@ -29,6 +30,9 @@ export function ViajesPanel({
   viajes,
   destinatarios,
   canEdit,
+  rotulo = "Viaje",
+  sinAsignar,
+  mostrarDestinatarios = true,
 }: {
   entityId: string;
   entitySlug: string;
@@ -37,20 +41,34 @@ export function ViajesPanel({
   viajes: EntregaConSaldo[];
   destinatarios: DestinatarioOption[];
   canEdit: boolean;
+  /** Cómo llama esta ficha a sus partes: "Viaje", "Subcuenta". */
+  rotulo?: string;
+  /** Lo que queda de la cuenta fuera de estas partes. Se muestra para que los números cierren:
+   * sin esto, la suma de las partes no da el saldo de la ficha y no hay forma de saber por qué. */
+  sinAsignar: { circuito: "BLANCO" | "NEGRO"; monto: Prisma.Decimal }[];
+  /** El destinatario sólo tiene sentido donde el papel sale a nombre de un tercero. */
+  mostrarDestinatarios?: boolean;
 }) {
+  const plural = `${rotulo}s`;
+  const genero = generoDe(rotulo);
   return (
     <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Truck size={16} className="text-foreground/60" />
-          <h2 className="text-sm font-semibold">Viajes</h2>
+          <h2 className="text-sm font-semibold">{plural}</h2>
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
-            <FormModal triggerLabel="Nuevo viaje" title={`Nuevo viaje — ${entityName}`} action={crearEntrega}>
+            <FormModal
+              triggerLabel={`${genero.nuevo} ${rotulo.toLowerCase()}`}
+              title={`${genero.nuevo} ${rotulo.toLowerCase()} — ${entityName}`}
+              action={crearEntrega}
+            >
               <input type="hidden" name="entityId" value={entityId} />
-              <ViajeCampos />
+              <ViajeCampos rotulo={rotulo} />
             </FormModal>
+            {mostrarDestinatarios && (
             <FormModal
               triggerLabel="Nuevo destinatario"
               title={`Nuevo destinatario — por cuenta de ${entityName}`}
@@ -69,6 +87,7 @@ export function ViajesPanel({
                 Agregar
               </button>
             </FormModal>
+            )}
           </div>
         )}
       </div>
@@ -108,6 +127,7 @@ export function ViajesPanel({
                   >
                     <input type="hidden" name="entregaId" value={v.id} />
                     <ViajeCampos
+                      rotulo={rotulo}
                       defaultValues={{
                         nombre: v.nombre,
                         destino: v.destino ?? "",
@@ -131,10 +151,24 @@ export function ViajesPanel({
         ))}
         {viajes.length === 0 && (
           <p className="py-4 text-center text-sm text-foreground/40">
-            Todavía no hay viajes. Sirven cuando un camión sale con varios remitos y {entityName} va
-            pagando viaje por viaje.
+            Todavía no hay nada. Sirve para partir la cuenta de {entityName} en pedazos con saldo
+            propio, y que cada pago cancele sólo lo de su parte.
           </p>
         )}
+        {/* Sin esta fila la suma de las partes no da el saldo de la ficha y no hay manera de
+            saber qué quedó afuera: el saldo inicial viejo, o algo cargado sin elegir la parte. */}
+        {sinAsignar
+          .filter((s) => !s.monto.isZero())
+          .map((s) => (
+            <div key={s.circuito} className="flex items-center justify-between gap-3 pt-1 text-sm">
+              <span className="text-foreground/60">
+                Sin asignar · cuenta {s.circuito === "BLANCO" ? "Blanco" : "Negro"}
+              </span>
+              <span className="font-medium tabular-nums text-foreground/60">
+                {formatMoney(s.monto, moneda)}
+              </span>
+            </div>
+          ))}
       </div>
 
       {destinatarios.length > 0 && (
@@ -184,9 +218,11 @@ export function ViajesPanel({
 }
 
 function ViajeCampos({
+  rotulo = "Viaje",
   defaultValues,
-  submitLabel = "Crear viaje",
+  submitLabel,
 }: {
+  rotulo?: string;
   defaultValues?: { nombre: string; destino: string; fecha: string; notas: string };
   submitLabel?: string;
 }) {
@@ -197,7 +233,7 @@ function ViajeCampos({
           <input
             name="nombre"
             required
-            placeholder="Camión 4"
+            placeholder={rotulo === "Viaje" ? "Camión 4" : "Alquiler"}
             defaultValue={defaultValues?.nombre}
             className={inputClass}
           />
@@ -224,7 +260,7 @@ function ViajeCampos({
         </Campo>
       </div>
       <button type="submit" className={submitClass}>
-        {submitLabel}
+        {submitLabel ?? `Crear ${rotulo.toLowerCase()}`}
       </button>
     </>
   );

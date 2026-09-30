@@ -21,7 +21,7 @@ import {
 import { getCurrentPricesForAccount, getPriceHistory } from "@/lib/pricing";
 import { getCarteraParaFormulario } from "@/lib/cheques";
 import { getPagosSinOrden } from "@/lib/orden-pago";
-import { formatMoney, formatNumeroEditable, formatQuantity, toDecimal } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, formatQuantity, sumDecimals, toDecimal } from "@/lib/money";
 import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { formatProductLabel as productLabel } from "@/lib/product-label";
 import { createPrice } from "./actions";
@@ -167,7 +167,7 @@ export default async function EntityLedgerPage({
     entity.llevaViajes ? getEntregasParaElegir(entity.id) : Promise.resolve([]),
   ]);
 
-  const hayPanelIzquierdo = isCliente || recentCompras.length > 0;
+  const hayPanelIzquierdo = isCliente || recentCompras.length > 0 || entity.llevaViajes;
 
   let card3Label = "Entregas";
   let card3Value = "0";
@@ -282,6 +282,22 @@ export default async function EntityLedgerPage({
               viajes={viajes}
               destinatarios={destinatarios}
               canEdit={canEdit}
+              rotulo={entity.rotuloSubcuenta ?? "Viaje"}
+              mostrarDestinatarios={isCliente}
+              sinAsignar={[
+                {
+                  circuito: "BLANCO" as const,
+                  monto: toDecimal(blancoSaldo).minus(
+                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.BLANCO))
+                  ),
+                },
+                {
+                  circuito: "NEGRO" as const,
+                  monto: toDecimal(negroSaldo).minus(
+                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.NEGRO))
+                  ),
+                },
+              ]}
             />
           )}
           {/* Sin compras el panel no tiene nada que mostrar, y en la mitad de los proveedores
@@ -294,6 +310,7 @@ export default async function EntityLedgerPage({
         <CuentaCorrientePanel
           viajes={viajesParaElegir}
           destinatarios={destinatarios}
+          rotuloSubcuenta={entity.rotuloSubcuenta ?? "Viaje"}
           entityId={entity.id}
           entityName={entity.name}
           entityType={entity.type}
