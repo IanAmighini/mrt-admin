@@ -7,6 +7,7 @@ import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getProductMovements, getProductStock } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
 import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
+import { formatPallets } from "@/lib/product-label";
 import { toDateInputValue } from "@/lib/period";
 import {
   createProductMovement,
@@ -79,7 +80,7 @@ export default async function ProductDetailPage({
               )}
             </p>
           </div>
-          <p className="text-lg font-semibold">{formatQuantity(stock)}</p>
+          <p className="text-lg font-semibold">{formatPallets(stock, product.boxesPerPallet)}</p>
         </div>
       </div>
 
@@ -429,7 +430,7 @@ export default async function ProductDetailPage({
                     }`}
                   >
                     {m.quantity.greaterThan(0) ? "+" : ""}
-                    {formatQuantity(m.quantity)}
+                    {formatPallets(m.quantity, product.boxesPerPallet)}
                   </td>
                   <td className="py-2 pr-4">{m.reason}</td>
                   <td className="py-2 pr-4">{m.createdBy.name}</td>

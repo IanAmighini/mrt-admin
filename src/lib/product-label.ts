@@ -30,3 +30,33 @@ export function formatProductLabel(product: ProductLabelInput): string {
   const ml = product.bottleCapacityMl ? ` — ${formatQuantity(product.bottleCapacityMl)}ml` : "";
   return `${formatProductBrandLabel(product)}${ml}`;
 }
+
+/**
+ * Cantidad de producto terminado en pallets y cajas, que es como se cuenta en el depósito.
+ *
+ * El stock se guarda en pallets con decimales —media docena de cajas sueltas es una fracción— pero
+ * "17,952 pallets" no se parece a nada que se pueda ir a contar. Con las cajas por pallet del
+ * producto se vuelve a "17 pallets + 80 cajas", que es lo que está anotado en la planilla.
+ */
+export function formatPallets(
+  cantidad: Prisma.Decimal | number | string,
+  boxesPerPallet: number | null
+): string {
+  const total = Number(cantidad);
+  const signo = total < 0 ? "-" : "";
+  const abs = Math.abs(total);
+  const enteros = Math.floor(abs);
+  // Sin cajas por pallet no hay a qué convertir la fracción, así que se muestra como viene.
+  if (!boxesPerPallet) return `${formatQuantity(total)} pallets`;
+
+  const cajas = Math.round((abs - enteros) * boxesPerPallet);
+  // Redondear la fracción puede completar un pallet: 0,999 × 84 = 84 cajas, que son 1 pallet.
+  const pallets = cajas === boxesPerPallet ? enteros + 1 : enteros;
+  const sueltas = cajas === boxesPerPallet ? 0 : cajas;
+
+  const partes: string[] = [];
+  if (pallets > 0) partes.push(`${formatQuantity(pallets)} ${pallets === 1 ? "pallet" : "pallets"}`);
+  if (sueltas > 0) partes.push(`${formatQuantity(sueltas)} ${sueltas === 1 ? "caja" : "cajas"}`);
+  if (partes.length === 0) return "0 pallets";
+  return signo + partes.join(" + ");
+}

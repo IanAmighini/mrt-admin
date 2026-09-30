@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
 import { formatQuantity } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
+import { formatPallets } from "@/lib/product-label";
 import { compareItemsBySize } from "@/lib/item-order";
 import { FormModal } from "@/components/Modal";
 import { ItemMovementFields } from "@/components/ItemMovementFields";
@@ -108,7 +109,7 @@ export default async function StockPage({
                 <th className="py-2 px-4">Marca</th>
                 <th className="py-2 px-4">Tipo de aceite</th>
                 <th className="py-2 px-4">Formato</th>
-                <th className="py-2 px-4">Stock (pallets)</th>
+                <th className="py-2 px-4">Stock</th>
               </tr>
             </thead>
             <tbody>
@@ -124,7 +125,7 @@ export default async function StockPage({
                       </Link>
                     </td>
                     <td className={`py-2 px-4 font-medium ${negative ? "text-red-600 dark:text-red-400" : ""}`}>
-                      {formatQuantity(stock, "pallets")}
+                      {formatPallets(stock, product.boxesPerPallet)}
                     </td>
                   </tr>
                 );
