@@ -1,15 +1,17 @@
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentRemitos } from "@/lib/ledger";
 import { getAllCurrentPrices } from "@/lib/pricing";
-import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, formatQuantity, sumDecimals } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { RemitoFormFields } from "@/components/RemitoForm";
+import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
+import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { deleteRemito, updateRemito } from "../cuentas-corrientes/[entityId]/actions";
-import { toDateInputValue } from "@/lib/period";
+import { addDays, toDateInputValue } from "@/lib/period";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -20,16 +22,22 @@ const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
 export default async function EntregasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; pago?: string }>;
+  searchParams: Promise<{ q?: string; pago?: string; from?: string; to?: string }>;
 }) {
-  const { q, pago } = await searchParams;
+  const { q, pago, from, to } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const pagoFilter = PAGO_FILTERS.some((f) => f.value === pago) ? (pago as "" | "pagado" | "sin_pagar") : "";
+  // El rango va a la consulta: el `take` de 500 recorta antes que cualquier filtro en memoria.
+  const period = {
+    from: from ? new Date(`${from}T00:00:00`) : null,
+    to: to ? addDays(new Date(`${to}T00:00:00`), 1) : null,
+  };
+  const hayFiltro = Boolean(q?.trim() || pagoFilter || from || to);
 
   const [remitos, products, allPrices, todosLosViajes, todosLosDestinatarios] = await Promise.all([
-    getRecentRemitos(500, undefined, q),
+    getRecentRemitos(500, undefined, q, period),
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
     }),
@@ -92,12 +100,25 @@ export default async function EntregasPage({
     return true;
   });
 
+  // Cuánto se entregó y cuánto falta cobrar de lo que se está viendo.
+  const totalEntregado = sumDecimals(filteredRows.map((r) => r.doc.totalAmount));
+  const totalPendiente = sumDecimals(filteredRows.map((r) => getDocumentPending(r.doc)));
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold mb-1">Entregas</h1>
-          <p className="text-sm text-foreground/60">{filteredRows.length} entregas registradas</p>
+          <p className="text-sm text-foreground/60">
+            {filteredRows.length} {filteredRows.length === 1 ? "entrega" : "entregas"} ·{" "}
+            {formatMoney(totalEntregado)}
+            {totalPendiente.greaterThan(0) && (
+              <span className="text-amber-600 dark:text-amber-400">
+                {" "}
+                · {formatMoney(totalPendiente)} sin cobrar
+              </span>
+            )}
+          </p>
         </div>
         {canEdit && (
           <Link
@@ -110,69 +131,43 @@ export default async function EntregasPage({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <form className="flex flex-1 min-w-[240px] gap-2">
-          {pagoFilter && <input type="hidden" name="pago" value={pagoFilter} />}
-          <div className="relative flex-1">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
-            <input
-              type="text"
-              name="q"
-              defaultValue={q}
-              placeholder="Buscar por cliente o remito…"
-              className="w-full rounded-lg border border-foreground/20 bg-background py-2 pl-9 pr-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            />
-          </div>
-          <button type="submit" className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5">
-            Buscar
-          </button>
-        </form>
-        <div className="flex flex-wrap gap-1">
-          {PAGO_FILTERS.map((f) => (
-            <Link
-              key={f.value}
-              href={{ pathname: "/entregas", query: { ...(q ? { q } : {}), ...(f.value ? { pago: f.value } : {}) } }}
-              className={`rounded px-3 py-1.5 text-sm ${
-                pagoFilter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-foreground/20 hover:bg-foreground/5"
-              }`}
-            >
-              {f.label}
-            </Link>
-          ))}
-        </div>
-      </div>
+      <FilterBar limpiarHref="/entregas" hayFiltro={hayFiltro}>
+        <FiltroBuscar defaultValue={q} placeholder="Cliente o número de remito…" />
+        <FiltroSelect
+          label="Cobro"
+          name="pago"
+          defaultValue={pagoFilter}
+          opciones={PAGO_FILTERS.filter((f) => f.value).map((f) => ({ value: f.value, label: f.label }))}
+        />
+        <FiltroFechas from={from} to={to} />
+      </FilterBar>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-foreground/10 text-left text-foreground/60">
-              <th className="py-2 pr-4">Remito</th>
-              <th className="py-2 pr-4">Cliente</th>
-              <th className="py-2 pr-4">Fecha</th>
-              <th className="py-2 pr-4">Pallets</th>
-              <th className="py-2 pr-4">Total</th>
-              <th className="py-2 pr-4">Pago</th>
-              {canEdit && <th className="py-2 pr-4">Acciones</th>}
-            </tr>
-          </thead>
+      <Table>
+        <Thead>
+          <Th>Remito</Th>
+          <Th>Cliente</Th>
+          <Th>Fecha</Th>
+          <Th align="derecha">Pallets</Th>
+          <Th align="derecha">Total</Th>
+          <Th>Pago</Th>
+          {canEdit && <Th>Acciones</Th>}
+        </Thead>
           <tbody>
             {filteredRows.map(({ doc, pallets, pagado, defaultLines }) => (
-              <tr key={doc.id} className="border-b border-foreground/5">
-                <td className="py-2 pr-4">#{doc.number}</td>
-                <td className="py-2 pr-4">
+              <Tr key={doc.id}>
+                <Td className="whitespace-nowrap">#{doc.number}</Td>
+                <Td>
                   <Link
                     href={`/cuentas-corrientes/${doc.account.entity.slug}`}
                     className="underline underline-offset-2"
                   >
                     {doc.account.entity.name}
                   </Link>
-                </td>
-                <td className="py-2 pr-4">{doc.date.toLocaleDateString("es-AR")}</td>
-                <td className="py-2 pr-4">{formatQuantity(pallets, "pallets")}</td>
-                <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
-                <td className="py-2 pr-4">
+                </Td>
+                <Td className="whitespace-nowrap">{doc.date.toLocaleDateString("es-AR")}</Td>
+                <Td numero>{formatQuantity(pallets, "pallets")}</Td>
+                <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
+                <Td>
                   <span
                     className={`rounded px-2 py-1 text-xs font-medium ${
                       pagado
@@ -182,9 +177,9 @@ export default async function EntregasPage({
                   >
                     {pagado ? "Pagado" : "Sin pagar"}
                   </span>
-                </td>
+                </Td>
                 {canEdit && (
-                  <td className="py-2 pr-4">
+                  <Td>
                     <div className="flex items-center gap-2">
                       <FormModal
                         triggerLabel="Editar"
@@ -219,20 +214,17 @@ export default async function EntregasPage({
                         nombre={`el remito #${doc.number}`}
                       />
                     </div>
-                  </td>
+                  </Td>
                 )}
-              </tr>
+              </Tr>
             ))}
             {filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={canEdit ? 7 : 6} className="py-6 text-center text-foreground/40">
-                  {q || pagoFilter ? "No hay entregas con este filtro." : "Todavía no hay entregas cargadas."}
-                </td>
-              </tr>
+              <TableEmpty colSpan={canEdit ? 7 : 6}>
+                {hayFiltro ? "No hay entregas con este filtro." : "Todavía no hay entregas cargadas."}
+              </TableEmpty>
             )}
           </tbody>
-        </table>
-      </div>
+        </Table>
     </div>
   );
 }
