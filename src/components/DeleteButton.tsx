@@ -75,10 +75,12 @@ export function DeleteButton({
           setMensaje(null);
           dialogRef.current?.showModal();
         }}
-        className={botonRojo}
+        className={gatillo}
+        aria-label={`Eliminar ${nombre}`}
+        title={`Eliminar ${nombre}`}
       >
         <Trash2 size={16} />
-        {label}
+        <span className="sr-only">{label}</span>
       </button>
       <dialog
         ref={dialogRef}
@@ -125,5 +127,19 @@ export function DeleteButton({
 }
 
 /** Mismo cuerpo que el botón de editar (el trigger de FormModal), en rojo. */
+/**
+ * El que abre el diálogo es un tachito gris que se pone rojo al pasarle el mouse.
+ *
+ * Antes era el botón rojo lleno, repetido en cada fila: en una tabla de veinte movimientos son
+ * veinte manchas rojas, y el rojo es lo que más tira del ojo en una pantalla — se termina
+ * mirando la columna de borrar antes que los montos. El rojo queda para el botón de adentro del
+ * diálogo, que es donde la acción de verdad ocurre.
+ *
+ * El texto sigue estando para quien usa lector de pantalla, y el `title` lo muestra al pasar por
+ * encima.
+ */
+const gatillo =
+  "rounded-lg border border-transparent p-2 text-foreground/40 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/30 dark:hover:border-red-900/50 dark:hover:bg-red-950/40 dark:hover:text-red-400";
+
 const botonRojo =
   "flex w-fit items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-red-700";

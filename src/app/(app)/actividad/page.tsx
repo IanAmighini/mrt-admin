@@ -4,6 +4,9 @@ import { requireRole } from "@/lib/auth-helpers";
 import { formatDateTime, parseFecha } from "@/lib/period";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
+import { resolverDestinos } from "@/lib/actividad-destino";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
 const ACTION_LABELS: Record<AuditAction, string> = {
   CREATE: "Alta",
@@ -69,6 +72,9 @@ export default async function ActividadPage({
   ]);
 
   const entityTypes = entityTypeRows.map((r) => r.entityType);
+  // A dónde lleva cada fila. No hay un "detalle" que mostrar —el registro guarda qué se tocó, no
+  // el antes y el después— así que lo útil es poder abrir el registro afectado.
+  const destinos = await resolverDestinos(logs);
   const hayFiltro = Boolean(searchTerm || entityType || accionValida || userId || from || to);
 
   return (
@@ -113,10 +119,13 @@ export default async function ActividadPage({
           <Th>Acción</Th>
           <Th>Tipo</Th>
           <Th>Resumen</Th>
+          <Th />
         </Thead>
         <tbody>
-          {logs.map((log) => (
-            <Tr key={log.id}>
+          {logs.map((log) => {
+            const destino = destinos.get(log.id);
+            return (
+            <Tr key={log.id} className={destino ? "hover:bg-foreground/[0.03]" : ""}>
               <Td className="whitespace-nowrap">{formatDateTime(log.createdAt)}</Td>
               <Td className="whitespace-nowrap">{log.user.name}</Td>
               <Td>
@@ -125,11 +134,27 @@ export default async function ActividadPage({
                 </span>
               </Td>
               <Td>{log.entityType}</Td>
-              <Td>{log.summary}</Td>
+              <Td>
+                {destino ? (
+                  <Link href={destino} className="block hover:underline underline-offset-2">
+                    {log.summary}
+                  </Link>
+                ) : (
+                  log.summary
+                )}
+              </Td>
+              <Td className="w-6">
+                {destino && (
+                  <Link href={destino} aria-label="Ver el registro" className="block text-foreground/30 hover:text-foreground">
+                    <ChevronRight size={16} />
+                  </Link>
+                )}
+              </Td>
             </Tr>
-          ))}
+            );
+          })}
           {logs.length === 0 && (
-            <TableEmpty colSpan={5}>
+            <TableEmpty colSpan={6}>
               {hayFiltro ? "No hay actividad con este filtro." : "Todavía no hay actividad registrada."}
             </TableEmpty>
           )}
