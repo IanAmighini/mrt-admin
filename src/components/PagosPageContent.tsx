@@ -3,7 +3,7 @@ import type { EntityType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getRecentPayments, getTreasuries } from "@/lib/ledger";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, formatNumeroExacto } from "@/lib/money";
 import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
 import { DeleteButton } from "./DeleteButton";
@@ -143,7 +143,7 @@ export async function PagosPageContent({
                                   ? payment.amount.times(payment.exchangeRate)
                                   : payment.amount
                                 ).toString(),
-                                exchangeRate: payment.exchangeRate?.toString(),
+                                exchangeRate: formatNumeroExacto(payment.exchangeRate),
                                 reference: payment.reference ?? undefined,
                                 destino: defaultDestino,
                                 proveedorId: linkedPayment?.account.entityId,

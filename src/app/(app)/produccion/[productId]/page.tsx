@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getProductMovements, getProductStock } from "@/lib/stock";
-import { formatQuantity } from "@/lib/money";
+import { formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { formatPallets } from "@/lib/product-label";
 import { toDateInputValue } from "@/lib/period";
@@ -160,7 +160,7 @@ export default async function ProductDetailPage({
                 id="edit-bottleCapacityMl"
                 name="bottleCapacityMl"
                 inputMode="decimal"
-                defaultValue={product.bottleCapacityMl?.toString() ?? ""}
+                defaultValue={formatNumeroExacto(product.bottleCapacityMl)}
                 className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>

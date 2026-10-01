@@ -13,18 +13,28 @@ type Row = {
   pallets: string;
 };
 
+export type FilaDePedido = Omit<Row, "key">;
+
 const inputClass =
   "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-2 text-sm";
 
 export function PedidoLinesFields({
   marcas,
   formatos,
+  defaultRows,
 }: {
   marcas: MarcaInfo[];
   formatos: FormatoInfo[];
+  /** Al editar: las líneas que ya tiene el pedido. Sin esto el formulario abre vacío y al
+   * guardar reemplaza las que había. */
+  defaultRows?: FilaDePedido[];
 }) {
-  const [rows, setRows] = useState<Row[]>([{ key: 0, marcaId: "", formatoId: "", pallets: "" }]);
-  const [nextKey, setNextKey] = useState(1);
+  const [rows, setRows] = useState<Row[]>(() =>
+    defaultRows && defaultRows.length > 0
+      ? defaultRows.map((fila, i) => ({ key: i, ...fila }))
+      : [{ key: 0, marcaId: "", formatoId: "", pallets: "" }]
+  );
+  const [nextKey, setNextKey] = useState(() => Math.max(1, defaultRows?.length ?? 1));
 
   function updateRow(key: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));

@@ -20,6 +20,8 @@ type Row = {
   circuit: Circuit;
 };
 
+export type FilaDeCompra = Omit<Row, "key">;
+
 const filaVacia = (key: number): Row => ({
   key,
   itemId: "",
@@ -32,9 +34,21 @@ const filaVacia = (key: number): Row => ({
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-2 text-sm";
 const selectClass = inputClass;
 
-export function CompraLinesFields({ items }: { items: ItemInfo[] }) {
-  const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
-  const [nextKey, setNextKey] = useState(1);
+export function CompraLinesFields({
+  items,
+  defaultRows,
+}: {
+  items: ItemInfo[];
+  /** Al editar: las líneas que ya tiene la compra. Sin esto el formulario abre vacío y al
+   * guardar reemplaza las que había, junto con el stock que habían sumado. */
+  defaultRows?: FilaDeCompra[];
+}) {
+  const [rows, setRows] = useState<Row[]>(() =>
+    defaultRows && defaultRows.length > 0
+      ? defaultRows.map((fila, i) => ({ ...filaVacia(i), ...fila }))
+      : [filaVacia(0)]
+  );
+  const [nextKey, setNextKey] = useState(() => Math.max(1, defaultRows?.length ?? 1));
 
   function updateRow(key: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));

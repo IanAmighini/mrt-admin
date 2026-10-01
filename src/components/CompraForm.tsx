@@ -1,5 +1,5 @@
 import type { Item } from "@prisma/client";
-import { CompraLinesFields } from "./CompraLinesFields";
+import { CompraLinesFields, type FilaDeCompra } from "./CompraLinesFields";
 import { ImpuestosFields, type ImpuestosValores } from "./ImpuestosFields";
 import { FacturaDeCompraFields } from "./FacturaDeCompraFields";
 
@@ -10,6 +10,7 @@ export function CompraFormFields({
   defaultValues,
   impuestos,
   factura,
+  defaultRows,
 }: {
   entityId: string;
   items: Item[];
@@ -19,12 +20,14 @@ export function CompraFormFields({
   impuestos?: ImpuestosValores;
   /** La factura que la compra ya trae, al editar. */
   factura?: { number: string; date: string };
+  /** Las líneas que la compra ya tiene, al editar. */
+  defaultRows?: FilaDeCompra[];
 }) {
   return (
     <>
       <p className="text-xs text-foreground/50">
         {editingDocumentId
-          ? "Al guardar se reemplazan las líneas de esta compra por las que cargues acá, y el stock se recalcula."
+          ? "Al guardar se reemplazan las líneas de esta compra por las que queden acá, y el stock se recalcula. Vienen cargadas las que ya tenía."
           : "Al cargar la compra se suma el stock de cada insumo automáticamente y se imputa a la cuenta corriente del proveedor — una misma compra puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)."}
       </p>
       <input type="hidden" name="entityId" value={entityId} />
@@ -49,7 +52,10 @@ export function CompraFormFields({
           <input name="exchangeRate" defaultValue={defaultValues?.exchangeRate} className={inputClass} />
         </Field>
       </div>
-      <CompraLinesFields items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))} />
+      <CompraLinesFields
+        items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+        defaultRows={defaultRows}
+      />
       <ImpuestosFields defaults={impuestos} />
       <FacturaDeCompraFields defaultNumber={factura?.number} defaultDate={factura?.date} />
       <button type="submit" className={submitClass}>

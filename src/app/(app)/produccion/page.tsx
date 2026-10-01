@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { formatQuantity } from "@/lib/money";
+import { formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { getSetting } from "@/lib/settings";
 import { FormModal } from "@/components/Modal";
@@ -80,10 +80,7 @@ export default async function ProduccionPage() {
         marcaId:
           marcas.find((m) => m.name === line.product.name && m.oilType === line.product.oilType)?.id ?? "",
         formatoId: formatos.find((f) => f.presentation === line.product.presentation)?.id ?? "",
-        // Tal cual se guardó, con coma: los pallets llevan tres decimales (las cajas sueltas de
-        // un pallet a medio armar) y `formatNumeroEditable` redondea a dos, así que editar una
-        // corrida de 17,952 la habría guardado en 17,95 sin que nadie lo notara.
-        pallets: line.quantity.toString().replace(".", ","),
+        pallets: formatNumeroExacto(line.quantity),
         tapaUsadaItemId: usado.TAPAS ?? "",
         cajaUsadaItemId: usado.CAJAS ?? "",
         etiquetaUsadaItemId: usado.ETIQUETAS ?? "",

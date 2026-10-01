@@ -1,5 +1,5 @@
 import type { Entity } from "@prisma/client";
-import { PedidoLinesFields } from "./PedidoLinesFields";
+import { PedidoLinesFields, type FilaDePedido } from "./PedidoLinesFields";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
@@ -9,6 +9,7 @@ export function PedidoFormFields({
   marcas,
   formatos,
   editingPedidoId,
+  defaultRows,
   orderNumber,
   defaultValues,
 }: {
@@ -17,6 +18,8 @@ export function PedidoFormFields({
   formatos: FormatoInfo[];
   /** Si viene, el formulario edita este pedido en vez de crear uno nuevo. */
   editingPedidoId?: string;
+  /** Al editar: las líneas que ya tiene el pedido. */
+  defaultRows?: FilaDePedido[];
   /** Solo para mostrar en modo edición — el número de pedido no se puede cambiar a mano. */
   orderNumber?: string;
   defaultValues?: {
@@ -29,7 +32,8 @@ export function PedidoFormFields({
     <>
       {editingPedidoId && (
         <p className="text-xs text-foreground/50">
-          Al guardar se reemplazan las líneas de este pedido por las que cargues acá.
+          Al guardar se reemplazan las líneas de este pedido por las que queden acá. Vienen
+          cargadas las que ya tenía.
         </p>
       )}
       {editingPedidoId && <input type="hidden" name="pedidoId" value={editingPedidoId} />}
@@ -69,7 +73,7 @@ export function PedidoFormFields({
           <input name="comments" defaultValue={defaultValues?.comments} className={inputClass} />
         </Field>
       </div>
-      <PedidoLinesFields marcas={marcas} formatos={formatos} />
+      <PedidoLinesFields marcas={marcas} formatos={formatos} defaultRows={defaultRows} />
       <button type="submit" className={submitClass}>
         {editingPedidoId ? "Guardar cambios" : "Crear pedido"}
       </button>

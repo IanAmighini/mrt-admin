@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentRemitos } from "@/lib/ledger";
 import { getAllCurrentPrices } from "@/lib/pricing";
-import { formatMoney, formatQuantity } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { RemitoFormFields } from "@/components/RemitoForm";
@@ -78,8 +78,8 @@ export default async function EntregasPage({
       const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
       return {
         productId: l.productId,
-        quantity: l.quantity.toString(),
-        pricePerBottle: pricePerBottle.toString(),
+        quantity: formatNumeroExacto(l.quantity),
+        pricePerBottle: formatNumeroExacto(pricePerBottle),
         circuit: doc.account.circuit,
       };
     });
@@ -203,7 +203,7 @@ export default async function EntregasPage({
                             date: toDateInputValue(doc.date),
                             dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
                             currency: doc.currency,
-                            exchangeRate: doc.exchangeRate?.toString(),
+                            exchangeRate: formatNumeroExacto(doc.exchangeRate),
                             entregaId: doc.entregaId,
                             destinatarioId: doc.destinatarioId,
                           }}

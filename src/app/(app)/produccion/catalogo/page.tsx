@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { formatQuantity } from "@/lib/money";
+import { formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import {
@@ -322,7 +322,7 @@ export default async function CatalogoPage() {
                                 name="bottleCapacityMl"
                                 required
                                 inputMode="decimal"
-                                defaultValue={formato.bottleCapacityMl.toString()}
+                                defaultValue={formatNumeroExacto(formato.bottleCapacityMl)}
                                 className={inputClass}
                               />
                             </div>

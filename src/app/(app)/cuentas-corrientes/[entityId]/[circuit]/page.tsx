@@ -9,7 +9,7 @@ import { puedeVerRuta } from "@/lib/nav";
 import { CAJA_CHICA_SLUG } from "@/lib/caja";
 import { getAccountStatement, type StatementEntry } from "@/lib/account-statement";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, formatNumeroExacto } from "@/lib/money";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
 import { desgloseDesdeDocumento } from "@/lib/impuestos";
 import { facturaDeCompra } from "@/lib/compra-factura";
@@ -138,7 +138,7 @@ export default async function AccountLedgerPage({
                   ? payment.amount.times(payment.exchangeRate)
                   : payment.amount
                 ).toString(),
-                exchangeRate: payment.exchangeRate?.toString(),
+                exchangeRate: formatNumeroExacto(payment.exchangeRate),
                 reference: payment.reference ?? undefined,
                 destino: defaultDestino,
                 proveedorId: linkedPayment?.account.entityId,
@@ -165,7 +165,7 @@ export default async function AccountLedgerPage({
       date: toDateInputValue(doc.date),
       dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
       currency: doc.currency,
-      exchangeRate: doc.exchangeRate?.toString(),
+      exchangeRate: formatNumeroExacto(doc.exchangeRate),
       entregaId: doc.entregaId,
       destinatarioId: doc.destinatarioId,
     };
@@ -186,8 +186,8 @@ export default async function AccountLedgerPage({
         const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
         return {
           productId: l.productId,
-          quantity: l.quantity.toString(),
-          pricePerBottle: pricePerBottle.toString(),
+          quantity: formatNumeroExacto(l.quantity),
+          pricePerBottle: formatNumeroExacto(pricePerBottle),
           circuit,
         };
       });
@@ -226,6 +226,13 @@ export default async function AccountLedgerPage({
               items={items}
               editingDocumentId={doc.id}
               defaultValues={headerDefaults}
+              defaultRows={doc.purchaseLines.map((l) => ({
+                itemId: l.itemId,
+                quantity: formatNumeroExacto(l.quantity),
+                unitPrice: formatNumeroExacto(l.unitPrice),
+                unitPriceUsd: formatNumeroExacto(l.unitPriceUsd),
+                circuit,
+              }))}
               impuestos={desgloseDesdeDocumento(doc)}
               factura={facturaDeCompra(doc)}
             />
@@ -250,10 +257,10 @@ export default async function AccountLedgerPage({
               documentId={doc.id}
               defaultValues={{
                 ...headerDefaults,
-                netAmount: doc.netAmount.toString(),
-                ivaRate: doc.ivaRate?.toString(),
-                retentionAmount: doc.retentionAmount?.toString(),
-                perceptionAmount: doc.perceptionAmount?.toString(),
+                netAmount: formatNumeroExacto(doc.netAmount),
+                ivaRate: formatNumeroExacto(doc.ivaRate),
+                retentionAmount: formatNumeroExacto(doc.retentionAmount),
+                perceptionAmount: formatNumeroExacto(doc.perceptionAmount),
               }}
             />
           </FormModal>
@@ -286,8 +293,8 @@ export default async function AccountLedgerPage({
                 circuit,
                 expenseCategory: doc.expenseCategory ?? undefined,
                 reason: doc.reason ?? undefined,
-                amount: doc.totalAmount.toString(),
-                retentionAmount: doc.retentionAmount?.toString(),
+                amount: formatNumeroExacto(doc.totalAmount),
+                retentionAmount: formatNumeroExacto(doc.retentionAmount),
                 tributos: desgloseDesdeDocumento(doc),
               }}
             />
@@ -318,7 +325,7 @@ export default async function AccountLedgerPage({
             defaultValues={{
               ...headerDefaults,
               type: doc.type as "NOTA_CREDITO" | "NOTA_DEBITO" | "AJUSTE",
-              amount: doc.netAmount.toString(),
+              amount: formatNumeroExacto(doc.netAmount),
               ajusteEffect: doc.totalAmount.lessThan(0) ? "RESTA" : "SUMA",
               reason: doc.reason ?? undefined,
               impuestos: desgloseDesdeDocumento(doc),

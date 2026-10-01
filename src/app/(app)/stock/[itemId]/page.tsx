@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getItemMovements, getItemStock } from "@/lib/stock";
-import { formatMoney, formatQuantity } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { createItemMovement, venderInsumo } from "./actions";
 import { FormModal } from "@/components/Modal";
@@ -156,7 +156,7 @@ export default async function ItemDetailPage({
               name="unitCost"
               required
               inputMode="decimal"
-              defaultValue={item.unitCost?.toString() ?? ""}
+              defaultValue={formatNumeroExacto(item.unitCost)}
               className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
@@ -169,7 +169,7 @@ export default async function ItemDetailPage({
               name="minStock"
               inputMode="decimal"
               placeholder="sin mínimo"
-              defaultValue={item.minStock?.toString() ?? ""}
+              defaultValue={formatNumeroExacto(item.minStock)}
               className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
@@ -202,7 +202,7 @@ export default async function ItemDetailPage({
                   name="unitsPerPallet"
                   inputMode="numeric"
                   placeholder="1.944"
-                  defaultValue={item.unitsPerPallet?.toString() ?? ""}
+                  defaultValue={formatNumeroExacto(item.unitsPerPallet)}
                   className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>
@@ -215,7 +215,7 @@ export default async function ItemDetailPage({
                   name="precioSopladoUsd"
                   inputMode="decimal"
                   placeholder="0,0425"
-                  defaultValue={item.precioSopladoUsd?.toString() ?? ""}
+                  defaultValue={formatNumeroExacto(item.precioSopladoUsd)}
                   className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
                 />
               </div>

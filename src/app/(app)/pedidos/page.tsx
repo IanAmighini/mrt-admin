@@ -3,7 +3,7 @@ import { Fragment } from "react";
 import type { PedidoStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { formatQuantity } from "@/lib/money";
+import { formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { PEDIDO_STATUS_COLORS, PEDIDO_STATUS_LABELS } from "@/lib/labels";
 import { FormModal } from "@/components/Modal";
@@ -196,6 +196,19 @@ export default async function PedidosPage({
                                     date: toDateInputValue(pedido.date),
                                     comments: pedido.comments ?? "",
                                   }}
+                                  defaultRows={pedido.lines.map((line) => ({
+                                    marcaId:
+                                      marcas.find(
+                                        (m) =>
+                                          m.name === line.product.name &&
+                                          m.oilType === line.product.oilType
+                                      )?.id ?? "",
+                                    formatoId:
+                                      formatos.find(
+                                        (f) => f.presentation === line.product.presentation
+                                      )?.id ?? "",
+                                    pallets: formatNumeroExacto(line.pallets),
+                                  }))}
                                 />
                               </FormModal>
                               <DeleteButton

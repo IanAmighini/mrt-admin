@@ -94,6 +94,24 @@ export function formatNumeroEditable(value: Prisma.Decimal | number | string, de
   }).format(Number(value.toString()));
 }
 
+/**
+ * Un número guardado, tal cual, para prellenar un campo de texto que después se vuelve a leer.
+ *
+ * Lo único que hace es cambiar el punto por la coma, y eso es justamente lo que hay que hacer:
+ * `17.952` escrito con punto **se lee como 17.952 unidades**, porque tres dígitos después del
+ * punto son un separador de miles en la Argentina. Un pallet y medio se convertía en mil
+ * quinientos sin que nadie lo notara.
+ *
+ * Es distinto de `formatNumeroEditable`, que agrupa los miles y **redondea a dos decimales**: sirve
+ * para la plata, pero no para las cantidades, que llevan tres o cuatro.
+ */
+export function formatNumeroExacto(
+  value: Prisma.Decimal | number | string | null | undefined
+): string {
+  if (value === null || value === undefined) return "";
+  return value.toString().replace(".", ",");
+}
+
 export function sumDecimals(values: (Prisma.Decimal | number | string | null | undefined)[]) {
   return values.reduce<Prisma.Decimal>((acc, v) => acc.plus(toDecimal(v)), ZERO);
 }

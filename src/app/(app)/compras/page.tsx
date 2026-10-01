@@ -3,7 +3,7 @@ import { Plus, Search } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentCompras, getRecentGastos } from "@/lib/ledger";
-import { formatMoney, formatQuantity } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CompraFormFields } from "@/components/CompraForm";
@@ -230,9 +230,9 @@ export default async function ComprasPage({
                                 date: toDateInputValue(doc.date),
                                 dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
                                 currency: doc.currency,
-                                exchangeRate: doc.exchangeRate?.toString(),
-                                amount: doc.totalAmount.toString(),
-                                retentionAmount: doc.retentionAmount?.toString(),
+                                exchangeRate: formatNumeroExacto(doc.exchangeRate),
+                                amount: formatNumeroExacto(doc.totalAmount),
+                                retentionAmount: formatNumeroExacto(doc.retentionAmount),
                                 tributos: desgloseDesdeDocumento(doc),
                               }}
                             />
@@ -262,8 +262,15 @@ export default async function ComprasPage({
                                 date: toDateInputValue(doc.date),
                                 dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
                                 currency: doc.currency,
-                                exchangeRate: doc.exchangeRate?.toString(),
+                                exchangeRate: formatNumeroExacto(doc.exchangeRate),
                               }}
+                              defaultRows={doc.purchaseLines.map((l) => ({
+                                itemId: l.itemId,
+                                quantity: formatNumeroExacto(l.quantity),
+                                unitPrice: formatNumeroExacto(l.unitPrice),
+                                unitPriceUsd: formatNumeroExacto(l.unitPriceUsd),
+                                circuit: doc.account.circuit,
+                              }))}
                               impuestos={desgloseDesdeDocumento(doc)}
                               factura={facturaDeCompra(doc)}
                             />
