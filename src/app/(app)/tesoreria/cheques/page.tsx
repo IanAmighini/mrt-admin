@@ -6,6 +6,8 @@ import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { actualizarEstadoCheque, cambiarChequesPorEfectivo, rechazarCheque } from "./actions";
 import { RechazoChequeFields } from "@/components/RechazoChequeFields";
+import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
+import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { FormModal } from "@/components/Modal";
 import { CambioChequesFields } from "@/components/CambioChequesFields";
 import { Wallet, Send, Landmark } from "lucide-react";
@@ -32,9 +34,10 @@ const botonClass =
 export default async function ChequesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ estado?: string; tipo?: string }>;
+  searchParams: Promise<{ estado?: string; tipo?: string; q?: string }>;
 }) {
-  const { estado, tipo } = await searchParams;
+  const { estado, tipo, q } = await searchParams;
+  const busqueda = q?.trim();
   // La secretaría entra sólo por el rechazo: a ella le avisan cuando un cheque vuelve. No ve los
   // totales ni puede depositar ni cambiar cheques por efectivo — eso sigue siendo de Tesorería.
   const user = await requireRole(["ADMIN", "SOLO_LECTURA", "SECRETARIA"]);
@@ -55,6 +58,23 @@ export default async function ChequesPage({
     where: {
       ...(filtro ? { estado: filtro } : {}),
       ...(tipoFiltro === null ? {} : { esEcheq: tipoFiltro }),
+      // Cuando a la secretaría le avisan que un cheque volvió, lo único que tiene es el número.
+      // La guía le dice "buscalo por su número" y la pantalla no tenía dónde.
+      ...(busqueda
+        ? {
+            OR: [
+              { numero: { contains: busqueda, mode: "insensitive" as const } },
+              { banco: { contains: busqueda, mode: "insensitive" as const } },
+              {
+                recibidoEn: {
+                  account: {
+                    entity: { name: { contains: busqueda, mode: "insensitive" as const } },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
     },
     include: {
       recibidoEn: { include: { account: { include: { entity: true } } } },
@@ -107,61 +127,52 @@ export default async function ChequesPage({
       </div>
       )}
 
-      {tipoFiltro !== null && (
-        <Link href="/tesoreria/cheques" className="inline-block text-sm underline underline-offset-2">
-          Ver cheques y echeqs juntos
-        </Link>
-      )}
+      <FilterBar limpiarHref="/tesoreria/cheques" hayFiltro={Boolean(busqueda || filtro || tipo)}>
+        <FiltroBuscar defaultValue={q} placeholder="Número de cheque, banco o cliente…" />
+        <FiltroSelect
+          label="Estado"
+          name="estado"
+          defaultValue={filtro ?? ""}
+          opciones={FILTROS.filter((f) => f.value)}
+        />
+        <FiltroSelect
+          label="Tipo"
+          name="tipo"
+          defaultValue={tipo}
+          opciones={[
+            { value: "fisico", label: "En papel" },
+            { value: "echeq", label: "Echeq" },
+          ]}
+        />
+      </FilterBar>
 
-      <div className="flex flex-wrap gap-1">
-        {FILTROS.map((f) => (
-          <Link
-            key={f.value}
-            href={{
-              pathname: "/tesoreria/cheques",
-              query: { ...(tipo ? { tipo } : {}), ...(f.value ? { estado: f.value } : {}) },
-            }}
-            className={`rounded px-3 py-1.5 text-sm ${
-              (filtro ?? "") === f.value
-                ? "bg-primary text-primary-foreground"
-                : "border border-foreground/20 hover:bg-foreground/5"
-            }`}
-          >
-            {f.label}
-          </Link>
-        ))}
-      </div>
-
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-foreground/10 text-left text-foreground/60">
-              <th className="py-2 pr-4">Cheque</th>
-              <th className="py-2 pr-4">Cobrable desde</th>
-              <th className="py-2 pr-4">De quién</th>
-              <th className="py-2 pr-4">A quién</th>
-              <th className="py-2 pr-4 text-right">Importe</th>
-              <th className="py-2 pr-4">Estado</th>
-              {(canEdit || puedeRechazar) && <th className="py-2 pr-4">Acciones</th>}
-            </tr>
-          </thead>
+      <Table>
+        <Thead>
+          <Th>Cheque</Th>
+          <Th>Cobrable desde</Th>
+          <Th>De quién</Th>
+          <Th>A quién</Th>
+          <Th align="derecha">Importe</Th>
+          <Th>Estado</Th>
+          {(canEdit || puedeRechazar) && <Th>Acciones</Th>}
+        </Thead>
           <tbody>
             {cheques.map((c) => (
-              <tr key={c.id} className="border-b border-foreground/5">
-                <td className="py-2 pr-4">
+              <Tr key={c.id}>
+                <Td>
                   #{c.numero}
                   <span className="block text-xs text-foreground/50">
                     {[c.banco, c.esEcheq ? "Echeq" : "Físico"].filter(Boolean).join(" · ")}
                   </span>
-                </td>
-                <td className="py-2 pr-4 whitespace-nowrap">
+                </Td>
+                <Td className="whitespace-nowrap">
                   {c.fechaCobro ? (
                     c.fechaCobro.toLocaleDateString("es-AR")
                   ) : (
                     <span className="text-foreground/40">al día</span>
                   )}
-                </td>
-                <td className="py-2 pr-4">
+                </Td>
+                <Td>
                   {c.recibidoEn ? (
                     <Link
                       href={`/cuentas-corrientes/${c.recibidoEn.account.entity.slug}`}
@@ -179,8 +190,8 @@ export default async function ChequesPage({
                   ) : (
                     <span className="text-foreground/40">—</span>
                   )}
-                </td>
-                <td className="py-2 pr-4">
+                </Td>
+                <Td>
                   {c.entregadoEn ? (
                     <Link
                       href={`/cuentas-corrientes/${c.entregadoEn.account.entity.slug}`}
@@ -191,15 +202,15 @@ export default async function ChequesPage({
                   ) : (
                     <span className="text-foreground/40">—</span>
                   )}
-                </td>
-                <td className="py-2 pr-4 text-right tabular-nums">{formatMoney(c.amount)}</td>
-                <td className="py-2 pr-4">
+                </Td>
+                <Td numero>{formatMoney(c.amount)}</Td>
+                <Td>
                   <span className={`rounded px-2 py-1 text-xs font-medium ${ESTADO_COLORS[c.estado]}`}>
                     {CHEQUE_ESTADO_LABELS[c.estado]}
                   </span>
-                </td>
+                </Td>
                 {(canEdit || puedeRechazar) && (
-                  <td className="py-2 pr-4">
+                  <Td>
                     {/* Un cheque entregado no se toca desde acá: lo que lo movió fue un pago, y
                         deshacerlo por un lado dejaría el pago apuntando a un cheque que volvió. */}
                     {/* El rechazo se puede marcar esté donde esté: un cheque vuelve rechazado
@@ -231,22 +242,19 @@ export default async function ChequesPage({
                         <span className="text-xs text-foreground/40">se entregó con un pago</span>
                       )}
                     </div>
-                  </td>
+                  </Td>
                 )}
-              </tr>
+              </Tr>
             ))}
             {cheques.length === 0 && (
-              <tr>
-                <td colSpan={canEdit || puedeRechazar ? 7 : 6} className="py-6 text-center text-foreground/40">
-                  {filtro
-                    ? "No hay cheques en ese estado."
-                    : "Todavía no hay cheques. Se cargan al registrar un cobro con método Cheque o Echeq."}
-                </td>
-              </tr>
+              <TableEmpty colSpan={canEdit || puedeRechazar ? 7 : 6}>
+                {busqueda || filtro || tipo
+                  ? "No hay cheques con este filtro."
+                  : "Todavía no hay cheques. Se cargan al registrar un cobro con método Cheque o Echeq."}
+              </TableEmpty>
             )}
           </tbody>
-        </table>
-      </div>
+        </Table>
     </div>
   );
 }
