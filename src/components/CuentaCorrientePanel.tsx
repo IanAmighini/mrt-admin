@@ -117,7 +117,12 @@ export function CuentaCorrientePanel({
                 />
               </FormModal>
             ) : (
-              <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
+              <FormModal
+                triggerLabel="Movimiento"
+                title="Nuevo movimiento"
+                action={createDocumentForEntity}
+                peso="secundario"
+              >
                 <DocumentFormFields
                   fixedEntityId={entityId}
                   isTreasury={isTreasury}
@@ -135,6 +140,7 @@ export function CuentaCorrientePanel({
                 title="Nueva orden de pago"
                 action={crearOrdenPago}
                 maxWidthClass="max-w-xl"
+                peso="secundario"
               >
                 <OrdenPagoFields entityId={entityId} pagos={pagosSinOrden} />
               </FormModal>
@@ -148,6 +154,7 @@ export function CuentaCorrientePanel({
                 title={isCliente ? "Nueva factura" : "Facturar compras del proveedor"}
                 action={createFactura}
                 maxWidthClass="max-w-xl"
+                peso="secundario"
               >
                 <FacturaFormFields
                   accountId={factura.blancoAccountId}

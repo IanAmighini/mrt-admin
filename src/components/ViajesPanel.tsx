@@ -74,6 +74,7 @@ export function ViajesPanel({
               title={`Nuevo destinatario — por cuenta de ${entityName}`}
               action={crearDestinatario}
               iconName="edit"
+              peso="secundario"
             >
               <input type="hidden" name="entityId" value={entityId} />
               <p className="text-xs text-foreground/50">

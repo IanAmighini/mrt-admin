@@ -54,7 +54,7 @@ export function PreformasPanel({
         {canEdit && preformas.length > 0 && (
           <div className="flex flex-wrap gap-2">
           <FormModal
-            triggerLabel="Saldo inicial"
+            triggerLabel="Saldo inicial" peso="secundario"
             iconName="edit"
             title="Saldo inicial de preformas"
             action={guardarSaldosInicialesPreforma}

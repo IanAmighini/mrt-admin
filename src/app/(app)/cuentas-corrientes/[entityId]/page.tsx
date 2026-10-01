@@ -34,6 +34,7 @@ import { EntregasPanel } from "@/components/EntregasPanel";
 import { ComprasPanel } from "@/components/ComprasPanel";
 import { CuentaCorrientePanel } from "@/components/CuentaCorrientePanel";
 import { PreformasPanel } from "@/components/PreformasPanel";
+import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { ViajesPanel } from "@/components/ViajesPanel";
 import { getDestinatarios, getEntregasDeEntidad, getEntregasParaElegir } from "@/lib/entregas";
 import { getDeudaPreformas } from "@/lib/preformas";
@@ -414,36 +415,30 @@ function PricesSection({
         <summary className="cursor-pointer text-sm font-semibold">Listado de precios</summary>
 
         <div className="mt-4 space-y-4">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Producto</th>
-                  <th className="py-2 pr-4">Precio vigente</th>
-                  <th className="py-2 pr-4">Vigente desde</th>
-                </tr>
-              </thead>
+          <Table>
+            <Thead>
+              <Th>Producto</Th>
+              <Th align="derecha">Precio vigente</Th>
+              <Th>Vigente desde</Th>
+            </Thead>
               <tbody>
                 {pricedProducts.map((product) => {
                   const price = currentPrices.get(product.id)!;
                   return (
-                    <tr key={product.id} className="border-b border-foreground/5">
-                      <td className="py-2 pr-4">{productLabel(product)}</td>
-                      <td className="py-2 pr-4">{formatMoney(price.amount, price.currency)}</td>
-                      <td className="py-2 pr-4">{price.validFrom.toLocaleDateString("es-AR")}</td>
-                    </tr>
+                    <Tr key={product.id}>
+                      <Td>{productLabel(product)}</Td>
+                      <Td numero>{formatMoney(price.amount, price.currency)}</Td>
+                      <Td className="whitespace-nowrap">{price.validFrom.toLocaleDateString("es-AR")}</Td>
+                    </Tr>
                   );
                 })}
                 {pricedProducts.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-4 text-center text-foreground/40">
-                      Todavía no hay precios cargados para este circuito.
-                    </td>
-                  </tr>
+                  <TableEmpty colSpan={3}>
+                    Todavía no hay precios cargados para este circuito.
+                  </TableEmpty>
                 )}
               </tbody>
-            </table>
-          </div>
+          </Table>
 
           {canEdit && (
             <form action={createPrice} className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
@@ -482,34 +477,28 @@ function PricesSection({
 
           <details>
             <summary className="cursor-pointer text-sm font-medium">Historial de precios</summary>
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                    <th className="py-2 pr-4">Producto</th>
-                    <th className="py-2 pr-4">Precio</th>
-                    <th className="py-2 pr-4">Vigente desde</th>
-                    <th className="py-2 pr-4">Cargado por</th>
-                  </tr>
-                </thead>
+            <div className="mt-2">
+              <Table>
+                <Thead>
+                  <Th>Producto</Th>
+                  <Th align="derecha">Precio</Th>
+                  <Th>Vigente desde</Th>
+                  <Th>Cargado por</Th>
+                </Thead>
                 <tbody>
                   {priceHistory.map((price) => (
-                    <tr key={price.id} className="border-b border-foreground/5">
-                      <td className="py-2 pr-4">{productLabel(price.product)}</td>
-                      <td className="py-2 pr-4">{formatMoney(price.amount, price.currency)}</td>
-                      <td className="py-2 pr-4">{price.validFrom.toLocaleDateString("es-AR")}</td>
-                      <td className="py-2 pr-4">{price.createdBy.name}</td>
-                    </tr>
+                    <Tr key={price.id}>
+                      <Td>{productLabel(price.product)}</Td>
+                      <Td numero>{formatMoney(price.amount, price.currency)}</Td>
+                      <Td className="whitespace-nowrap">{price.validFrom.toLocaleDateString("es-AR")}</Td>
+                      <Td>{price.createdBy.name}</Td>
+                    </Tr>
                   ))}
                   {priceHistory.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="py-4 text-center text-foreground/40">
-                        Sin precios cargados todavía.
-                      </td>
-                    </tr>
+                    <TableEmpty colSpan={4}>Sin precios cargados todavía.</TableEmpty>
                   )}
                 </tbody>
-              </table>
+              </Table>
             </div>
           </details>
         </div>
