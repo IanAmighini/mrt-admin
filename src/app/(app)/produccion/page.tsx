@@ -19,7 +19,13 @@ export default async function ProduccionPage() {
     prisma.productionRun.findMany({
       orderBy: { date: "desc" },
       include: {
-        lines: { include: { product: { include: { recipe: { include: { item: true } } } } } },
+        lines: {
+          include: {
+            product: { include: { recipe: { include: { item: true } } } },
+            // Para saber, al editar, si se usó una tapa/caja/etiqueta distinta a la de la receta.
+            itemMovements: { include: { item: { select: { id: true, category: true } } } },
+          },
+        },
         createdBy: true,
       },
       take: 30,
@@ -49,6 +55,41 @@ export default async function ProduccionPage() {
       select: { id: true, name: true },
     }),
   ]);
+
+  // Qué insumo se usó de cada categoría reemplazable, comparando contra la receta: si lo que se
+  // consumió no es lo que la receta dice, fue un reemplazo y hay que dejarlo elegido al editar.
+  const REEMPLAZABLES = ["TAPAS", "CAJAS", "ETIQUETAS"] as const;
+  type LineaDeCorrida = (typeof runs)[number]["lines"][number];
+  function reemplazosDe(line: LineaDeCorrida) {
+    const usado: Partial<Record<(typeof REEMPLAZABLES)[number], string>> = {};
+    for (const categoria of REEMPLAZABLES) {
+      const enReceta = line.product.recipe.find((r) => r.item.category === categoria);
+      const consumido = line.itemMovements.find((m) => m.item.category === categoria);
+      if (consumido && enReceta && consumido.item.id !== enReceta.itemId) {
+        usado[categoria] = consumido.item.id;
+      }
+    }
+    return usado;
+  }
+
+  /** Los ítems de una corrida, con la forma que espera el formulario de edición. */
+  function filasDe(run: (typeof runs)[number]) {
+    return run.lines.map((line) => {
+      const usado = reemplazosDe(line);
+      return {
+        marcaId:
+          marcas.find((m) => m.name === line.product.name && m.oilType === line.product.oilType)?.id ?? "",
+        formatoId: formatos.find((f) => f.presentation === line.product.presentation)?.id ?? "",
+        // Tal cual se guardó, con coma: los pallets llevan tres decimales (las cajas sueltas de
+        // un pallet a medio armar) y `formatNumeroEditable` redondea a dos, así que editar una
+        // corrida de 17,952 la habría guardado en 17,95 sin que nadie lo notara.
+        pallets: line.quantity.toString().replace(".", ","),
+        tapaUsadaItemId: usado.TAPAS ?? "",
+        cajaUsadaItemId: usado.CAJAS ?? "",
+        etiquetaUsadaItemId: usado.ETIQUETAS ?? "",
+      };
+    });
+  }
 
   const runTotals = runs.map((run) => {
     let pallets = 0;
@@ -143,6 +184,7 @@ export default async function ProduccionPage() {
                         etiquetas={etiquetas}
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
+                        defaultRows={filasDe(run)}
                       />
                     </FormModal>
                     <DeleteButton

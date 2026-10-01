@@ -18,6 +18,8 @@ type Row = {
   etiquetaUsadaItemId: string;
 };
 
+export type FilaInicial = Omit<Row, "key">;
+
 const filaVacia = (key: number): Row => ({
   key,
   marcaId: "",
@@ -37,15 +39,23 @@ export function ProductionLinesFields({
   tapas,
   cajas,
   etiquetas,
+  defaultRows,
 }: {
   marcas: MarcaInfo[];
   formatos: FormatoInfo[];
   tapas: ItemInfo[];
   cajas: ItemInfo[];
   etiquetas: ItemInfo[];
+  /** Al editar: los ítems que ya tiene la carga. Sin esto el formulario abre vacío y hay que
+   * volver a tipear todo, con el agregado de que al guardar reemplaza lo que había. */
+  defaultRows?: FilaInicial[];
 }) {
-  const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
-  const [nextKey, setNextKey] = useState(1);
+  const [rows, setRows] = useState<Row[]>(() =>
+    defaultRows && defaultRows.length > 0
+      ? defaultRows.map((fila, i) => ({ ...filaVacia(i), ...fila }))
+      : [filaVacia(0)]
+  );
+  const [nextKey, setNextKey] = useState(() => Math.max(1, defaultRows?.length ?? 1));
 
   function updateRow(key: number, patch: Partial<Row>) {
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));

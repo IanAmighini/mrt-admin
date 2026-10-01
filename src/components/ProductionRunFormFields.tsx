@@ -1,4 +1,4 @@
-import { ProductionLinesFields } from "@/app/(app)/produccion/ProductionLinesFields";
+import { ProductionLinesFields, type FilaInicial } from "@/app/(app)/produccion/ProductionLinesFields";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
@@ -12,22 +12,25 @@ export function ProductionRunFormFields({
   etiquetas,
   editingRunId,
   defaultValues,
+  defaultRows,
 }: {
   marcas: MarcaInfo[];
   formatos: FormatoInfo[];
   tapas: ItemInfo[];
   cajas: ItemInfo[];
   etiquetas: ItemInfo[];
-  /** Si viene, el formulario edita esta carga en vez de crear una nueva — los ítems se cargan
-   * de nuevo desde cero (no se prellenan), pero la fecha y las notas sí. */
+  /** Si viene, el formulario edita esta carga en vez de crear una nueva. */
   editingRunId?: string;
   defaultValues?: { date?: string; notes?: string };
+  /** Al editar: los ítems que ya tiene la carga, para no tener que volver a tipearlos. */
+  defaultRows?: FilaInicial[];
 }) {
   return (
     <>
       {editingRunId && (
         <p className="text-xs text-foreground/50">
-          Al guardar se reemplazan los ítems de esta carga por los que cargues acá.
+          Al guardar se reemplazan los ítems de esta carga por los que queden acá. Vienen cargados
+          los que ya tenía: corregí lo que haga falta.
         </p>
       )}
       {editingRunId && <input type="hidden" name="runId" value={editingRunId} />}
@@ -50,6 +53,7 @@ export function ProductionRunFormFields({
         tapas={tapas}
         cajas={cajas}
         etiquetas={etiquetas}
+        defaultRows={defaultRows}
       />
       <div className="space-y-1">
         <label className="text-sm" htmlFor="notes">
