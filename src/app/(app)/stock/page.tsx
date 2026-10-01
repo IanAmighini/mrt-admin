@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Search } from "lucide-react";
 import type { SupplierCategory } from "@prisma/client";
 import { Archive, Droplet, HelpCircle, Layers, PackageOpen, Scissors, Tag, type LucideIcon } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -11,6 +10,8 @@ import { formatPallets } from "@/lib/product-label";
 import { compareItemsBySize } from "@/lib/item-order";
 import { FormModal } from "@/components/Modal";
 import { ItemMovementFields } from "@/components/ItemMovementFields";
+import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
+import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { createItem } from "./actions";
 import { createItemMovement } from "./[itemId]/actions";
 
@@ -34,9 +35,9 @@ const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
 export default async function StockPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; ver?: string; bajo?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, ver, bajo } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
@@ -50,7 +51,13 @@ export default async function StockPage({
   ]);
 
   const searchTerm = q?.trim().toLowerCase();
-  const stockRows = products
+  // "Ver" acota a una sección: con 47 insumos repartidos en siete categorías, llegar a las
+  // etiquetas era bajar media pantalla. Vacío = todo, como antes.
+  const soloBajoMinimo = bajo === "1";
+  const verProducto = !ver || ver === "producto";
+  const verCategoria = ver && ver !== "producto" ? (ver as SupplierCategory) : null;
+  const hayFiltro = Boolean(searchTerm || ver || soloBajoMinimo);
+  const stockRows = (verProducto ? products : [])
     .map((product) => ({ product, stock: productStocks.get(product.id) ?? 0 }))
     .filter(({ stock }) => Number(stock) !== 0)
     .filter(
@@ -63,8 +70,28 @@ export default async function StockPage({
 
   // Los insumos que no llevan stock no tienen nada que mostrar acá: su número no significa nada
   // porque nada los consume. El gasto queda igual en la cuenta corriente del proveedor.
+  // Las categorías que de verdad tienen insumos, para no ofrecer un filtro que no devuelve nada.
+  const itemsPorCategoriaTotal = new Set(items.filter((i) => i.llevaStock).map((i) => i.category));
+
   const itemsByCategory = new Map<SupplierCategory, typeof items>();
-  for (const item of items.filter((i) => i.llevaStock)) {
+  const insumosVisibles = items
+    .filter((i) => i.llevaStock)
+    .filter((i) => !verCategoria || i.category === verCategoria)
+    .filter(() => !ver || ver !== "producto")
+    // El buscador filtraba sólo el producto terminado: escribir "etiqueta" dejaba la lista de
+    // insumos entera igual, que es justo donde uno busca.
+    .filter(
+      (i) =>
+        !searchTerm ||
+        i.name.toLowerCase().includes(searchTerm) ||
+        SUPPLIER_CATEGORY_LABELS[i.category].toLowerCase().includes(searchTerm)
+    )
+    .filter((i) => {
+      if (!soloBajoMinimo) return true;
+      const stock = stocks.get(i.id);
+      return i.minStock != null && stock != null && Number(stock) <= Number(i.minStock);
+    });
+  for (const item of insumosVisibles) {
     const list = itemsByCategory.get(item.category) ?? [];
     list.push(item);
     itemsByCategory.set(item.category, list);
@@ -80,67 +107,80 @@ export default async function StockPage({
         <p className="text-sm text-foreground/60">Producto terminado e insumos disponibles ahora mismo.</p>
       </div>
 
+      <FilterBar limpiarHref="/stock" hayFiltro={hayFiltro} textoBoton="Filtrar">
+        <FiltroBuscar defaultValue={q} placeholder="Marca, aceite, formato o insumo…" />
+        <FiltroSelect
+          label="Ver"
+          name="ver"
+          defaultValue={ver}
+          todos="Todo"
+          className="w-full sm:w-52"
+          opciones={[
+            { value: "producto", label: "Sólo producto terminado" },
+            ...SUPPLIER_CATEGORY_ORDER.filter((c) => itemsPorCategoriaTotal.has(c)).map((c) => ({
+              value: c,
+              label: SUPPLIER_CATEGORY_LABELS[c],
+            })),
+          ]}
+        />
+        <FiltroSelect
+          label="Mínimo"
+          name="bajo"
+          defaultValue={soloBajoMinimo ? "1" : ""}
+          todos="Todos"
+          opciones={[{ value: "1", label: "Bajo el mínimo" }]}
+        />
+      </FilterBar>
+
+      {verProducto && (
       <section className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">Producto terminado</h2>
-          <form className="flex min-w-[240px] gap-2">
-            <div className="relative flex-1">
-              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
-              <input
-                type="text"
-                name="q"
-                defaultValue={q}
-                placeholder="Buscar por marca, aceite o formato…"
-                className="w-full rounded-lg border border-foreground/20 bg-background py-2 pl-9 pr-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-              />
-            </div>
-            <button
-              type="submit"
-              className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5"
-            >
-              Buscar
-            </button>
-          </form>
-        </div>
-        <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                <th className="py-2 px-4">Marca</th>
-                <th className="py-2 px-4">Tipo de aceite</th>
-                <th className="py-2 px-4">Formato</th>
-                <th className="py-2 px-4">Stock</th>
-              </tr>
-            </thead>
+        <h2 className="text-lg font-semibold">Producto terminado</h2>
+        <Table suelta={false}>
+          <Thead>
+            <Th className="pl-4">Marca</Th>
+            <Th secundaria>Tipo de aceite</Th>
+            <Th>Formato</Th>
+            <Th align="derecha" className="pr-4">
+              Stock
+            </Th>
+          </Thead>
             <tbody>
               {stockRows.map(({ product, stock }) => {
                 const negative = Number(stock) < 0;
                 return (
-                  <tr key={product.id} className="border-b border-foreground/5 last:border-0">
-                    <td className="py-2 px-4">{product.name}</td>
-                    <td className="py-2 px-4">{product.oilType}</td>
-                    <td className="py-2 px-4">
+                  <Tr key={product.id}>
+                    <Td className="pl-4">
+                      {product.name}
+                      <span className="block text-xs text-foreground/50 md:hidden">
+                        {product.oilType}
+                      </span>
+                    </Td>
+                    <Td secundaria>{product.oilType}</Td>
+                    <Td>
                       <Link href={`/produccion/${product.slug}`} className="underline underline-offset-2">
                         {product.presentation}
                       </Link>
-                    </td>
-                    <td className={`py-2 px-4 font-medium ${negative ? "text-red-600 dark:text-red-400" : ""}`}>
+                    </Td>
+                    <Td
+                      numero
+                      className={`pr-4 font-medium ${negative ? "text-red-600 dark:text-red-400" : ""}`}
+                    >
                       {formatPallets(stock, product.boxesPerPallet)}
-                    </td>
-                  </tr>
+                    </Td>
+                  </Tr>
                 );
               })}
               {stockRows.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-6 text-center text-foreground/40">
-                    {searchTerm ? "No hay resultados con este filtro." : "No hay stock de producto terminado ahora mismo."}
-                  </td>
-                </tr>
+                <TableEmpty colSpan={4}>
+                  {hayFiltro
+                    ? "No hay producto terminado con este filtro."
+                    : "No hay stock de producto terminado ahora mismo."}
+                </TableEmpty>
               )}
             </tbody>
-          </table>
-        </div>
+        </Table>
       </section>
+      )}
 
       <section className="space-y-6">
         <div className="flex items-center justify-between">

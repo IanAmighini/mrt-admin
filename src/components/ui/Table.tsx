@@ -44,16 +44,32 @@ const alineacionClase: Record<Alineacion, string> = {
   derecha: "text-right",
 };
 
+/**
+ * `secundaria` esconde la columna en pantalla chica.
+ *
+ * El teléfono se usa para consultar algo rápido —un saldo, un stock— y una tabla de siete
+ * columnas deja justo ese dato fuera de pantalla: hay que arrastrar la tabla al costado para
+ * llegar al único número por el que uno entró. Esconder lo accesorio deja a la vista el nombre
+ * y el número, que es para lo que se mira desde el celular.
+ */
 export function Th({
   children,
   align = "izquierda",
+  secundaria = false,
   className,
 }: {
   children?: React.ReactNode;
   align?: Alineacion;
+  secundaria?: boolean;
   className?: string;
 }) {
-  return <th className={`py-2 pr-4 ${alineacionClase[align]} ${className ?? ""}`}>{children}</th>;
+  const clases = [
+    "py-2 pr-4",
+    alineacionClase[align],
+    secundaria ? "hidden md:table-cell" : "",
+    className ?? "",
+  ];
+  return <th className={clases.filter(Boolean).join(" ")}>{children}</th>;
 }
 
 export function Tr({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -70,11 +86,14 @@ export function Td({
   /** Para los números: los alinea a la derecha y usa cifras de ancho fijo, que es lo que hace que
    *  una columna de montos se pueda leer de un vistazo. */
   numero = false,
+  secundaria = false,
   className,
 }: {
   children?: React.ReactNode;
   align?: Alineacion;
   numero?: boolean;
+  /** Ver `Th`: se esconde en pantalla chica. */
+  secundaria?: boolean;
   colSpan?: number;
   rowSpan?: number;
   arriba?: boolean;
@@ -84,6 +103,7 @@ export function Td({
     "py-2 pr-4",
     numero ? "text-right tabular-nums" : alineacionClase[align],
     arriba ? "align-top" : "",
+    secundaria ? "hidden md:table-cell" : "",
     className ?? "",
   ];
   return (
