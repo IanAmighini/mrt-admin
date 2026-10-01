@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Fragment } from "react";
 import type { PedidoStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -10,8 +9,10 @@ import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { PedidoFormFields } from "@/components/PedidoFormFields";
 import { PedidoStatusSelect } from "@/components/PedidoStatusSelect";
+import { FilterBar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
+import { Table, TableEmpty, Td, Th, Thead } from "@/components/ui/Table";
 import { createPedido, deletePedido, updatePedido } from "./actions";
-import { toDateInputValue } from "@/lib/period";
+import { addDays, toDateInputValue } from "@/lib/period";
 
 const STATUS_FILTERS: { value: PedidoStatus | ""; label: string }[] = [
   { value: "", label: "Todos" },
@@ -23,15 +24,16 @@ const STATUS_FILTERS: { value: PedidoStatus | ""; label: string }[] = [
 export default async function PedidosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ estado?: string; entityId?: string }>;
+  searchParams: Promise<{ estado?: string; entityId?: string; from?: string; to?: string }>;
 }) {
-  const { estado, entityId } = await searchParams;
+  const { estado, entityId, from, to } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const statusFilter = STATUS_FILTERS.some((s) => s.value === estado)
     ? (estado as PedidoStatus | "")
     : "";
+  const hayFiltro = Boolean(statusFilter || entityId || from || to);
 
   const [clientes, marcas, formatos, pedidos] = await Promise.all([
     prisma.entity.findMany({
@@ -47,6 +49,14 @@ export default async function PedidosPage({
       where: {
         ...(statusFilter ? { status: statusFilter } : {}),
         ...(entityId ? { entityId } : {}),
+        ...(from || to
+          ? {
+              date: {
+                ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
+                ...(to ? { lt: addDays(new Date(`${to}T00:00:00`), 1) } : {}),
+              },
+            }
+          : {}),
       },
       include: { entity: true, lines: { include: { product: true } } },
       orderBy: { date: "desc" },
@@ -69,90 +79,60 @@ export default async function PedidosPage({
         </FormModal>
       )}
 
-      <div className="flex flex-wrap items-end gap-4">
-        <div className="flex flex-wrap gap-1">
-          {STATUS_FILTERS.map((s) => (
-            <Link
-              key={s.value}
-              href={{
-                pathname: "/pedidos",
-                query: { ...(s.value ? { estado: s.value } : {}), ...(entityId ? { entityId } : {}) },
-              }}
-              className={`rounded px-3 py-1.5 text-sm ${
-                statusFilter === s.value
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-foreground/20 hover:bg-foreground/5"
-              }`}
-            >
-              {s.label}
-            </Link>
-          ))}
-        </div>
-        <form className="flex items-end gap-2">
-          {statusFilter && <input type="hidden" name="estado" value={statusFilter} />}
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="entityId">
-              Cliente
-            </label>
-            <select
-              id="entityId"
-              name="entityId"
-              defaultValue={entityId ?? ""}
-              className="w-56 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-            >
-              <option value="">— Todos —</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button
-            type="submit"
-            className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5"
-          >
-            Filtrar
-          </button>
-        </form>
-      </div>
+      <FilterBar limpiarHref="/pedidos" hayFiltro={hayFiltro} textoBoton="Filtrar">
+        <FiltroSelect
+          label="Cliente"
+          name="entityId"
+          defaultValue={entityId}
+          opciones={clientes.map((c) => ({ value: c.id, label: c.name }))}
+          className="sm:col-span-2"
+        />
+        <FiltroSelect
+          label="Estado"
+          name="estado"
+          defaultValue={statusFilter}
+          opciones={STATUS_FILTERS.filter((s) => s.value).map((s) => ({
+            value: s.value,
+            label: s.label,
+          }))}
+        />
+        <FiltroFechas from={from} to={to} />
+      </FilterBar>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-foreground/10 text-left text-foreground/60">
-              <th className="py-2 pr-4">Fecha</th>
-              <th className="py-2 pr-4">Cliente</th>
-              <th className="py-2 pr-4">Nº Pedido</th>
-              <th className="py-2 pr-4">Estado</th>
-              <th className="py-2 pr-4">Pallets</th>
-              <th className="py-2 pr-4">Formato</th>
-              <th className="py-2 pr-4">Etiqueta</th>
-              <th className="py-2 pr-4">Entrega</th>
-              <th className="py-2 pr-4">Comentarios</th>
-              {canEdit && <th className="py-2 pr-4">Acciones</th>}
-            </tr>
-          </thead>
+      <Table>
+        <Thead>
+          <Th>Fecha</Th>
+          <Th>Cliente</Th>
+          <Th>Nº Pedido</Th>
+          <Th>Estado</Th>
+          <Th align="derecha">Pallets</Th>
+          <Th>Producto</Th>
+          <Th>Entrega</Th>
+          <Th>Comentarios</Th>
+          {canEdit && <Th>Acciones</Th>}
+        </Thead>
           <tbody>
             {pedidos.map((pedido, i) => (
               <Fragment key={pedido.id}>
                 {pedido.lines.map((line, li) => (
                   <tr
                     key={line.id}
-                    className={`border-b border-foreground/5 ${i % 2 === 1 ? "bg-foreground/[0.02]" : ""}`}
+                    className={`border-b border-foreground/5 ${
+                      li === 0 && i > 0 ? "border-t border-t-foreground/15" : ""
+                    } ${i % 2 === 1 ? "bg-foreground/[0.02]" : ""}`}
                   >
                     {li === 0 && (
                       <>
-                        <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
+                        <Td arriba rowSpan={pedido.lines.length} className="whitespace-nowrap">
                           {pedido.date.toLocaleDateString("es-AR")}
-                        </td>
-                        <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
+                        </Td>
+                        <Td arriba rowSpan={pedido.lines.length}>
                           {pedido.entity.name}
-                        </td>
-                        <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
+                        </Td>
+                        <Td arriba rowSpan={pedido.lines.length}>
                           {pedido.orderNumber}
-                        </td>
-                        <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
+                        </Td>
+                        <Td arriba rowSpan={pedido.lines.length}>
                           {canEdit ? (
                             <PedidoStatusSelect pedidoId={pedido.id} status={pedido.status} />
                           ) : (
@@ -162,23 +142,25 @@ export default async function PedidosPage({
                               {PEDIDO_STATUS_LABELS[pedido.status]}
                             </span>
                           )}
-                        </td>
+                        </Td>
                       </>
                     )}
-                    <td className="py-2 pr-4">{formatQuantity(line.pallets, "pallets")}</td>
-                    <td className="py-2 pr-4">{line.product.presentation}</td>
-                    <td className="py-2 pr-4">{formatProductBrandLabel(line.product)}</td>
+                    <Td numero>{formatQuantity(line.pallets)}</Td>
+                    <Td>
+                      <span className="whitespace-nowrap">{formatProductBrandLabel(line.product)}</span>
+                      <span className="block text-xs text-foreground/50">{line.product.presentation}</span>
+                    </Td>
                     {li === 0 && (
                       <>
-                        <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
+                        <Td arriba rowSpan={pedido.lines.length} className="whitespace-nowrap">
                           {pedido.deliveryDate ? pedido.deliveryDate.toLocaleDateString("es-AR") : "—"}
-                        </td>
-                        <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
+                        </Td>
+                        <Td arriba rowSpan={pedido.lines.length} className="text-foreground/60">
                           {pedido.comments || "—"}
-                        </td>
+                        </Td>
                         {canEdit && (
-                          <td className="py-2 pr-4 align-top" rowSpan={pedido.lines.length}>
-                            <div className="flex flex-col gap-1">
+                          <Td arriba rowSpan={pedido.lines.length}>
+                            <div className="flex items-center gap-2">
                               <FormModal
                                 triggerLabel="Editar" iconName="edit"
                                 title="Editar pedido"
@@ -218,7 +200,7 @@ export default async function PedidosPage({
                                 nombre={`el pedido #${pedido.orderNumber}`}
                               />
                             </div>
-                          </td>
+                          </Td>
                         )}
                       </>
                     )}
@@ -227,15 +209,12 @@ export default async function PedidosPage({
               </Fragment>
             ))}
             {pedidos.length === 0 && (
-              <tr>
-                <td colSpan={canEdit ? 10 : 9} className="py-6 text-center text-foreground/40">
-                  No hay pedidos cargados{statusFilter || entityId ? " con este filtro." : "."}
-                </td>
-              </tr>
+              <TableEmpty colSpan={canEdit ? 9 : 8}>
+                {hayFiltro ? "No hay pedidos con este filtro." : "Todavía no hay pedidos cargados."}
+              </TableEmpty>
             )}
           </tbody>
-        </table>
-      </div>
+        </Table>
     </div>
   );
 }

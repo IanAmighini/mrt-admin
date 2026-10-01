@@ -86,15 +86,18 @@ export function FiltroSelect({
   defaultValue,
   opciones,
   todos = "Todos",
+  className,
 }: {
   label: string;
   name: string;
   defaultValue?: string;
   opciones: { value: string; label: string }[];
   todos?: string;
+  /** Para el filtro que necesita más ancho que el resto, como una lista de clientes. */
+  className?: string;
 }) {
   return (
-    <FieldChico label={label} htmlFor={name}>
+    <FieldChico label={label} htmlFor={name} className={className}>
       <select id={name} name={name} defaultValue={defaultValue ?? ""} className={controlClass()}>
         <option value="">{todos}</option>
         {opciones.map((o) => (

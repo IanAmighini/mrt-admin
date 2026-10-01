@@ -64,6 +64,9 @@ export function Td({
   children,
   align = "izquierda",
   colSpan,
+  rowSpan,
+  /** Para las celdas combinadas: el contenido se apoya arriba y no en el medio del bloque. */
+  arriba = false,
   /** Para los números: los alinea a la derecha y usa cifras de ancho fijo, que es lo que hace que
    *  una columna de montos se pueda leer de un vistazo. */
   numero = false,
@@ -73,15 +76,18 @@ export function Td({
   align?: Alineacion;
   numero?: boolean;
   colSpan?: number;
+  rowSpan?: number;
+  arriba?: boolean;
   className?: string;
 }) {
   const clases = [
     "py-2 pr-4",
     numero ? "text-right tabular-nums" : alineacionClase[align],
+    arriba ? "align-top" : "",
     className ?? "",
   ];
   return (
-    <td colSpan={colSpan} className={clases.filter(Boolean).join(" ")}>
+    <td colSpan={colSpan} rowSpan={rowSpan} className={clases.filter(Boolean).join(" ")}>
       {children}
     </td>
   );
