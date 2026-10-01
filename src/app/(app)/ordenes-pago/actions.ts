@@ -6,7 +6,9 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
+import { formatFecha } from "@/lib/period";
+import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { formatMoney, sumDecimals } from "@/lib/money";
 import { formatNumeroOP, proximoNumero } from "@/lib/orden-pago";
 
@@ -62,6 +64,31 @@ export async function crearOrdenPago(formData: FormData) {
       entityType: "Orden de pago",
       entityId,
       summary: `N° ${formatNumeroOP(numero)} — ${pagos[0].account.entity.name} — ${formatMoney(sumDecimals(pagos.map((p) => p.amount)))}`,
+      cambios: diffDeCampos(
+        null,
+        {
+          numero: formatNumeroOP(numero),
+          date,
+          proveedor: pagos[0].account.entity.name,
+          total: formatMoney(sumDecimals(pagos.map((p) => p.amount))),
+          notes,
+          // Un renglón por pago agrupado: es lo que se controla contra el papel que se firma.
+          pagos: pagos
+            .map(
+              (p) =>
+                `${formatFecha(p.date)} — ${PAYMENT_METHOD_LABELS[p.method]} — ${formatMoney(p.amount)}`
+            )
+            .join("\n"),
+        },
+        {
+          numero: "N\u00famero",
+          date: "Fecha",
+          proveedor: "Proveedor",
+          total: "Total",
+          notes: "Notas",
+          pagos: "Pagos",
+        }
+      ),
     });
 
     return numero;
@@ -92,6 +119,11 @@ export async function anularOrdenPago(formData: FormData) {
       entityType: "Orden de pago",
       entityId: orden.entityId,
       summary: `N° ${formatNumeroOP(orden.numero)} — ${orden.entity.name}`,
+      cambios: [
+        { campo: "N\u00famero", antes: formatNumeroOP(orden.numero), despues: null },
+        { campo: "Fecha", antes: formatFecha(orden.date), despues: null },
+        { campo: "Proveedor", antes: orden.entity.name, despues: null },
+      ],
     });
   });
 

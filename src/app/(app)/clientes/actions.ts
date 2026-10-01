@@ -5,11 +5,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 import { generateUniqueSlug } from "@/lib/slug";
 import { aplicarSaldoInicial, NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
-import { parseRubro } from "@/lib/rubro-proveedor";
-import type { EntityType } from "@prisma/client";
+import { parseRubro, rubroLabel } from "@/lib/rubro-proveedor";
+import type { EntityType, ExpenseCategory, SupplierCategory } from "@prisma/client";
 
 const ENTITY_TYPES: EntityType[] = ["CLIENTE", "PROVEEDOR", "AMBOS"];
 const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
@@ -18,6 +18,63 @@ const ENTITY_TYPE_LABELS: Record<EntityType, string> = {
   AMBOS: "Cliente/Proveedor",
   TESORERIA: "Tesorería",
 };
+/**
+ * Los campos de un cliente o proveedor que valen la pena en el detalle de Actividad, con el nombre
+ * que les pone la pantalla. Lo que no está acá no se compara.
+ */
+const CAMPOS_DE_LA_ENTIDAD = {
+  name: "Nombre",
+  tipo: "Tipo",
+  taxId: "CUIT",
+  rubro: "Rubro",
+  email: "Email",
+  phone: "Tel\u00e9fono",
+  address: "Direcci\u00f3n",
+  notes: "Notas",
+  isWithholdingAgent: "Agente de retenci\u00f3n",
+  llevaCuentaPreformas: "Cuenta de preformas",
+  llevaViajes: "Lleva viajes",
+  rotuloSubcuenta: "R\u00f3tulo de subcuenta",
+  moneda: "Moneda",
+  retiroSocietario: "Retiro societario",
+} as const;
+
+/** La entidad en la forma que compara `diffDeCampos`. */
+function fotoDeLaEntidad(e: {
+  name: string;
+  type: EntityType;
+  taxId: string | null;
+  supplierCategory: SupplierCategory | null;
+  expenseCategory: ExpenseCategory | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  notes: string | null;
+  isWithholdingAgent: boolean;
+  llevaCuentaPreformas: boolean;
+  llevaViajes: boolean;
+  rotuloSubcuenta: string | null;
+  moneda: string;
+  retiroSocietario: boolean;
+}) {
+  return {
+    name: e.name,
+    tipo: ENTITY_TYPE_LABELS[e.type],
+    taxId: e.taxId,
+    rubro: rubroLabel(e),
+    email: e.email,
+    phone: e.phone,
+    address: e.address,
+    notes: e.notes,
+    isWithholdingAgent: e.isWithholdingAgent,
+    llevaCuentaPreformas: e.llevaCuentaPreformas,
+    llevaViajes: e.llevaViajes,
+    rotuloSubcuenta: e.rotuloSubcuenta,
+    moneda: e.moneda,
+    retiroSocietario: e.retiroSocietario,
+  };
+}
+
 export async function createEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
@@ -74,6 +131,7 @@ export async function createEntity(formData: FormData) {
       entityType: ENTITY_TYPE_LABELS[type],
       entityId: entity.id,
       summary: `${name}`,
+      cambios: diffDeCampos(null, fotoDeLaEntidad(entity), CAMPOS_DE_LA_ENTIDAD),
     });
   });
 
@@ -117,6 +175,9 @@ export async function updateEntity(formData: FormData) {
     throw new UserError("Tipo inválido.");
   }
 
+  const previa = await prisma.entity.findUnique({ where: { id: entityId } });
+  if (!previa) throw new UserError("El cliente o proveedor ya no existe.");
+
   const entity = await prisma.$transaction(async (tx) => {
     const entity = await tx.entity.update({
       where: { id: entityId },
@@ -146,6 +207,7 @@ export async function updateEntity(formData: FormData) {
     entityType: ENTITY_TYPE_LABELS[type],
     entityId,
     summary: `${name}`,
+    cambios: diffDeCampos(fotoDeLaEntidad(previa), fotoDeLaEntidad(entity), CAMPOS_DE_LA_ENTIDAD),
   });
 
   revalidatePath("/clientes");
@@ -218,6 +280,7 @@ export async function deleteEntity(formData: FormData) {
       entityType: ENTITY_TYPE_LABELS[entity.type],
       entityId,
       summary: entity.name,
+      cambios: diffDeCampos(fotoDeLaEntidad(entity), null, CAMPOS_DE_LA_ENTIDAD),
     });
   });
 

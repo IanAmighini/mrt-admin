@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
+import { MOTIVO_INACTIVIDAD } from "@/lib/sesion";
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string; error?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; error?: string; motivo?: string }>;
 }) {
   const params = await searchParams;
   const callbackUrl = params.callbackUrl || "/";
@@ -43,6 +44,12 @@ export default async function LoginPage({
           <h1 className="text-lg font-semibold">MRT</h1>
           <p className="text-sm text-foreground/60">Iniciá sesión para continuar</p>
         </div>
+        {params.motivo === MOTIVO_INACTIVIDAD && !params.error && (
+          <p className="rounded bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+            Cerramos la sesión porque estuvo un rato sin usarse. Volvé a entrar y seguís donde
+            estabas.
+          </p>
+        )}
         {params.error && (
           <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
             Email o contraseña incorrectos.

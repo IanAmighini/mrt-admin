@@ -4,6 +4,8 @@ import { navEntriesForRole, ROLE_LABELS } from "@/lib/nav";
 import { SidebarNav } from "@/components/SidebarNav";
 import { SearchPalette } from "@/components/SearchPalette";
 import { signOut } from "@/auth";
+import { cookies } from "next/headers";
+import { COOKIE_HUBO_SESION } from "@/lib/sesion";
 
 export default async function AppLayout({
   children,
@@ -34,6 +36,10 @@ export default async function AppLayout({
           <form
             action={async () => {
               "use server";
+              // Primero la marca: si queda, el login diría que la sesión se cerró por inactividad
+              // cuando en realidad la cerró quien está sentado acá. Y después del signOut no hay
+              // chance, porque redirige tirando.
+              (await cookies()).delete(COOKIE_HUBO_SESION);
               await signOut({ redirectTo: "/login" });
             }}
           >

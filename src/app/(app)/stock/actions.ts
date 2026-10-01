@@ -5,14 +5,28 @@ import { revalidatePath } from "next/cache";
 import type { Prisma, SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 import { parseNumeroEscrito } from "@/lib/money";
-import { SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
+import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 import { generateUniqueSlug } from "@/lib/slug";
 
 // Misma lista y mismo orden que el resto de la app: una categoría nueva se agrega en
 // SUPPLIER_CATEGORY_ORDER y aparece acá sola.
 const CATEGORIES: SupplierCategory[] = SUPPLIER_CATEGORY_ORDER;
+
+/** Lo que se mira de un insumo en el detalle de Actividad. */
+const CAMPOS_DEL_INSUMO = {
+  name: "Nombre",
+  categoria: "Categor\u00eda",
+  unit: "Unidad",
+  llevaStock: "Lleva stock",
+  unitCost: "Costo unitario",
+  minStock: "Stock m\u00ednimo",
+  unitsPerPallet: "Unidades por pallet",
+  precioSopladoUsd: "Soplado U$S",
+  preformaNombre: "Preforma",
+  stockInicial: "Stock inicial",
+} as const;
 
 export async function createItem(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
@@ -72,6 +86,11 @@ export async function createItem(formData: FormData) {
       entityType: "Insumo",
       entityId: item.id,
       summary: name,
+      cambios: diffDeCampos(
+        null,
+        { ...item, stockInicial, categoria: SUPPLIER_CATEGORY_LABELS[item.category] },
+        CAMPOS_DEL_INSUMO
+      ),
     });
   });
 
@@ -124,9 +143,17 @@ export async function updateItemAjustes(formData: FormData) {
     datosDeEnvase.precioSopladoUsd = raw ? parseNumeroEscrito(raw, "soplado en U$S") : null;
   }
 
+  // Cómo estaba antes de pisarlo, con el nombre de la preforma puesto: un cuid en el detalle no
+  // le dice nada a nadie.
+  const antes = await prisma.item.findUnique({
+    where: { id: itemId },
+    include: { preforma: { select: { name: true } } },
+  });
+
   const item = await prisma.item.update({
     where: { id: itemId },
     data: { unitCost, minStock, ...datosDeEnvase },
+    include: { preforma: { select: { name: true } } },
   });
 
   await logAudit(prisma, {
@@ -135,6 +162,11 @@ export async function updateItemAjustes(formData: FormData) {
     entityType: "Insumo",
     entityId: itemId,
     summary: `${item.name} — costo unitario: ${unitCostRaw} · stock mínimo: ${minStockRaw || "sin mínimo"}`,
+    cambios: diffDeCampos(
+      antes && { ...antes, preformaNombre: antes.preforma?.name ?? null },
+      { ...item, preformaNombre: item.preforma?.name ?? null },
+      CAMPOS_DEL_INSUMO
+    ),
   });
 
   revalidatePath(`/stock/${item.slug}`);

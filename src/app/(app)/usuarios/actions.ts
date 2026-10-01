@@ -6,11 +6,14 @@ import { Prisma, type UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { hashPassword } from "@/lib/password";
-import { logAudit } from "@/lib/audit";
-import { ASSIGNABLE_ROLES } from "@/lib/nav";
+import { diffDeCampos, logAudit } from "@/lib/audit";
+import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/nav";
 
 // Misma lista que ofrecen los desplegables: un rol nuevo se agrega en un solo lugar.
 const ROLES: UserRole[] = ASSIGNABLE_ROLES;
+
+/** Lo que se mira de un usuario en el detalle de Actividad. La contraseña, obviamente, no. */
+const CAMPOS_DEL_USUARIO = { name: "Nombre", email: "Email", rol: "Rol" } as const;
 
 export async function createUser(formData: FormData) {
   const admin = await requireRole(["ADMIN"]);
@@ -50,6 +53,7 @@ export async function createUser(formData: FormData) {
     entityType: "Usuario",
     entityId: created.id,
     summary: `${name} (${email})`,
+    cambios: diffDeCampos(null, { name, email, rol: ROLE_LABELS[role] }, CAMPOS_DEL_USUARIO),
   });
 
   revalidatePath("/usuarios");
@@ -72,6 +76,9 @@ export async function updateUser(formData: FormData) {
     throw new UserError("Rol inválido.");
   }
 
+  const antes = await prisma.user.findUnique({ where: { id } });
+  if (!antes) throw new UserError("El usuario ya no existe.");
+
   try {
     await prisma.user.update({ where: { id }, data: { name, email, role } });
   } catch (error) {
@@ -87,6 +94,11 @@ export async function updateUser(formData: FormData) {
     entityType: "Usuario",
     entityId: id,
     summary: `${name} (${email})`,
+    cambios: diffDeCampos(
+      { name: antes.name, email: antes.email, rol: ROLE_LABELS[antes.role] },
+      { name, email, rol: ROLE_LABELS[role] },
+      CAMPOS_DEL_USUARIO
+    ),
   });
 
   revalidatePath("/usuarios");
@@ -112,6 +124,7 @@ export async function toggleUserActive(formData: FormData) {
     entityType: "Usuario",
     entityId: id,
     summary: `${target.name} — ${active ? "eliminado (desactivado)" : "reactivado"}`,
+    cambios: [{ campo: "Activo", antes: active ? "s\u00ed" : "no", despues: active ? "no" : "s\u00ed" }],
   });
 
   revalidatePath("/usuarios");

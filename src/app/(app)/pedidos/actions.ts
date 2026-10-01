@@ -10,7 +10,9 @@ import { parseNumeroOpcional, toDecimal } from "@/lib/money";
 import { getSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
+import { PEDIDO_STATUS_LABELS } from "@/lib/labels";
+import { formatNumeroExacto } from "@/lib/money";
 
 const PEDIDO_STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
 
@@ -37,6 +39,38 @@ function parseLines(formData: FormData) {
     throw new UserError("Cargá al menos una línea con marca, formato y cantidad de pallets.");
   }
   return lines;
+}
+
+/** Lo que se mira de un pedido en el detalle de Actividad. */
+const CAMPOS_DEL_PEDIDO = {
+  cliente: "Cliente",
+  date: "Fecha",
+  comments: "Comentarios",
+  estado: "Estado",
+  renglones: "L\u00edneas",
+} as const;
+
+/**
+ * El pedido tal como quedó, leído de vuelta de la base con los nombres puestos.
+ *
+ * Las líneas van juntas en un solo campo —un renglón por producto— porque se borran y se reescriben
+ * en cada edición: no tienen identidad que permita decir "la línea 2 cambió".
+ */
+async function fotoDelPedido(tx: Prisma.TransactionClient, pedidoId: string) {
+  const pedido = await tx.pedido.findUnique({
+    where: { id: pedidoId },
+    include: { entity: { select: { name: true } }, lines: { include: { product: { select: { name: true } } } } },
+  });
+  if (!pedido) return null;
+  return {
+    cliente: pedido.entity.name,
+    date: pedido.date,
+    comments: pedido.comments,
+    estado: PEDIDO_STATUS_LABELS[pedido.status],
+    renglones: pedido.lines
+      .map((l) => `${l.product.name} \u00d7 ${formatNumeroExacto(l.pallets)} pallet(s)`)
+      .join("\n"),
+  };
 }
 
 async function nextOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
@@ -81,6 +115,7 @@ export async function createPedido(formData: FormData) {
       entityType: "Pedido",
       entityId: pedido.id,
       summary: `Pedido #${orderNumber}`,
+      cambios: diffDeCampos(null, await fotoDelPedido(tx, pedido.id), CAMPOS_DEL_PEDIDO),
     });
   }, { timeout: 20000 });
 
@@ -97,6 +132,7 @@ export async function deletePedido(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   const pedidoId = String(formData.get("pedidoId") || "");
   const existing = await getPedidoOrThrow(pedidoId);
+  const antes = await fotoDelPedido(prisma, pedidoId);
 
   await prisma.pedido.delete({ where: { id: pedidoId } });
   await logAudit(prisma, {
@@ -105,6 +141,7 @@ export async function deletePedido(formData: FormData) {
     entityType: "Pedido",
     entityId: pedidoId,
     summary: `Pedido #${existing.orderNumber}`,
+    cambios: diffDeCampos(antes, null, CAMPOS_DEL_PEDIDO),
   });
   revalidatePath("/pedidos");
 }
@@ -121,6 +158,7 @@ export async function updatePedido(formData: FormData) {
   const lines = parseLines(formData);
   // Lo necesita la receta que se arma sola si alguna línea estrena producto.
   const oilFillEfficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
+  const antes = await fotoDelPedido(prisma, pedidoId);
 
   await prisma.$transaction(async (tx) => {
     await tx.pedidoLine.deleteMany({ where: { pedidoId } });
@@ -147,6 +185,7 @@ export async function updatePedido(formData: FormData) {
       entityType: "Pedido",
       entityId: pedidoId,
       summary: `Pedido #${existing.orderNumber}`,
+      cambios: diffDeCampos(antes, await fotoDelPedido(tx, pedidoId), CAMPOS_DEL_PEDIDO),
     });
   }, { timeout: 20000 });
 
@@ -175,7 +214,10 @@ export async function updatePedidoStatus(formData: FormData) {
     action: "UPDATE",
     entityType: "Pedido",
     entityId: pedidoId,
-    summary: `Pedido #${pedido.orderNumber} — estado: ${status}`,
+    summary: `Pedido #${pedido.orderNumber} — estado: ${PEDIDO_STATUS_LABELS[status]}`,
+    cambios: [
+      { campo: "Estado", antes: PEDIDO_STATUS_LABELS[pedido.status], despues: PEDIDO_STATUS_LABELS[status] },
+    ],
   });
 
   revalidatePath("/pedidos");

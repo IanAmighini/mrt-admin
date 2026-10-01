@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { parseFecha } from "@/lib/period";
+import { formatFecha, parseFecha } from "@/lib/period";
 import { Prisma, type ChequeEstado } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { marcarCheque } from "@/lib/cheques";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
@@ -27,6 +27,10 @@ export async function actualizarEstadoCheque(formData: FormData) {
   const estado = String(formData.get("estado") || "") as ChequeEstado;
   if (!ESTADOS_MANUALES.includes(estado)) throw new UserError("Estado inválido.");
 
+  // El estado anterior se lee antes de pisarlo: es lo único que cambia acá, y sin eso el detalle
+  // de Actividad no dice de dónde venía.
+  const antes = await prisma.cheque.findUnique({ where: { id: chequeId }, select: { estado: true } });
+
   await marcarCheque(chequeId, estado);
 
   const cheque = await prisma.cheque.findUnique({ where: { id: chequeId } });
@@ -36,6 +40,13 @@ export async function actualizarEstadoCheque(formData: FormData) {
     entityType: "Cheque",
     entityId: chequeId,
     summary: `#${cheque?.numero ?? chequeId} — ${CHEQUE_ESTADO_LABELS[estado]}`,
+    cambios: [
+      {
+        campo: "Estado",
+        antes: antes ? CHEQUE_ESTADO_LABELS[antes.estado] : null,
+        despues: CHEQUE_ESTADO_LABELS[estado],
+      },
+    ],
   });
 
   revalidatePath("/tesoreria/cheques");
@@ -128,6 +139,26 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
       entityType: "Cambio de cheques",
       entityId: movimiento.id,
       summary: `${data.length} cheque(s) por ${formatMoney(total)}${cambiadoA ? ` — ${cambiadoA}` : ""}`,
+      cambios: diffDeCampos(
+        null,
+        {
+          date,
+          caja: account.entity.name,
+          cambiadoA,
+          total: formatMoney(total),
+          // Un renglón por cheque: es lo que se controla contra los papeles.
+          cheques: data
+            .map((c) => `#${c.numero}${c.banco ? ` (${c.banco})` : ""} — ${formatMoney(c.amount)}`)
+            .join("\n"),
+        },
+        {
+          date: "Fecha",
+          caja: "Sale de",
+          cambiadoA: "Cambiado a",
+          total: "Total",
+          cheques: "Cheques",
+        }
+      ),
     });
   });
 
@@ -222,6 +253,15 @@ export async function rechazarCheque(formData: FormData) {
       entityType: "Cheque",
       entityId: chequeId,
       summary: `#${cheque.numero} rechazado — ${notas.length} nota(s) de débito por ${formatMoney(sumDecimals(notas.map((n) => n.total)))}`,
+      cambios: [
+        { campo: "Estado", antes: CHEQUE_ESTADO_LABELS[cheque.estado], despues: CHEQUE_ESTADO_LABELS.RECHAZADO },
+        { campo: "Fecha del rechazo", antes: null, despues: formatFecha(date) },
+        {
+          campo: "Notas de d\u00e9bito",
+          antes: null,
+          despues: notas.map((n) => `${n.motivo} — ${formatMoney(n.total)}`).join("\n"),
+        },
+      ],
     });
   });
 

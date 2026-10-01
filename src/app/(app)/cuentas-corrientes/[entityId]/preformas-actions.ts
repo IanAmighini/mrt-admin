@@ -5,7 +5,7 @@ import { parseFecha } from "@/lib/period";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { parseNumeroEscrito, formatQuantity } from "@/lib/money";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 import { UserError } from "@/lib/user-error";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
@@ -13,6 +13,15 @@ function parseFormDate(value: FormDataEntryValue | null): Date {
   if (!str) throw new UserError("Falta la fecha.");
   return parseFecha(str);
 }
+
+/** Lo que se mira de una entrega de preformas en el detalle de Actividad. */
+const CAMPOS_DE_LA_ENTREGA_DE_PREFORMAS = {
+  preforma: "Preforma",
+  date: "Fecha",
+  quantity: "Cantidad",
+  comprobante: "Comprobante",
+  notes: "Notas",
+} as const;
 
 /**
  * Registra preformas entregadas al proveedor que las fía, para bajar lo que se le debe.
@@ -54,6 +63,11 @@ export async function createEntregaPreforma(formData: FormData) {
     entityType: "Entrega de preformas",
     entityId: entrega.id,
     summary: `${entity.name} — ${formatQuantity(quantity)} de ${preforma.name}`,
+    cambios: diffDeCampos(
+      null,
+      { ...entrega, preforma: preforma.name },
+      CAMPOS_DE_LA_ENTREGA_DE_PREFORMAS
+    ),
   });
 
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);
@@ -77,6 +91,11 @@ export async function deleteEntregaPreforma(formData: FormData) {
     entityType: "Entrega de preformas",
     entityId: entregaId,
     summary: `${entrega.entity.name} — ${formatQuantity(entrega.quantity)} de ${entrega.preforma.name}`,
+    cambios: diffDeCampos(
+      { ...entrega, preforma: entrega.preforma.name },
+      null,
+      CAMPOS_DE_LA_ENTREGA_DE_PREFORMAS
+    ),
   });
 
   revalidatePath(`/cuentas-corrientes/${entrega.entity.slug}`);
@@ -103,6 +122,13 @@ export async function guardarSaldosInicialesPreforma(formData: FormData) {
 
   const preformas = await prisma.preforma.findMany({ orderBy: { name: "asc" } });
   const cargados: string[] = [];
+  const previos = new Map(
+    (await prisma.preformaSaldoInicial.findMany({ where: { entityId } })).map((s) => [
+      s.preformaId,
+      formatQuantity(s.quantity),
+    ])
+  );
+  const detalle: { campo: string; antes: string | null; despues: string | null }[] = [];
 
   await prisma.$transaction(async (tx) => {
     for (const preforma of preformas) {
@@ -110,6 +136,10 @@ export async function guardarSaldosInicialesPreforma(formData: FormData) {
       // El signo se toma como viene: negativo es saldo a favor nuestro, que puede pasar si se le
       // entregaron preformas de más.
       const quantity = raw ? parseNumeroEscrito(raw, `saldo inicial de ${preforma.name}`) : null;
+
+      const antes = previos.get(preforma.id) ?? null;
+      const despues = quantity && !quantity.isZero() ? formatQuantity(quantity) : null;
+      if (antes !== despues) detalle.push({ campo: preforma.name, antes, despues });
 
       if (quantity === null || quantity.isZero()) {
         await tx.preformaSaldoInicial.deleteMany({ where: { entityId, preformaId: preforma.id } });
@@ -131,6 +161,9 @@ export async function guardarSaldosInicialesPreforma(formData: FormData) {
     entityType: "Saldo inicial de preformas",
     entityId,
     summary: `${entity.name} — ${cargados.join(" · ") || "sin saldos"}`,
+    // Un renglón por tipo, con lo que había y lo que quedó: es lo que se revisa cuando el saldo
+    // de preformas no cuadra con la planilla del proveedor.
+    cambios: detalle,
   });
 
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);

@@ -6,7 +6,7 @@ import type { ExpenseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 import { formatMoney, parseNumeroEscrito } from "@/lib/money";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import { getCajaChica, proximoNumeroDeCaja, type CajaConCuenta } from "@/lib/caja";
@@ -38,6 +38,15 @@ function revalidarCajas(cajas: CajaConCuenta[]) {
   revalidatePath("/tesoreria");
   for (const caja of cajas) revalidatePath(`/cuentas-corrientes/${caja.slug}`);
 }
+
+/** Lo que se mira de un movimiento de caja en el detalle de Actividad. */
+const CAMPOS_DEL_MOVIMIENTO = {
+  numero: "N\u00famero",
+  date: "Fecha",
+  concepto: "Concepto",
+  rubro: "Rubro",
+  monto: "Monto",
+} as const;
 
 /**
  * Lo que sale de la caja y no cancela ninguna cuenta corriente: sueldos, la limpieza, el remís, el
@@ -84,6 +93,17 @@ export async function crearGastoDeCaja(formData: FormData) {
     action: "CREATE",
     entityType: "Movimiento de caja",
     summary: `Gasto de caja ${numero} — ${concepto} — ${formatMoney(amount)}`,
+    cambios: diffDeCampos(
+      null,
+      {
+        numero,
+        date,
+        concepto,
+        rubro: expenseCategory ? EXPENSE_CATEGORY_LABELS[expenseCategory] : null,
+        monto: formatMoney(amount),
+      },
+      CAMPOS_DEL_MOVIMIENTO
+    ),
   });
 
   revalidarCajas([caja]);
@@ -151,6 +171,11 @@ export async function crearPaseDeCaja(formData: FormData) {
     action: "CREATE",
     entityType: "Movimiento de caja",
     summary: `${razon} — ${formatMoney(amount)}`,
+    cambios: diffDeCampos(
+      null,
+      { date, concepto: razon, monto: formatMoney(amount) },
+      CAMPOS_DEL_MOVIMIENTO
+    ),
   });
 
   revalidarCajas([caja, { ...otra, accountId: otraAccount.id }]);
@@ -187,6 +212,17 @@ export async function borrarMovimientoDeCaja(formData: FormData) {
     action: "DELETE",
     entityType: "Movimiento de caja",
     summary: `${documento.number} — ${documento.reason ?? ""} — ${formatMoney(documento.totalAmount)}`,
+    cambios: diffDeCampos(
+      {
+        numero: documento.number,
+        date: documento.date,
+        concepto: documento.reason,
+        rubro: documento.expenseCategory ? EXPENSE_CATEGORY_LABELS[documento.expenseCategory] : null,
+        monto: formatMoney(documento.totalAmount),
+      },
+      null,
+      CAMPOS_DEL_MOVIMIENTO
+    ),
   });
 
   const otraCaja = documento.contraparte?.account.entity;

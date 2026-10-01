@@ -8,8 +8,8 @@ import { Prisma, type DocumentType, type EntityType, type ItemMovementType } fro
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, formatQuantity, parseNumeroEscrito } from "@/lib/money";
-import { logAudit } from "@/lib/audit";
-import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
+import { diffDeCampos, logAudit } from "@/lib/audit";
+import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 
 const MOVEMENT_TYPES: ItemMovementType[] = ["INGRESO", "AJUSTE", "MERMA", "VENTA"];
 
@@ -74,6 +74,27 @@ export async function createItemMovement(formData: FormData) {
     entityType: "Movimiento de insumo",
     entityId: item.id,
     summary: `${ITEM_MOVEMENT_TYPE_LABELS[type]} — ${item.name} — ${formatQuantity(quantity, item.unit)}`,
+    cambios: diffDeCampos(
+      null,
+      {
+        tipo: ITEM_MOVEMENT_TYPE_LABELS[type],
+        insumo: item.name,
+        date,
+        quantity: formatQuantity(quantity, item.unit),
+        reason,
+        sourceKg,
+        conversionFactor,
+      },
+      {
+        tipo: "Tipo",
+        insumo: "Insumo",
+        date: "Fecha",
+        quantity: "Cantidad",
+        reason: "Motivo",
+        sourceKg: "Kilos",
+        conversionFactor: "Factor de conversi\u00f3n",
+      }
+    ),
   });
 
   revalidatePath(`/stock/${item.slug}`);
@@ -167,6 +188,33 @@ export async function venderInsumo(formData: FormData) {
       entityType: "Venta de insumo",
       entityId: document.id,
       summary: `${detalle} — ${account.entity.name} — ${formatMoney(total)}`,
+      cambios: diffDeCampos(
+        null,
+        {
+          insumo: item.name,
+          aQuien: account.entity.name,
+          cuenta: CIRCUIT_LABELS[account.circuit],
+          tipo: DOCUMENT_TYPE_LABELS[tipo],
+          number: document.number,
+          date,
+          quantity: formatQuantity(quantity, item.unit),
+          unitPrice: formatMoney(unitPrice),
+          total: formatMoney(total),
+          notes,
+        },
+        {
+          insumo: "Insumo",
+          aQuien: "A qui\u00e9n",
+          cuenta: "Cuenta",
+          tipo: "Comprobante",
+          number: "N\u00famero",
+          date: "Fecha",
+          quantity: "Cantidad",
+          unitPrice: "Precio unitario",
+          total: "Total",
+          notes: "Notas",
+        }
+      ),
     });
   });
 

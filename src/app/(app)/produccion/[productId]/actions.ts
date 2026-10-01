@@ -10,7 +10,7 @@ import { formatQuantity, parseNumeroEscrito, toDecimal } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { getSetting } from "@/lib/settings";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 import { litrosPorPallet } from "@/lib/recipe-template";
 
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
@@ -19,6 +19,16 @@ function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   const n = parseInt(str, 10);
   return Number.isFinite(n) ? n : null;
 }
+
+/** Lo que se mira de un producto en el detalle de Actividad. */
+const CAMPOS_DEL_PRODUCTO = {
+  name: "Nombre",
+  oilType: "Tipo de aceite",
+  presentation: "Presentaci\u00f3n",
+  boxesPerPallet: "Cajas por pallet",
+  unitsPerBox: "Botellas por caja",
+  bottleCapacityMl: "Capacidad (ml)",
+} as const;
 
 export async function updateProduct(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
@@ -39,6 +49,8 @@ export async function updateProduct(formData: FormData) {
     ? parseNumeroEscrito(bottleCapacityMlRaw, "capacidad de la botella")
     : null;
 
+  const antes = await prisma.product.findUnique({ where: { id: productId } });
+
   const product = await prisma.product.update({
     where: { id: productId },
     data: {
@@ -57,6 +69,7 @@ export async function updateProduct(formData: FormData) {
     entityType: "Producto",
     entityId: productId,
     summary: `${name} ${oilType} — ${presentation}`,
+    cambios: diffDeCampos(antes, product, CAMPOS_DEL_PRODUCTO),
   });
 
   revalidatePath(`/produccion/${product.slug}`);
@@ -162,12 +175,19 @@ export async function generateRecipeFromPresentation(formData: FormData) {
     }
   });
 
+  const nombresDeInsumo = new Map(itemsElegidos.map((i) => [i.id, i.name]));
+
   await logAudit(prisma, {
     userId: user.id,
     action: "UPDATE",
     entityType: "Receta",
     entityId: productId,
     summary: `Receta de ${product.name} ${product.oilType} generada automáticamente — ${lines.length} insumo(s)`,
+    cambios: lines.map((l) => ({
+      campo: `${nombresDeInsumo.get(l.itemId) ?? "Insumo"} por unidad`,
+      antes: null,
+      despues: l.quantityPerUnit.toString(),
+    })),
   });
 
   revalidatePath(`/produccion/${product.slug}`);
@@ -194,6 +214,12 @@ export async function upsertRecipeLine(formData: FormData) {
     prisma.product.findUnique({ where: { id: productId }, select: { slug: true } }),
   ]);
 
+  // Lo que había antes para ese insumo, que es lo único que cambia: si no existía, es un alta.
+  const anterior = await prisma.recipeItem.findUnique({
+    where: { productId_itemId: { productId, itemId } },
+    select: { quantityPerUnit: true },
+  });
+
   await prisma.recipeItem.upsert({
     where: { productId_itemId: { productId, itemId } },
     update: { quantityPerUnit },
@@ -206,6 +232,13 @@ export async function upsertRecipeLine(formData: FormData) {
     entityType: "Receta",
     entityId: productId,
     summary: `${item?.name ?? "Insumo"} — ${quantityPerUnitRaw} por unidad`,
+    cambios: [
+      {
+        campo: `${item?.name ?? "Insumo"} por unidad`,
+        antes: anterior ? anterior.quantityPerUnit.toString() : null,
+        despues: quantityPerUnit.toString(),
+      },
+    ],
   });
 
   revalidatePath(`/produccion/${product?.slug ?? productId}`);
@@ -235,6 +268,15 @@ export async function deleteRecipeLine(formData: FormData) {
     entityType: "Receta",
     entityId: productId,
     summary: recipeItem ? recipeItem.item.name : "Ítem de receta",
+    cambios: recipeItem
+      ? [
+          {
+            campo: `${recipeItem.item.name} por unidad`,
+            antes: recipeItem.quantityPerUnit.toString(),
+            despues: null,
+          },
+        ]
+      : undefined,
   });
 
   revalidatePath(`/produccion/${product?.slug ?? productId}`);
@@ -294,6 +336,17 @@ export async function createProductMovement(formData: FormData) {
     entityType: "Movimiento de producto",
     entityId: productId,
     summary: `${PRODUCT_MOVEMENT_TYPE_LABELS[type]} — ${formatProductBrandLabel(product)} ${product.presentation} — ${quantity.greaterThan(0) ? "+" : ""}${formatQuantity(quantity)}`,
+    cambios: diffDeCampos(
+      null,
+      {
+        tipo: PRODUCT_MOVEMENT_TYPE_LABELS[type],
+        producto: `${formatProductBrandLabel(product)} ${product.presentation}`,
+        date,
+        quantity,
+        reason,
+      },
+      { tipo: "Tipo", producto: "Producto", date: "Fecha", quantity: "Cantidad", reason: "Motivo" }
+    ),
   });
 
   revalidatePath(`/produccion/${product.slug}`);

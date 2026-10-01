@@ -1,7 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
-import { parseFecha } from "@/lib/period";
+import { formatFecha, parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import {
@@ -16,11 +16,12 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { DEFAULT_IVA_RATE, formatMoney, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
+import { DEFAULT_IVA_RATE, formatMoney, formatNumeroExacto, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
 import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impuestos";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import {
   CIRCUIT_LABELS,
+  DOCUMENT_TYPE_LABELS,
   EXPENSE_CATEGORY_LABELS,
   PAYMENT_METHOD_LABELS,
   RETENTION_KIND_LABELS,
@@ -28,7 +29,7 @@ import {
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { motivoMetodoInvalido, motivoTesoreriaInvalida } from "@/lib/pagos";
 import { crearChequeRecibido, devolverChequesALaCartera, entregarCheque, esMetodoCheque } from "@/lib/cheques";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 import type { AuditAction } from "@prisma/client";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
@@ -173,7 +174,10 @@ export async function updateDocument(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
-  const document = await prisma.document.findUnique({ where: { id: documentId } });
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { entrega: { select: { nombre: true } }, destinatario: { select: { nombre: true } } },
+  });
   if (!document) throw new UserError("El comprobante ya no existe.");
   if (!NON_FACTURA_TYPES.includes(document.type)) {
     throw new UserError("Este comprobante no es una nota ni un ajuste.");
@@ -205,6 +209,24 @@ export async function updateDocument(formData: FormData) {
   }
 
   const account = await getAccountOrThrow(document.accountId);
+  // Cómo estaba antes de pisarlo.
+  const antesDelDoc = fotoDelComprobante({
+    tipo: DOCUMENT_TYPE_LABELS[document.type],
+    number: document.number,
+    date: document.date,
+    dueDate: document.dueDate,
+    currency: document.currency,
+    exchangeRate: document.exchangeRate,
+    netAmount: document.netAmount,
+    ivaAmount: document.ivaAmount,
+    perceptionAmount: document.perceptionAmount,
+    retentionAmount: document.retentionAmount,
+    totalAmount: document.totalAmount,
+    reason: document.reason,
+    rubro: document.expenseCategory ? EXPENSE_CATEGORY_LABELS[document.expenseCategory] : null,
+    viaje: document.entrega?.nombre ?? null,
+    destinatario: document.destinatario?.nombre ?? null,
+  });
   const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, account.entityId);
   const { taxRows, totals } = esNota(type)
     ? impuestosDeNota(formData, account.circuit)
@@ -240,12 +262,42 @@ export async function updateDocument(formData: FormData) {
     }
   });
 
+  const [viajeNuevo, destinatarioNuevo] = await Promise.all([
+    entregaId
+      ? prisma.entrega.findUnique({ where: { id: entregaId }, select: { nombre: true } })
+      : null,
+    destinatarioId
+      ? prisma.destinatario.findUnique({ where: { id: destinatarioId }, select: { nombre: true } })
+      : null,
+  ]);
+
   await logAudit(prisma, {
     userId: user.id,
     action: "UPDATE",
     entityType: "Movimiento de cuenta",
     entityId: documentId,
     summary: `#${number} — ${account.entity.name} — ${formatMoney(totals.totalAmount, currency)}`,
+    cambios: diffDeCampos(
+      antesDelDoc,
+      fotoDelComprobante({
+        tipo: DOCUMENT_TYPE_LABELS[type],
+        number,
+        date,
+        dueDate,
+        currency,
+        exchangeRate,
+        netAmount: totals.netAmount,
+        ivaAmount: totals.ivaAmount,
+        perceptionAmount: totals.perceptionAmount,
+        retentionAmount: totals.retentionAmount,
+        totalAmount: totals.totalAmount,
+        reason,
+        rubro: expenseCategory ? EXPENSE_CATEGORY_LABELS[expenseCategory] : null,
+        viaje: viajeNuevo?.nombre ?? null,
+        destinatario: destinatarioNuevo?.nombre ?? null,
+      }),
+      CAMPOS_DEL_COMPROBANTE
+    ),
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
@@ -257,7 +309,12 @@ export async function deleteDocument(formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { account: { include: { entity: true } }, contraparteDe: { select: { id: true } } },
+    include: {
+      account: { include: { entity: true } },
+      contraparteDe: { select: { id: true } },
+      entrega: { select: { nombre: true } },
+      destinatario: { select: { nombre: true } },
+    },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
   if (!NON_FACTURA_TYPES.includes(document.type)) {
@@ -282,6 +339,7 @@ export async function deleteDocument(formData: FormData) {
       entityType: "Movimiento de cuenta",
       entityId: documentId,
       summary: `#${document.number} — ${document.account.entity.name} — ${formatMoney(document.totalAmount, document.currency)}`,
+      cambios: diffDeCampos(fotoDelDocumento(document), null, CAMPOS_DEL_COMPROBANTE),
     });
   });
 
@@ -365,15 +423,162 @@ export async function createDocumentForEntity(formData: FormData) {
     return creado;
   });
 
+  // Los nombres, para que el detalle de Actividad diga "Camión 12" y no un cuid.
+  const [viajeAlta, destinatarioAlta] = await Promise.all([
+    entregaId ? prisma.entrega.findUnique({ where: { id: entregaId }, select: { nombre: true } }) : null,
+    destinatarioId
+      ? prisma.destinatario.findUnique({ where: { id: destinatarioId }, select: { nombre: true } })
+      : null,
+  ]);
+
   await logAudit(prisma, {
     userId: user.id,
     action: "CREATE",
     entityType: "Movimiento de cuenta",
     entityId: document.id,
     summary: `#${number} — ${account.entity.name} — ${formatMoney(totals.totalAmount, currency)}`,
+    cambios: diffDeCampos(
+      null,
+      fotoDelComprobante({
+        tipo: DOCUMENT_TYPE_LABELS[type],
+        number,
+        date,
+        dueDate,
+        currency,
+        exchangeRate,
+        netAmount: totals.netAmount,
+        ivaAmount: totals.ivaAmount,
+        perceptionAmount: totals.perceptionAmount,
+        retentionAmount: totals.retentionAmount,
+        totalAmount: totals.totalAmount,
+        reason,
+        rubro: expenseCategory ? EXPENSE_CATEGORY_LABELS[expenseCategory] : null,
+        viaje: viajeAlta?.nombre ?? null,
+        destinatario: destinatarioAlta?.nombre ?? null,
+      }),
+      CAMPOS_DEL_COMPROBANTE
+    ),
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
+}
+
+/**
+ * Los campos de un pago que vale la pena ver en el detalle de Actividad, con el nombre que les
+ * pone la pantalla. Lo que no está acá no se compara: un id interno o un `updatedAt` no le dicen
+ * nada a nadie, y el detalle sirve justamente porque no tiene ruido.
+ */
+/** Lo que se mira de un comprobante: la nota, el ajuste, el gasto, la factura. */
+const CAMPOS_DEL_COMPROBANTE = {
+  tipo: "Tipo",
+  number: "N\u00famero",
+  date: "Fecha",
+  dueDate: "Vencimiento",
+  currency: "Moneda",
+  exchangeRate: "Cotizaci\u00f3n",
+  netAmount: "Neto",
+  ivaRate: "Al\u00edcuota IVA",
+  ivaAmount: "IVA",
+  perceptionAmount: "Percepciones",
+  retentionAmount: "Retenci\u00f3n",
+  totalAmount: "Total",
+  reason: "Detalle",
+  rubro: "Rubro",
+  viaje: "Viaje",
+  destinatario: "A nombre de",
+} as const;
+
+/**
+ * La misma foto, pero armada desde una fila de la base. Es lo que necesitan los borrados y las
+ * ediciones: ahí el "antes" ya está guardado y lo único que falta es ponerle los nombres.
+ */
+function fotoDelDocumento(d: {
+  type: DocumentType;
+  number: string;
+  date: Date;
+  dueDate: Date | null;
+  currency: string;
+  exchangeRate: Prisma.Decimal | null;
+  netAmount: Prisma.Decimal;
+  ivaRate: Prisma.Decimal | null;
+  ivaAmount: Prisma.Decimal | null;
+  perceptionAmount: Prisma.Decimal | null;
+  retentionAmount: Prisma.Decimal | null;
+  totalAmount: Prisma.Decimal;
+  reason: string | null;
+  expenseCategory: ExpenseCategory | null;
+  entrega?: { nombre: string } | null;
+  destinatario?: { nombre: string } | null;
+}) {
+  return fotoDelComprobante({
+    tipo: DOCUMENT_TYPE_LABELS[d.type],
+    number: d.number,
+    date: d.date,
+    dueDate: d.dueDate,
+    currency: d.currency,
+    exchangeRate: d.exchangeRate,
+    netAmount: d.netAmount,
+    ivaRate: d.ivaRate,
+    ivaAmount: d.ivaAmount,
+    perceptionAmount: d.perceptionAmount,
+    retentionAmount: d.retentionAmount,
+    totalAmount: d.totalAmount,
+    reason: d.reason,
+    rubro: d.expenseCategory ? EXPENSE_CATEGORY_LABELS[d.expenseCategory] : null,
+    viaje: d.entrega?.nombre ?? null,
+    destinatario: d.destinatario?.nombre ?? null,
+  });
+}
+
+function fotoDelComprobante(d: {
+  tipo: string;
+  number: string;
+  date: Date;
+  dueDate: Date | null;
+  currency: string;
+  exchangeRate: Prisma.Decimal | null;
+  netAmount: Prisma.Decimal;
+  /** Sólo la factura y la compra la guardan; una nota lleva su desglose en DocumentTax. */
+  ivaRate?: Prisma.Decimal | null;
+  ivaAmount: Prisma.Decimal | null;
+  perceptionAmount: Prisma.Decimal | null;
+  retentionAmount: Prisma.Decimal | null;
+  totalAmount: Prisma.Decimal;
+  reason: string | null;
+  rubro: string | null;
+  viaje: string | null;
+  destinatario: string | null;
+}) {
+  return { ...d };
+}
+
+const CAMPOS_DEL_PAGO = {
+  date: "Fecha",
+  amount: "Monto",
+  currency: "Moneda",
+  amountArs: "Monto en pesos",
+  exchangeRate: "Cotizaci\u00f3n",
+  method: "M\u00e9todo",
+  retentionKind: "Tipo de retenci\u00f3n",
+  reference: "Descripci\u00f3n",
+  circuito: "Cuenta",
+  viaje: "Viaje",
+} as const;
+
+/** Un pago en la forma que compara `diffDeCampos`. */
+function fotoDelPago(p: {
+  date: Date;
+  amount: Prisma.Decimal;
+  currency: string;
+  amountArs: Prisma.Decimal | null;
+  exchangeRate: Prisma.Decimal | null;
+  method: string;
+  retentionKind: string | null;
+  reference: string | null;
+  circuito: string;
+  viaje: string | null;
+}) {
+  return { ...p };
 }
 
 /**
@@ -420,7 +625,75 @@ async function alcanceDeImputacion(entityId: string, entregaId: string | null) {
 
 /** Núcleo compartido por createRemito y updateRemito (que borra y vuelve a llamar a este núcleo)
  * — así una edición queda como un solo UPDATE en el log, no un DELETE + CREATE. */
-async function createRemitoCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
+/**
+ * Lo que se entregó o se compró, escrito en un solo campo del detalle: un renglón por línea.
+ *
+ * Va junto y no campo por campo porque las líneas no tienen identidad estable —se borran y se
+ * vuelven a escribir en cada edición—, así que "la línea 2 cambió" no significaría nada. Como
+ * texto de varios renglones se lee de un vistazo qué entró y qué salió.
+ */
+function renglones(
+  lineas: { nombre: string; quantity: Prisma.Decimal; unitPrice: Prisma.Decimal | null }[]
+): string | null {
+  if (lineas.length === 0) return null;
+  return lineas
+    .map((l) => {
+      const cantidad = formatNumeroExacto(l.quantity);
+      const precio = l.unitPrice && !l.unitPrice.isZero() ? ` a $${formatNumeroExacto(l.unitPrice)}` : "";
+      return `${l.nombre} \u00d7 ${cantidad}${precio}`;
+    })
+    .join("\n");
+}
+
+/** La foto de un comprobante con líneas, armada desde la base: lo que necesitan editar y borrar. */
+function fotoDeComprobanteConLineas(d: {
+  number: string;
+  date: Date;
+  currency: string;
+  exchangeRate: Prisma.Decimal | null;
+  totalAmount: Prisma.Decimal;
+  reason: string | null;
+  entrega?: { nombre: string } | null;
+  destinatario?: { nombre: string } | null;
+  lines?: { quantity: Prisma.Decimal; unitPrice: Prisma.Decimal | null; product: { name: string } }[];
+  purchaseLines?: { quantity: Prisma.Decimal; unitPrice: Prisma.Decimal | null; item: { name: string } }[];
+}) {
+  return {
+    number: d.number,
+    date: d.date,
+    currency: d.currency,
+    exchangeRate: d.exchangeRate,
+    totalAmount: d.totalAmount,
+    reason: d.reason,
+    viaje: d.entrega?.nombre ?? null,
+    destinatario: d.destinatario?.nombre ?? null,
+    renglones: renglones([
+      ...(d.lines ?? []).map((l) => ({ nombre: l.product.name, quantity: l.quantity, unitPrice: l.unitPrice })),
+      ...(d.purchaseLines ?? []).map((l) => ({ nombre: l.item.name, quantity: l.quantity, unitPrice: l.unitPrice })),
+    ]),
+  };
+}
+
+/** Lo que se mira de una entrega o de una compra: el encabezado más los renglones. */
+const CAMPOS_CON_RENGLONES = {
+  number: "N\u00famero",
+  date: "Fecha",
+  currency: "Moneda",
+  exchangeRate: "Cotizaci\u00f3n",
+  totalAmount: "Total",
+  reason: "Detalle",
+  viaje: "Viaje",
+  destinatario: "A nombre de",
+  renglones: "L\u00edneas",
+} as const;
+
+async function createRemitoCore(
+  user: { id: string },
+  formData: FormData,
+  auditAction: AuditAction,
+  /** Cómo estaba la entrega antes de editarla. Vacío en un alta. */
+  antes?: Record<string, unknown> | null
+) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
 
@@ -543,12 +816,46 @@ async function createRemitoCore(user: { id: string }, formData: FormData, auditA
       });
     }
 
+    const nombres = new Map(
+      (await tx.product.findMany({
+        where: { id: { in: lines.map((l) => l.productId) } },
+        select: { id: true, name: true },
+      })).map((p) => [p.id, p.name])
+    );
+    const [viaje, destinatario] = await Promise.all([
+      entregaId ? tx.entrega.findUnique({ where: { id: entregaId }, select: { nombre: true } }) : null,
+      destinatarioId
+        ? tx.destinatario.findUnique({ where: { id: destinatarioId }, select: { nombre: true } })
+        : null,
+    ]);
+
     await logAudit(tx, {
       userId: user.id,
       action: auditAction,
       entityType: "Remito",
       entityId,
       summary: `#${number} — ${entity.name} — ${formatMoney(combinedTotal, currency)}`,
+      cambios: diffDeCampos(
+        antes ?? null,
+        {
+          number,
+          date,
+          currency,
+          exchangeRate,
+          totalAmount: combinedTotal,
+          reason,
+          viaje: viaje?.nombre ?? null,
+          destinatario: destinatario?.nombre ?? null,
+          renglones: renglones(
+            lines.map((l) => ({
+              nombre: nombres.get(l.productId) ?? "?",
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+            }))
+          ),
+        },
+        CAMPOS_CON_RENGLONES
+      ),
     });
   }, { timeout: 20000 });
 
@@ -566,7 +873,13 @@ export async function createRemito(formData: FormData) {
 async function getRemitoOrThrow(documentId: string) {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { remitoLinks: true, lines: true, account: { include: { entity: true } } },
+    include: {
+      remitoLinks: true,
+      lines: { include: { product: { select: { name: true } } } },
+      account: { include: { entity: true } },
+      entrega: { select: { nombre: true } },
+      destinatario: { select: { nombre: true } },
+    },
   });
   if (!document) throw new UserError("El remito ya no existe.");
   if (document.type !== "REMITO" || document.lines.length === 0) {
@@ -594,6 +907,7 @@ export async function deleteRemito(formData: FormData) {
       entityType: "Remito",
       entityId: document.account.entityId,
       summary: `#${document.number} — ${document.account.entity.name} — ${formatMoney(document.totalAmount, document.currency)}`,
+      cambios: diffDeCampos(fotoDeComprobanteConLineas(document), null, CAMPOS_CON_RENGLONES),
     });
   });
 
@@ -612,14 +926,14 @@ export async function updateRemito(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
-  await getRemitoOrThrow(documentId);
+  const antes = fotoDeComprobanteConLineas(await getRemitoOrThrow(documentId));
 
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
   });
 
-  await createRemitoCore(user, formData, "UPDATE");
+  await createRemitoCore(user, formData, "UPDATE", antes);
 }
 
 /** Núcleo compartido por createCompra y updateCompra (que borra y vuelve a llamar a este núcleo)
@@ -641,7 +955,13 @@ async function borrarCompraYSuFactura(
   await tx.document.delete({ where: { id: documentId } });
 }
 
-async function createCompraCore(user: { id: string }, formData: FormData, auditAction: AuditAction) {
+async function createCompraCore(
+  user: { id: string },
+  formData: FormData,
+  auditAction: AuditAction,
+  /** Cómo estaba la compra antes de editarla. Vacío en un alta. */
+  antes?: Record<string, unknown> | null
+) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
 
@@ -858,12 +1178,40 @@ async function createCompraCore(user: { id: string }, formData: FormData, auditA
       }
     }
 
+    const nombres = new Map(
+      (await tx.item.findMany({
+        where: { id: { in: lines.map((l) => l.itemId) } },
+        select: { id: true, name: true },
+      })).map((i) => [i.id, i.name])
+    );
+
     await logAudit(tx, {
       userId: user.id,
       action: auditAction,
       entityType: "Compra",
       entityId,
       summary: `#${number} — ${entity.name} — ${formatMoney(combinedTotal, currency)}`,
+      cambios: diffDeCampos(
+        antes ?? null,
+        {
+          number,
+          date,
+          currency,
+          exchangeRate,
+          totalAmount: combinedTotal,
+          reason: null,
+          viaje: null,
+          destinatario: null,
+          renglones: renglones(
+            lines.map((l) => ({
+              nombre: nombres.get(l.itemId) ?? "?",
+              quantity: l.quantity,
+              unitPrice: l.unitPrice,
+            }))
+          ),
+        },
+        CAMPOS_CON_RENGLONES
+      ),
     });
   });
 
@@ -890,7 +1238,7 @@ async function getCompraOrThrow(documentId: string) {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
     include: {
-      purchaseLines: true,
+      purchaseLines: { include: { item: { select: { name: true } } } },
       // `facturaLinks` y no `remitoLinks`: son dos relaciones distintas, y los vínculos de una
       // factura son aquellos donde ELLA es la factura.
       remitoLinks: { include: { factura: { include: { facturaLinks: true } } } },
@@ -927,6 +1275,7 @@ export async function deleteCompra(formData: FormData) {
       entityType: "Compra",
       entityId: document.account.entityId,
       summary: `#${document.number} — ${document.account.entity.name} — ${formatMoney(document.totalAmount, document.currency)}`,
+      cambios: diffDeCampos(fotoDeComprobanteConLineas(document), null, CAMPOS_CON_RENGLONES),
     });
   });
 
@@ -944,13 +1293,14 @@ export async function updateCompra(formData: FormData) {
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getCompraOrThrow(documentId);
+  const antes = fotoDeComprobanteConLineas(document);
 
   await prisma.$transaction(async (tx) => {
     await borrarCompraYSuFactura(tx, documentId, document.facturaPropia?.id ?? null);
   });
 
   // La factura vuelve a crearse desde el formulario, que la trae precargada.
-  await createCompraCore(user, formData, "UPDATE");
+  await createCompraCore(user, formData, "UPDATE", antes);
 }
 
 export async function createFactura(formData: FormData) {
@@ -1052,12 +1402,20 @@ export async function createFactura(formData: FormData) {
       }
     }
 
+    // Se relee dentro de la transacción porque el viaje y el destinatario pueden haberse heredado
+    // de los remitos unas líneas más arriba.
+    const guardada = await tx.document.findUniqueOrThrow({
+      where: { id: factura.id },
+      include: { entrega: { select: { nombre: true } }, destinatario: { select: { nombre: true } } },
+    });
+
     await logAudit(tx, {
       userId: user.id,
       action: "CREATE",
       entityType: "Factura",
       entityId: account.entityId,
       summary: `#${number} — ${account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+      cambios: diffDeCampos(null, fotoDelDocumento(guardada), CAMPOS_DEL_COMPROBANTE),
     });
   });
 
@@ -1118,6 +1476,24 @@ export async function updateFactura(formData: FormData) {
     entityType: "Factura",
     entityId: factura.account.entityId,
     summary: `#${number} — ${factura.account.entity.name} — ${formatMoney(totalAmount, currency)}`,
+    cambios: diffDeCampos(
+      fotoDelDocumento(factura),
+      fotoDelDocumento({
+        ...factura,
+        number,
+        date,
+        dueDate,
+        currency,
+        exchangeRate,
+        netAmount,
+        ivaRate,
+        ivaAmount,
+        retentionAmount,
+        perceptionAmount,
+        totalAmount,
+      }),
+      CAMPOS_DEL_COMPROBANTE
+    ),
   });
 
   revalidatePath(`/cuentas-corrientes/${factura.account.entity.slug}`);
@@ -1146,6 +1522,7 @@ export async function deleteFactura(formData: FormData) {
       entityType: "Factura",
       entityId: factura.account.entityId,
       summary: `#${factura.number} — ${factura.account.entity.name} — ${formatMoney(factura.totalAmount, factura.currency)}`,
+      cambios: diffDeCampos(fotoDelDocumento(factura), null, CAMPOS_DEL_COMPROBANTE),
     });
   });
 
@@ -1447,6 +1824,10 @@ export async function createPaymentForEntity(formData: FormData) {
   // El viaje decide contra qué se imputa: un cobro del camión 4 cancela comprobantes del camión
   // 4 y ninguno más. Sin viaje se imputa contra lo que tampoco lo tiene.
   const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
+  const nombreDelViajeNuevo = entregaId
+    ? ((await prisma.entrega.findUnique({ where: { id: entregaId }, select: { nombre: true } }))?.nombre ??
+      null)
+    : null;
   const alcance = await alcanceDeImputacion(entityId, entregaId);
   const allocations = await allocateFifo(account.id, amount, account.entity.moneda, alcance);
 
@@ -1508,6 +1889,22 @@ export async function createPaymentForEntity(formData: FormData) {
     entityType: "Pago",
     entityId: entityId,
     summary: `${isCobro ? "Cobro de" : "Pago a"} ${account.entity.name} — ${formatMoney(amount)} — ${PAYMENT_METHOD_LABELS[method]}`,
+    cambios: diffDeCampos(
+      null,
+      fotoDelPago({
+        date,
+        amount,
+        currency: account.entity.moneda,
+        amountArs,
+        exchangeRate,
+        method: PAYMENT_METHOD_LABELS[method],
+        retentionKind,
+        reference,
+        circuito: CIRCUIT_LABELS[circuit],
+        viaje: nombreDelViajeNuevo,
+      }),
+      CAMPOS_DEL_PAGO
+    ),
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
@@ -1524,7 +1921,7 @@ export async function deletePayment(formData: FormData) {
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    include: { account: { include: { entity: true } } },
+    include: { account: { include: { entity: true } }, entrega: { select: { nombre: true } } },
   });
   if (!payment) throw new UserError("El pago ya no existe.");
 
@@ -1553,6 +1950,22 @@ export async function deletePayment(formData: FormData) {
       entityType: "Pago",
       entityId: payment.account.entityId,
       summary: `${payment.account.entity.name} — ${formatMoney(payment.amount, payment.currency)} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
+      cambios: diffDeCampos(
+        fotoDelPago({
+          date: payment.date,
+          amount: payment.amount,
+          currency: payment.currency,
+          amountArs: payment.amountArs,
+          exchangeRate: payment.exchangeRate,
+          method: PAYMENT_METHOD_LABELS[payment.method],
+          retentionKind: payment.retentionKind,
+          reference: payment.reference,
+          circuito: CIRCUIT_LABELS[payment.account.circuit],
+          viaje: payment.entrega?.nombre ?? null,
+        }),
+        null,
+        CAMPOS_DEL_PAGO
+      ),
     });
   });
 
@@ -1576,9 +1989,23 @@ export async function updatePayment(formData: FormData) {
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
     where: { id: paymentId },
-    include: { account: true },
+    include: { account: true, entrega: { select: { nombre: true } } },
   });
   if (!payment) throw new UserError("El pago ya no existe.");
+
+  // La foto de cómo estaba, antes de pisarlo: después no hay de dónde sacarla.
+  const antesDelPago = fotoDelPago({
+    date: payment.date,
+    amount: payment.amount,
+    currency: payment.currency,
+    amountArs: payment.amountArs,
+    exchangeRate: payment.exchangeRate,
+    method: PAYMENT_METHOD_LABELS[payment.method],
+    retentionKind: payment.retentionKind,
+    reference: payment.reference,
+    circuito: CIRCUIT_LABELS[payment.account.circuit],
+    viaje: payment.entrega?.nombre ?? null,
+  });
 
   const entityId = payment.account.entityId;
   const circuit = String(formData.get("circuit") || "");
@@ -1599,6 +2026,10 @@ export async function updatePayment(formData: FormData) {
   const { retentionKind, destino, proveedorId, proveedorCircuit } = leerRetencion(formData, method);
   const isCobro = formData.get("isCobro") === "1";
   const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
+  const nombreDelViaje = entregaId
+    ? ((await prisma.entrega.findUnique({ where: { id: entregaId }, select: { nombre: true } }))?.nombre ??
+      null)
+    : null;
   validarMetodo(circuit, method);
   await validarDestino({ circuit, method, isCobro, destino, proveedorId, proveedorCircuit });
 
@@ -1688,6 +2119,22 @@ export async function updatePayment(formData: FormData) {
     entityType: "Pago",
     entityId,
     summary: `${isCobro ? "Cobro de" : "Pago a"} ${account.entity.name} — ${formatMoney(amount)} — ${PAYMENT_METHOD_LABELS[method]}`,
+    cambios: diffDeCampos(
+      antesDelPago,
+      fotoDelPago({
+        date,
+        amount,
+        currency: account.entity.moneda,
+        amountArs,
+        exchangeRate,
+        method: PAYMENT_METHOD_LABELS[method],
+        retentionKind,
+        reference,
+        circuito: CIRCUIT_LABELS[circuit],
+        viaje: nombreDelViaje,
+      }),
+      CAMPOS_DEL_PAGO
+    ),
   });
 
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
@@ -1732,6 +2179,9 @@ export async function moveRemitoToBlanco(formData: FormData) {
     entityType: "Remito",
     entityId: document.account.entityId,
     summary: `#${document.number} — ${document.account.entity.name} — movido a cuenta Blanco`,
+    cambios: [
+      { campo: "Cuenta", antes: CIRCUIT_LABELS[document.account.circuit], despues: CIRCUIT_LABELS.BLANCO },
+    ],
   });
 
   revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
@@ -1766,6 +2216,12 @@ export async function createPrice(formData: FormData) {
     entityType: "Precio",
     entityId,
     summary: `${product?.name ?? "Producto"} para ${entity?.name ?? "entidad"} — ${formatMoney(amount, currency)}`,
+    cambios: [
+      { campo: "Producto", antes: null, despues: product?.name ?? null },
+      { campo: "Cuenta", antes: null, despues: CIRCUIT_LABELS[circuit] },
+      { campo: "Precio", antes: null, despues: formatMoney(amount, currency) },
+      { campo: "Vigente desde", antes: null, despues: formatFecha(validFrom) },
+    ],
   });
 
   revalidatePath(`/cuentas-corrientes/${entity?.slug ?? entityId}`);
@@ -1832,6 +2288,7 @@ export async function createGasto(formData: FormData) {
       entityType: "Gasto",
       entityId: g.account.entityId,
       summary: `#${g.number} — ${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
+      cambios: diffDeCampos(null, fotoDelGastoCargado(g), CAMPOS_DEL_COMPROBANTE),
     });
   });
 
@@ -1841,6 +2298,27 @@ export async function createGasto(formData: FormData) {
 /** Edita un gasto ya cargado. El desglose se borra y se vuelve a escribir entero — es más corto que
  * conciliar fila por fila y no hay nada colgando de esas filas. Las imputaciones de pagos no se
  * tocan: el pendiente sale de totalAmount, igual que en updateFactura. */
+/** La foto de lo que trae el formulario de gasto, en la forma que compara `diffDeCampos`. */
+function fotoDelGastoCargado(g: Awaited<ReturnType<typeof parseGasto>>) {
+  return fotoDelComprobante({
+    tipo: DOCUMENT_TYPE_LABELS.GASTO,
+    number: g.number,
+    date: g.date,
+    dueDate: g.dueDate,
+    currency: g.currency,
+    exchangeRate: g.exchangeRate,
+    netAmount: g.totals.netAmount,
+    ivaAmount: g.totals.ivaAmount,
+    perceptionAmount: g.totals.perceptionAmount,
+    retentionAmount: g.totals.retentionAmount,
+    totalAmount: g.totals.totalAmount,
+    reason: g.reason,
+    rubro: EXPENSE_CATEGORY_LABELS[g.expenseCategory],
+    viaje: null,
+    destinatario: null,
+  });
+}
+
 export async function updateGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
@@ -1881,6 +2359,7 @@ export async function updateGasto(formData: FormData) {
       entityType: "Gasto",
       entityId: g.account.entityId,
       summary: `#${g.number} — ${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
+      cambios: diffDeCampos(fotoDelDocumento(existente), fotoDelGastoCargado(g), CAMPOS_DEL_COMPROBANTE),
     });
   });
 
@@ -1909,6 +2388,7 @@ export async function deleteGasto(formData: FormData) {
       entityType: "Gasto",
       entityId: gasto.account.entityId,
       summary: `#${gasto.number} — ${gasto.account.entity.name} — ${formatMoney(gasto.totalAmount, gasto.currency)}`,
+      cambios: diffDeCampos(fotoDelDocumento(gasto), null, CAMPOS_DEL_COMPROBANTE),
     });
   });
 

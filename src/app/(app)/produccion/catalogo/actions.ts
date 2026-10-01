@@ -4,13 +4,27 @@ import { UserError } from "@/lib/user-error";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 
 function parseRequiredInt(value: FormDataEntryValue | null, label: string): number {
   const n = parseInt(String(value || "").trim(), 10);
   if (!Number.isFinite(n)) throw new UserError(`${label} debe ser un número.`);
   return n;
 }
+
+/** Lo que se mira de una marca y de un formato en el detalle de Actividad. */
+const CAMPOS_DE_LA_MARCA = {
+  name: "Nombre",
+  oilType: "Tipo de aceite",
+  usaEtiqueta: "Usa etiqueta",
+} as const;
+
+const CAMPOS_DEL_FORMATO = {
+  presentation: "Presentaci\u00f3n",
+  boxesPerPallet: "Cajas por pallet",
+  unitsPerBox: "Botellas por caja",
+  bottleCapacityMl: "Capacidad (ml)",
+} as const;
 
 function revalidateCatalogo() {
   revalidatePath("/produccion/catalogo");
@@ -37,6 +51,7 @@ export async function createMarca(formData: FormData) {
     entityType: "Marca",
     entityId: marca.id,
     summary: `${name} ${oilType}${usaEtiqueta ? "" : " (sin etiqueta)"}`,
+    cambios: diffDeCampos(null, { name, oilType, usaEtiqueta }, CAMPOS_DE_LA_MARCA),
   });
   revalidateCatalogo();
 }
@@ -57,6 +72,7 @@ export async function updateMarca(formData: FormData) {
     throw new UserError(`Ya existe la marca "${name} ${oilType}".`);
   }
 
+  const previa = await prisma.marca.findUnique({ where: { id: marcaId } });
   await prisma.marca.update({ where: { id: marcaId }, data: { name, oilType, usaEtiqueta } });
   await logAudit(prisma, {
     userId: user.id,
@@ -64,6 +80,7 @@ export async function updateMarca(formData: FormData) {
     entityType: "Marca",
     entityId: marcaId,
     summary: `${name} ${oilType}${usaEtiqueta ? "" : " (sin etiqueta)"}`,
+    cambios: diffDeCampos(previa, { name, oilType, usaEtiqueta }, CAMPOS_DE_LA_MARCA),
   });
   revalidateCatalogo();
 }
@@ -82,6 +99,7 @@ export async function deleteMarca(formData: FormData) {
     entityType: "Marca",
     entityId: marcaId,
     summary: marca ? `${marca.name} ${marca.oilType}` : "Marca",
+    cambios: diffDeCampos(marca, null, CAMPOS_DE_LA_MARCA),
   });
   revalidateCatalogo();
 }
@@ -108,6 +126,11 @@ export async function createFormato(formData: FormData) {
     entityType: "Formato",
     entityId: formato.id,
     summary: presentation,
+    cambios: diffDeCampos(
+      null,
+      { presentation, boxesPerPallet, unitsPerBox, bottleCapacityMl },
+      CAMPOS_DEL_FORMATO
+    ),
   });
   revalidateCatalogo();
 }
@@ -129,6 +152,7 @@ export async function updateFormato(formData: FormData) {
     throw new UserError(`Ya existe el formato "${presentation}".`);
   }
 
+  const previo = await prisma.formato.findUnique({ where: { id: formatoId } });
   await prisma.formato.update({
     where: { id: formatoId },
     data: { presentation, boxesPerPallet, unitsPerBox, bottleCapacityMl },
@@ -139,6 +163,11 @@ export async function updateFormato(formData: FormData) {
     entityType: "Formato",
     entityId: formatoId,
     summary: presentation,
+    cambios: diffDeCampos(
+      previo,
+      { presentation, boxesPerPallet, unitsPerBox, bottleCapacityMl },
+      CAMPOS_DEL_FORMATO
+    ),
   });
   revalidateCatalogo();
 }
@@ -157,6 +186,7 @@ export async function deleteFormato(formData: FormData) {
     entityType: "Formato",
     entityId: formatoId,
     summary: formato ? formato.presentation : "Formato",
+    cambios: diffDeCampos(formato, null, CAMPOS_DEL_FORMATO),
   });
   revalidateCatalogo();
 }

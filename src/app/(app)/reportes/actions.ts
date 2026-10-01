@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
-import { setSetting } from "@/lib/settings";
+import { getSetting, setSetting } from "@/lib/settings";
 import { SETTING_RECIPIENTS, sendWeeklyReport } from "@/lib/weekly-report";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,6 +29,7 @@ export async function updateWeeklyReportRecipients(formData: FormData) {
     throw new UserError(`Direcciones inválidas: ${invalidas.join(", ")}`);
   }
 
+  const antes = await getSetting(SETTING_RECIPIENTS, "");
   await setSetting(SETTING_RECIPIENTS, direcciones.join(", "));
 
   await logAudit(prisma, {
@@ -36,6 +37,13 @@ export async function updateWeeklyReportRecipients(formData: FormData) {
     action: "UPDATE",
     entityType: "Configuración",
     summary: `Destinatarios del reporte semanal: ${direcciones.join(", ") || "ninguno"}`,
+    cambios: [
+      {
+        campo: "Destinatarios del reporte semanal",
+        antes: antes || null,
+        despues: direcciones.join(", ") || null,
+      },
+    ],
   });
 
   revalidatePath("/reportes");

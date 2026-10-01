@@ -60,6 +60,12 @@ model AuditLog {
   entityType String
   entityId   String?
   summary    String
+  /**
+   * Qué cambió, campo por campo: `[{ campo, antes, despues }]`. El resumen dice qué se tocó; esto
+   * dice en qué quedó. Es nulo en lo que se registró antes de que esto existiera, y también en las
+   * acciones donde no hay un registro que comparar.
+   */
+  cambios    Json?
   createdAt  DateTime    @default(now())
 
   @@index([userId])

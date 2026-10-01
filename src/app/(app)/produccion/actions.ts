@@ -10,12 +10,41 @@ import { parseNumeroEscrito, parseNumeroOpcional, toDecimal } from "@/lib/money"
 import { getSetting, setSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
+import { formatNumeroExacto } from "@/lib/money";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
   return parseFecha(str);
+}
+
+/** Lo que se mira de una carga de producción en el detalle de Actividad. */
+const CAMPOS_DE_LA_PRODUCCION = {
+  date: "Fecha",
+  notes: "Notas",
+  renglones: "L\u00edneas",
+} as const;
+
+/**
+ * La carga de producción tal como quedó.
+ *
+ * Las líneas van juntas en un solo campo porque una edición las borra y las reescribe: no tienen
+ * identidad que permita decir "la línea 2 cambió".
+ */
+async function fotoDeLaProduccion(tx: Prisma.TransactionClient, runId: string) {
+  const run = await tx.productionRun.findUnique({
+    where: { id: runId },
+    include: { lines: { include: { product: { select: { name: true, presentation: true } } } } },
+  });
+  if (!run) return null;
+  return {
+    date: run.date,
+    notes: run.notes,
+    renglones: run.lines
+      .map((l) => `${l.product.name} ${l.product.presentation} \u00d7 ${formatNumeroExacto(l.quantity)}`)
+      .join("\n"),
+  };
 }
 
 export async function updateOilEfficiency(formData: FormData) {
@@ -27,6 +56,7 @@ export async function updateOilEfficiency(formData: FormData) {
     throw new UserError("La eficiencia debe ser un porcentaje entre 0 y 100.");
   }
 
+  const antesDelPorcentaje = await getSetting("oilFillEfficiencyPercent", "100");
   await setSetting("oilFillEfficiencyPercent", num.toString());
 
   await logAudit(prisma, {
@@ -34,6 +64,9 @@ export async function updateOilEfficiency(formData: FormData) {
     action: "UPDATE",
     entityType: "Configuración",
     summary: `Eficiencia de llenado de aceite — ${value}%`,
+    cambios: [
+      { campo: "Eficiencia de llenado", antes: `${antesDelPorcentaje}%`, despues: `${num.toString()}%` },
+    ],
   });
 
   revalidatePath("/produccion");
@@ -46,7 +79,9 @@ async function createProductionRunCore(
   formData: FormData,
   auditAction: AuditAction,
   /** Al editar: la corrida que esta reemplaza. Se borra DENTRO de la transacción, ver updateProductionRun. */
-  replaceRunId?: string
+  replaceRunId?: string,
+  /** Cómo estaba esa corrida antes de reemplazarla. Vacío en un alta. */
+  antes?: Awaited<ReturnType<typeof fotoDeLaProduccion>>
 ) {
   const date = parseFormDate(formData.get("date"));
   const notes = String(formData.get("notes") || "").trim() || null;
@@ -218,6 +253,7 @@ async function createProductionRunCore(
       entityType: "Producción",
       entityId: run.id,
       summary: `Producción del ${dateLabel} — ${lines.length} línea(s)`,
+      cambios: diffDeCampos(antes ?? null, await fotoDeLaProduccion(tx, run.id), CAMPOS_DE_LA_PRODUCCION),
     });
   }, { timeout: 20000 });
 
@@ -243,7 +279,7 @@ export async function updateProductionRun(formData: FormData) {
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
   if (!run) throw new UserError("La carga de producción ya no existe.");
 
-  await createProductionRunCore(user, formData, "UPDATE", runId);
+  await createProductionRunCore(user, formData, "UPDATE", runId, await fotoDeLaProduccion(prisma, runId));
 }
 
 export async function deleteProductionRun(formData: FormData) {
@@ -252,6 +288,7 @@ export async function deleteProductionRun(formData: FormData) {
   const runId = String(formData.get("runId") || "");
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
   if (!run) throw new UserError("La carga de producción ya no existe.");
+  const antes = await fotoDeLaProduccion(prisma, runId);
 
   await prisma.productionRun.delete({ where: { id: runId } });
 
@@ -261,6 +298,7 @@ export async function deleteProductionRun(formData: FormData) {
     entityType: "Producción",
     entityId: runId,
     summary: `Producción del ${formatFecha(run.date)}`,
+    cambios: diffDeCampos(antes, null, CAMPOS_DE_LA_PRODUCCION),
   });
 
   revalidatePath("/produccion");

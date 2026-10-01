@@ -5,13 +5,23 @@ import { parseFecha } from "@/lib/period";
 import { UserError } from "@/lib/user-error";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { logAudit } from "@/lib/audit";
+import { diffDeCampos, logAudit } from "@/lib/audit";
 
 function leerFecha(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
   return parseFecha(str);
 }
+
+/** Lo que se mira de un viaje y de un destinatario en el detalle de Actividad. */
+const CAMPOS_DEL_VIAJE = {
+  nombre: "Nombre",
+  destino: "Destino",
+  fecha: "Fecha",
+  notas: "Notas",
+} as const;
+
+const CAMPOS_DEL_DESTINATARIO = { nombre: "Nombre", taxId: "CUIT" } as const;
 
 async function getEntidad(entityId: string) {
   const entity = await prisma.entity.findUnique({ where: { id: entityId } });
@@ -46,6 +56,7 @@ export async function crearEntrega(formData: FormData) {
     entityType: "Viaje",
     entityId: entrega.id,
     summary: `${nombre}${destino ? ` · ${destino}` : ""} — ${entity.name}`,
+    cambios: diffDeCampos(null, entrega, CAMPOS_DEL_VIAJE),
   });
 
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);
@@ -64,7 +75,7 @@ export async function actualizarEntrega(formData: FormData) {
   const nombre = String(formData.get("nombre") || "").trim();
   if (!nombre) throw new UserError("El nombre es obligatorio.");
 
-  await prisma.entrega.update({
+  const actualizada = await prisma.entrega.update({
     where: { id: entregaId },
     data: {
       nombre,
@@ -80,6 +91,7 @@ export async function actualizarEntrega(formData: FormData) {
     entityType: "Viaje",
     entityId: entregaId,
     summary: `${nombre} — ${entrega.entity.name}`,
+    cambios: diffDeCampos(entrega, actualizada, CAMPOS_DEL_VIAJE),
   });
 
   revalidatePath(`/cuentas-corrientes/${entrega.entity.slug}`);
@@ -121,6 +133,7 @@ export async function borrarEntrega(formData: FormData) {
     entityType: "Viaje",
     entityId: entregaId,
     summary: `${entrega.nombre} — ${entrega.entity.name}`,
+    cambios: diffDeCampos(entrega, null, CAMPOS_DEL_VIAJE),
   });
 
   revalidatePath(`/cuentas-corrientes/${entrega.entity.slug}`);
@@ -152,6 +165,7 @@ export async function crearDestinatario(formData: FormData) {
     entityType: "Destinatario",
     entityId: destinatario.id,
     summary: `${nombre}${taxId ? ` · ${taxId}` : ""} — por cuenta de ${entity.name}`,
+    cambios: diffDeCampos(null, destinatario, CAMPOS_DEL_DESTINATARIO),
   });
 
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);
@@ -170,7 +184,7 @@ export async function actualizarDestinatario(formData: FormData) {
   const nombre = String(formData.get("nombre") || "").trim();
   if (!nombre) throw new UserError("El nombre es obligatorio.");
 
-  await prisma.destinatario.update({
+  const actualizado = await prisma.destinatario.update({
     where: { id: destinatarioId },
     data: { nombre, taxId: String(formData.get("taxId") || "").trim() || null },
   });
@@ -181,6 +195,7 @@ export async function actualizarDestinatario(formData: FormData) {
     entityType: "Destinatario",
     entityId: destinatarioId,
     summary: `${nombre} — por cuenta de ${destinatario.entity.name}`,
+    cambios: diffDeCampos(destinatario, actualizado, CAMPOS_DEL_DESTINATARIO),
   });
 
   revalidatePath(`/cuentas-corrientes/${destinatario.entity.slug}`);
@@ -214,6 +229,7 @@ export async function borrarDestinatario(formData: FormData) {
     entityType: "Destinatario",
     entityId: destinatarioId,
     summary: `${destinatario.nombre} — por cuenta de ${destinatario.entity.name}`,
+    cambios: diffDeCampos(destinatario, null, CAMPOS_DEL_DESTINATARIO),
   });
 
   revalidatePath(`/cuentas-corrientes/${destinatario.entity.slug}`);

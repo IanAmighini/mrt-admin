@@ -3,9 +3,12 @@ import Credentials from "next-auth/providers/credentials";
 import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import type { UserRole } from "@prisma/client";
+import { INACTIVIDAD_SEGUNDOS } from "@/lib/sesion";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  session: { strategy: "jwt" },
+  // `maxAge` sobre una sesión JWT es un plazo que se renueva: cada pedido vuelve a emitir la cookie
+  // con vencimiento dentro de este rato, así que en la práctica es un límite de inactividad.
+  session: { strategy: "jwt", maxAge: INACTIVIDAD_SEGUNDOS },
   pages: { signIn: "/login" },
   providers: [
     Credentials({
