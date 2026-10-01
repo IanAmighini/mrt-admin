@@ -1,7 +1,7 @@
 import type { AuditAction } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { formatDateTime } from "@/lib/period";
+import { formatDateTime, parseFecha } from "@/lib/period";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 
@@ -46,8 +46,8 @@ export default async function ActividadPage({
         ...(from || to
           ? {
               createdAt: {
-                ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-                ...(to ? { lt: new Date(new Date(`${to}T00:00:00`).getTime() + 24 * 60 * 60 * 1000) } : {}),
+                ...(from ? { gte: parseFecha(from) } : {}),
+                ...(to ? { lt: new Date(parseFecha(to).getTime() + 24 * 60 * 60 * 1000) } : {}),
               },
             }
           : {}),

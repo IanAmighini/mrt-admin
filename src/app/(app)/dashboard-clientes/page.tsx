@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { Droplets, Send, Users, Wallet } from "lucide-react";
 import type { Currency, Prisma } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
@@ -122,7 +123,7 @@ export default async function DashboardClientesPage() {
                   </td>
                   <td className="py-2 pr-4">#{doc.number}</td>
                   <td className="py-2 pr-4 text-red-600 dark:text-red-400 font-medium">
-                    {doc.dueDate?.toLocaleDateString("es-AR")}
+                    {doc.dueDate ? formatFecha(doc.dueDate) : "—"}
                   </td>
                   <td className="py-2 pr-4">{formatMoney(doc.pending, doc.currency)}</td>
                 </tr>
@@ -164,7 +165,7 @@ export default async function DashboardClientesPage() {
                       </Link>
                     </td>
                     <td className="py-2 pr-4">#{doc.number}</td>
-                    <td className="py-2 pr-4">{doc.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4">{formatFecha(doc.date)}</td>
                     <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
                   </tr>
                 ))}
@@ -205,7 +206,7 @@ export default async function DashboardClientesPage() {
                     </td>
                     <td className="py-2 pr-4">{formatMoney(payment.amount, payment.currency)}</td>
                     <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[payment.method]}</td>
-                    <td className="py-2 pr-4">{payment.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4">{formatFecha(payment.date)}</td>
                   </tr>
                 ))}
                 {pagos.length === 0 && (

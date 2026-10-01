@@ -1,6 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
+import { formatFecha, parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
 import { Prisma, type AuditAction, type SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -14,7 +15,7 @@ import { logAudit } from "@/lib/audit";
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
-  return new Date(`${str}T00:00:00`);
+  return parseFecha(str);
 }
 
 export async function updateOilEfficiency(formData: FormData) {
@@ -117,7 +118,7 @@ async function createProductionRunCore(
     }
   }
 
-  const dateLabel = date.toLocaleDateString("es-AR");
+  const dateLabel = formatFecha(date);
 
   // Lo necesita la receta que se arma sola al crear un producto nuevo. Se lee acá y no adentro de
   // la transacción para no gastarle una consulta a cada línea.
@@ -259,7 +260,7 @@ export async function deleteProductionRun(formData: FormData) {
     action: "DELETE",
     entityType: "Producción",
     entityId: runId,
-    summary: `Producción del ${run.date.toLocaleDateString("es-AR")}`,
+    summary: `Producción del ${formatFecha(run.date)}`,
   });
 
   revalidatePath("/produccion");

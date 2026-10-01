@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, sumDecimals } from "@/lib/money";
@@ -42,7 +43,7 @@ export default async function OrdenesPagoPage() {
                     {formatNumeroOP(o.numero)}
                   </Link>
                 </td>
-                <td className="py-2 pr-4 whitespace-nowrap">{o.date.toLocaleDateString("es-AR")}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(o.date)}</td>
                 <td className="py-2 pr-4">{o.entity.name}</td>
                 <td className="py-2 pr-4 text-foreground/60">
                   {Array.from(new Set(o.payments.map((p) => PAYMENT_METHOD_LABELS[p.method]))).join(" + ")}

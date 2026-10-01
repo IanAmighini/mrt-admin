@@ -9,7 +9,7 @@ import { DeleteButton } from "@/components/DeleteButton";
 import { ProductionRunFormFields } from "@/components/ProductionRunFormFields";
 import { OilEfficiencyFields } from "@/components/OilEfficiencyFields";
 import { createProductionRun, deleteProductionRun, updateProductionRun, updateOilEfficiency } from "./actions";
-import { toDateInputValue } from "@/lib/period";
+import { formatFecha, toDateInputValue } from "@/lib/period";
 
 export default async function ProduccionPage() {
   const user = await requireUser();
@@ -148,7 +148,7 @@ export default async function ProduccionPage() {
           <div key={run.id} className="rounded-xl border border-foreground/10 bg-background shadow-sm overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 bg-foreground/[0.02] px-4 py-3">
               <div className="flex items-center gap-3">
-                <p className="font-semibold">{run.date.toLocaleDateString("es-AR")}</p>
+                <p className="font-semibold">{formatFecha(run.date)}</p>
                 <span className="text-xs text-foreground/40">
                   {run.lines.length} {run.lines.length === 1 ? "item" : "items"}
                 </span>
@@ -188,7 +188,7 @@ export default async function ProduccionPage() {
                       action={deleteProductionRun}
                       hiddenName="runId"
                       hiddenValue={run.id}
-                      nombre={`la producción del ${run.date.toLocaleDateString("es-AR")}`}
+                      nombre={`la producción del ${formatFecha(run.date)}`}
                       consecuencia="Revierte el stock de producto e insumos que generó."
                     />
                   </div>

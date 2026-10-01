@@ -6,6 +6,7 @@ import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { getCobranzasReport, type CobranzasLado } from "@/lib/reports";
 import type { Period } from "@/lib/period";
+import { formatFecha } from "@/lib/period";
 
 function ars(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
   return byCurrency.get("ARS") ?? ZERO;
@@ -113,7 +114,7 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
               <tbody>
                 {report.rows.map((row, i) => (
                   <tr key={`${row.entitySlug}-${i}`} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4 whitespace-nowrap">{row.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(row.date)}</td>
                     <td className="py-2 pr-4">{row.entityName}</td>
                     <td className="py-2 pr-4">{CIRCUIT_LABELS[row.circuit]}</td>
                     <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[row.method]}</td>

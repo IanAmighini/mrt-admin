@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { Plus } from "lucide-react";
 import type { getRecentRemitos } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -34,7 +35,7 @@ export function EntregasPanel({
             <div>
               <p className="text-sm font-medium">Remito #{doc.number}</p>
               <p className="text-xs text-foreground/50">
-                {doc.date.toLocaleDateString("es-AR")} ·{" "}
+                {formatFecha(doc.date)} ·{" "}
                 {doc.lines.map((l) => formatProductLabel(l.product)).join(", ") || "—"}
               </p>
             </div>

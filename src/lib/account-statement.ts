@@ -11,6 +11,7 @@ import {
 } from "@/lib/labels";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { getAccountDocuments, getDocumentEffect, getTreasuries, type DocumentWithRelations } from "@/lib/ledger";
+import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 
 export type StatementPayment = Prisma.PaymentGetPayload<{ include: { allocations: true } }>;
 export type StatementLinkedPayment = Prisma.PaymentGetPayload<{
@@ -25,6 +26,10 @@ export type StatementSource =
 export type StatementEntry = {
   key: string;
   date: Date;
+  /** Cuándo se cargó en la app. Desempata a los que tienen la misma fecha: ver el orden de abajo. */
+  cargadoEl: Date;
+  /** El saldo inicial va siempre primero, pase lo que pase con su fecha. */
+  esSaldoInicial: boolean;
   title: string;
   subtitle: string | null;
   currency: Currency;
@@ -143,6 +148,8 @@ export async function getAccountStatement({
       currency: doc.currency,
       debe: effect.greaterThan(0) ? effect : ZERO,
       haber: effect.lessThan(0) ? effect.negated() : ZERO,
+      cargadoEl: doc.createdAt,
+      esSaldoInicial: doc.number === NUMERO_SALDO_INICIAL,
       source: { kind: "document", document: doc },
     });
   }
@@ -181,11 +188,27 @@ export async function getAccountStatement({
       currency: payment.currency,
       debe: ZERO,
       haber: payment.amount,
+      cargadoEl: payment.createdAt,
+      esSaldoInicial: false,
       source: { kind: "payment", payment, linkedPayment },
     });
   }
 
-  all.sort((a, b) => a.date.getTime() - b.date.getTime());
+  // El orden tiene tres niveles, y los tres importan:
+  //
+  // 1. **El saldo inicial va primero**, aunque su fecha sea posterior a algún movimiento. Es "todo
+  //    lo anterior a esta cuenta", no un movimiento más: si quedó en el medio, el saldo acumulado
+  //    arranca desde cero y la caja aparece en rojo hasta que le toca el turno.
+  // 2. La fecha del comprobante, que es lo que mira cualquiera.
+  // 3. **Cuándo se cargó**, para los del mismo día. Dos pagos del 30 cargados en distinto momento
+  //    tienen que acumularse en el orden en que se registraron; sin esto el desempate lo decidía
+  //    la base y el saldo de la fila cambiaba de una consulta a otra.
+  all.sort((a, b) => {
+    if (a.esSaldoInicial !== b.esSaldoInicial) return a.esSaldoInicial ? -1 : 1;
+    const porFecha = a.date.getTime() - b.date.getTime();
+    if (porFecha !== 0) return porFecha;
+    return a.cargadoEl.getTime() - b.cargadoEl.getTime();
+  });
 
   let saldo = ZERO;
   const withBalance: StatementEntry[] = all.map((entry) => {

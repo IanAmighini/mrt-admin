@@ -10,6 +10,7 @@ import { getLibroIva, type RenglonIva, type TotalesIva } from "@/lib/libro-iva";
 import { DIRECCION_KEY } from "@/lib/orden-pago";
 import { getSetting } from "@/lib/settings";
 import type { Period } from "@/lib/period";
+import { formatFecha } from "@/lib/period";
 
 const thClass = "py-2 pr-4 text-left font-medium";
 const thNum = "py-2 pr-4 text-right font-medium";
@@ -77,7 +78,7 @@ export async function LibroIvaSection({
                 <Link href={`/cuentas-corrientes/${r.entitySlug}`} className="underline underline-offset-2">
                   {r.sustantivo} #{r.number} — {r.entityName}
                 </Link>{" "}
-                — {r.date.toLocaleDateString("es-AR")} — {formatMoney(r.pendiente)} sin facturar
+                — {formatFecha(r.date)} — {formatMoney(r.pendiente)} sin facturar
               </li>
             ))}
           </ul>
@@ -100,7 +101,7 @@ export async function LibroIvaSection({
           <ul className="mt-2 space-y-0.5 text-amber-900 dark:text-amber-200">
             {libro.notasSinClasificar.map((n) => (
               <li key={`${n.number}-${n.date.toISOString()}`}>
-                {n.tipo} #{n.number} — {n.entityName} — {n.date.toLocaleDateString("es-AR")}
+                {n.tipo} #{n.number} — {n.entityName} — {formatFecha(n.date)}
               </li>
             ))}
           </ul>
@@ -150,7 +151,7 @@ export async function LibroIvaSection({
               <tbody>
                 {libro.retenciones.map((r, i) => (
                   <tr key={`${r.certificado}-${i}`} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4 whitespace-nowrap">{r.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(r.date)}</td>
                     <td className="py-2 pr-4">{r.entityName}</td>
                     <td className="py-2 pr-4 text-foreground/60">{r.taxId ?? "—"}</td>
                     <td className="py-2 pr-4">{RETENTION_KIND_LABELS[r.kind]}</td>
@@ -258,7 +259,7 @@ function Planilla({
           <tbody>
             {renglones.map((r, i) => (
               <tr key={`${r.number}-${i}`} className="border-b border-foreground/5">
-                <td className="py-2 pr-4 whitespace-nowrap">{r.date.toLocaleDateString("es-AR")}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(r.date)}</td>
                 <td className="py-2 pr-4">{r.tipo}</td>
                 <td className="py-2 pr-4">{r.number}</td>
                 <td className="py-2 pr-4">{r.entityName}</td>

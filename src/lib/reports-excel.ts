@@ -10,7 +10,7 @@ import {
 } from "@/lib/labels";
 import { sheet, type CellValue, type ExcelSheet } from "@/lib/excel";
 import { slugify } from "@/lib/slug";
-import { formatPeriodLabel, toDateInputValue, periodLastDay, type Period } from "@/lib/period";
+import { formatFecha, formatPeriodLabel, periodLastDay, toDateInputValue, type Period } from "@/lib/period";
 import type { LibroIva, RenglonIva } from "@/lib/libro-iva";
 import { ALICUOTAS_IVA, OTROS_TRIBUTOS } from "@/lib/impuestos";
 import { RETENTION_KIND_LABELS } from "@/lib/labels";
@@ -45,7 +45,7 @@ function otrasMonedas(byCurrency: Map<Currency, Prisma.Decimal>): string | null 
 function periodSubtitle(period: Period, generatedAt: Date): string[] {
   return [
     `Período: ${formatPeriodLabel(period)}`,
-    `Generado el ${generatedAt.toLocaleDateString("es-AR")}`,
+    `Generado el ${formatFecha(generatedAt)}`,
   ];
 }
 
@@ -53,7 +53,7 @@ function periodSubtitle(period: Period, generatedAt: Date): string[] {
 
 function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
   const subtitle = [
-    `Al ${report.asOf.toLocaleDateString("es-AR")}`,
+    `Al ${formatFecha(report.asOf)}`,
     "Incluye remitos y facturas con vencimiento pasado y saldo pendiente.",
   ];
 
@@ -118,7 +118,7 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
 
 function insumosMinimoSheets(report: InsumosMinimoReport): ExcelSheet<never>[] {
   const subtitle = [
-    `Al ${report.asOf.toLocaleDateString("es-AR")}`,
+    `Al ${formatFecha(report.asOf)}`,
     `${report.rows.length} de ${report.totalItems} insumos por debajo del mínimo.`,
     ...(report.itemsSinMinimo > 0
       ? [`${report.itemsSinMinimo} insumo(s) todavía no tienen mínimo configurado.`]
@@ -398,7 +398,7 @@ function stockSheets(report: StockReport, generatedAt: Date): ExcelSheet<never>[
   const subtitle = [
     ...periodSubtitle(report.period, generatedAt),
     report.recuentos.length > 0
-      ? `\u00daltimo recuento: ${report.recuentos[0].fecha.toLocaleDateString("es-AR")}`
+      ? `\u00daltimo recuento: ${formatFecha(report.recuentos[0].fecha)}`
       : "Todav\u00eda no se carg\u00f3 ning\u00fan recuento.",
     'La columna "Diferencia" es lo que apareci\u00f3 de m\u00e1s o de menos al contar: la merma que no qued\u00f3 registrada.',
   ];

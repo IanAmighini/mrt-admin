@@ -8,7 +8,7 @@ import { getProductMovements, getProductStock } from "@/lib/stock";
 import { formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { formatPallets } from "@/lib/product-label";
-import { toDateInputValue } from "@/lib/period";
+import { formatFecha, hoyEnInput } from "@/lib/period";
 import {
   createProductMovement,
   deleteRecipeLine,
@@ -375,7 +375,7 @@ export default async function ProductDetailPage({
                 type="date"
                 name="date"
                 required
-                defaultValue={toDateInputValue(new Date())}
+                defaultValue={hoyEnInput()}
                 className={selectClass}
               />
             </Field>
@@ -422,7 +422,7 @@ export default async function ProductDetailPage({
             <tbody>
               {movementsDesc.map((m) => (
                 <tr key={m.id} className="border-b border-foreground/5">
-                  <td className="py-2 pr-4">{m.date.toLocaleDateString("es-AR")}</td>
+                  <td className="py-2 pr-4">{formatFecha(m.date)}</td>
                   <td className="py-2 pr-4">{PRODUCT_MOVEMENT_TYPE_LABELS[m.type]}</td>
                   <td
                     className={`py-2 pr-4 tabular-nums ${

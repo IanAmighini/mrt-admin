@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseFecha } from "@/lib/period";
 import { Prisma, type ChequeEstado } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
@@ -13,7 +14,7 @@ import { formatMoney, parseNumeroEscrito, parseNumeroOpcional, sumDecimals } fro
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
-  return new Date(`${str}T00:00:00`);
+  return parseFecha(str);
 }
 
 const ESTADOS_MANUALES: ChequeEstado[] = ["DEPOSITADO", "EN_CARTERA"];
@@ -87,7 +88,7 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
       numero: c.numero,
       banco: c.banco,
       amount: parseNumeroEscrito(c.montoRaw, `monto del cheque ${c.numero}`),
-      fechaCobro: c.fechaRaw ? new Date(`${c.fechaRaw}T00:00:00`) : null,
+      fechaCobro: c.fechaRaw ? parseFecha(c.fechaRaw) : null,
     };
   });
 

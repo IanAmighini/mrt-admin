@@ -1,6 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
+import { parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
 import type { ProductMovementType, SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -269,7 +270,7 @@ export async function createProductMovement(formData: FormData) {
 
   const fechaRaw = String(formData.get("date") || "");
   if (!fechaRaw) throw new UserError("Falta la fecha.");
-  const date = new Date(`${fechaRaw}T00:00:00`);
+  const date = parseFecha(fechaRaw);
 
   const reason = String(formData.get("reason") || "").trim();
   if (!reason) throw new UserError("El motivo es obligatorio.");

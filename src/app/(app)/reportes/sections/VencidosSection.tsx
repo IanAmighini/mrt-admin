@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { Clock, FileWarning, TrendingDown, Users } from "lucide-react";
 import type { Circuit } from "@prisma/client";
 import { formatMoney } from "@/lib/money";
@@ -16,7 +17,7 @@ export async function VencidosSection({ circuit }: { circuit?: Circuit }) {
         <KpiCard
           label="Total vencido"
           value={formatMoney(totalArs ?? 0)}
-          caption={`al ${report.asOf.toLocaleDateString("es-AR")}`}
+          caption={`al ${formatFecha(report.asOf)}`}
           icon={TrendingDown}
           color="red"
         />
@@ -95,7 +96,7 @@ export async function VencidosSection({ circuit }: { circuit?: Circuit }) {
                   </td>
                   <td className="py-2 pr-4">{CIRCUIT_LABELS[row.circuit]}</td>
                   <td className="py-2 pr-4 text-red-600 dark:text-red-400 whitespace-nowrap">
-                    {row.dueDate.toLocaleDateString("es-AR")}
+                    {formatFecha(row.dueDate)}
                   </td>
                   <td className="py-2 pr-4 whitespace-nowrap">{row.diasAtraso} días</td>
                   <td className="py-2 pr-4 font-medium">{formatMoney(row.pendiente, row.currency)}</td>

@@ -11,6 +11,7 @@ import { rubroLabel } from "@/lib/rubro-proveedor";
 import { FormModal } from "@/components/Modal";
 import { EntityFormFields } from "@/components/EntityFormFields";
 import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
+import { ORDENES, ordenarFilas } from "@/lib/orden-saldos";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { createEntity } from "../clientes/actions";
 
@@ -29,9 +30,9 @@ const SALDO_FILTERS = [
 export default async function ProveedoresPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; saldo?: string; rubro?: string }>;
+  searchParams: Promise<{ q?: string; saldo?: string; rubro?: string; orden?: string }>;
 }) {
-  const { q, saldo, rubro } = await searchParams;
+  const { q, saldo, rubro, orden } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
@@ -42,7 +43,7 @@ export default async function ProveedoresPage({
 
   const busqueda = q?.trim().toLowerCase();
   const saldoFiltro = SALDO_FILTERS.some((f) => f.value === saldo) ? saldo : "";
-  const hayFiltro = Boolean(busqueda || saldoFiltro || rubro);
+  const hayFiltro = Boolean(busqueda || saldoFiltro || rubro || orden);
 
   // Los rubros que de verdad hay cargados, no la lista entera de categorías posibles: un filtro
   // con veinte opciones de las que quince no devuelven nada no ayuda a nadie.
@@ -64,6 +65,8 @@ export default async function ProveedoresPage({
       if (saldoFiltro === "cero") return total === 0;
       return true;
     });
+
+  const filas = ordenarFilas(rows, orden);
 
   // El saldo a favor de la cuenta por la que se retira para los socios no es deuda: ver
   // separarRetiroSocietario. Sin esto el total de arriba la restaría y mostraría menos de lo que
@@ -108,6 +111,14 @@ export default async function ProveedoresPage({
           opciones={rubrosUsados.map((r) => ({ value: r, label: r }))}
         />
         <FiltroSelect label="Saldo" name="saldo" defaultValue={saldoFiltro} opciones={SALDO_FILTERS} />
+        <FiltroSelect
+          label="Ordenar por"
+          name="orden"
+          defaultValue={orden}
+          todos="Nombre (A-Z)"
+          className="w-full sm:w-56"
+          opciones={ORDENES.filter((o) => o.value).map((o) => ({ value: o.value, label: o.label }))}
+        />
       </FilterBar>
 
       <Table>
@@ -125,7 +136,7 @@ export default async function ProveedoresPage({
           <Th align="derecha">Total</Th>
         </Thead>
         <tbody>
-          {rows.map(({ entity, blancoSaldo, negroSaldo, total }) => (
+          {filas.map(({ entity, blancoSaldo, negroSaldo, total }) => (
             <Tr key={entity.id}>
               <Td>
                 <Link

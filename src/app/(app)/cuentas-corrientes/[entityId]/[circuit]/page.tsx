@@ -38,7 +38,7 @@ import { GastoFormFields } from "@/components/GastoFormFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
-import { addDays, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
 import { getDestinatarios, getEntregasParaElegir } from "@/lib/entregas";
 
 const inputClass =
@@ -84,8 +84,8 @@ export default async function AccountLedgerPage({
   const isClienteEntity = entity.type !== "PROVEEDOR" && entity.type !== "TESORERIA";
 
   // El "hasta" que elige el usuario es inclusivo; getAccountStatement lo espera exclusivo.
-  const fromDate = from ? new Date(`${from}T00:00:00`) : null;
-  const toDate = to ? addDays(new Date(`${to}T00:00:00`), 1) : null;
+  const fromDate = from ? parseFecha(from) : null;
+  const toDate = to ? addDays(parseFecha(to), 1) : null;
 
   const [statement, products, items, blancoPrices, negroPrices, treasuries, proveedores, viajes, destinatarios] =
     await Promise.all([
@@ -153,7 +153,7 @@ export default async function AccountLedgerPage({
             action={deletePayment}
             hiddenName="paymentId"
             hiddenValue={payment.id}
-            nombre={`el pago de ${formatMoney(payment.amount, payment.currency)} del ${payment.date.toLocaleDateString("es-AR")}`}
+            nombre={`el pago de ${formatMoney(payment.amount, payment.currency)} del ${formatFecha(payment.date)}`}
           />
         </div>
       );
@@ -440,7 +440,7 @@ export default async function AccountLedgerPage({
               .map((entry) => (
                 <tr key={entry.key} className="border-b border-foreground/5">
                   <td className="py-2 pr-4 whitespace-nowrap">
-                    {entry.date.toLocaleDateString("es-AR")}
+                    {formatFecha(entry.date)}
                   </td>
                   <td className="py-2 pr-4">
                     {entry.title}
@@ -456,7 +456,7 @@ export default async function AccountLedgerPage({
               ))}
             {fromDate && (
               <tr className="border-b border-foreground/5 bg-foreground/[0.02] font-medium">
-                <td className="py-2 pr-4 whitespace-nowrap">{fromDate.toLocaleDateString("es-AR")}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(fromDate)}</td>
                 <td className="py-2 pr-4">Saldo anterior</td>
                 <td className="py-2 pr-4">—</td>
                 <td className="py-2 pr-4">—</td>

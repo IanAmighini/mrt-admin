@@ -12,7 +12,7 @@ import { PedidoStatusSelect } from "@/components/PedidoStatusSelect";
 import { FilterBar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { Table, TableEmpty, Td, Th, Thead } from "@/components/ui/Table";
 import { createPedido, deletePedido, updatePedido } from "./actions";
-import { addDays, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
 
 const STATUS_FILTERS: { value: PedidoStatus | ""; label: string }[] = [
   { value: "", label: "Todos" },
@@ -52,8 +52,8 @@ export default async function PedidosPage({
         ...(from || to
           ? {
               date: {
-                ...(from ? { gte: new Date(`${from}T00:00:00`) } : {}),
-                ...(to ? { lt: addDays(new Date(`${to}T00:00:00`), 1) } : {}),
+                ...(from ? { gte: parseFecha(from) } : {}),
+                ...(to ? { lt: addDays(parseFecha(to), 1) } : {}),
               },
             }
           : {}),
@@ -124,7 +124,7 @@ export default async function PedidosPage({
                     {li === 0 && (
                       <>
                         <Td arriba rowSpan={pedido.lines.length} className="whitespace-nowrap">
-                          {pedido.date.toLocaleDateString("es-AR")}
+                          {formatFecha(pedido.date)}
                         </Td>
                         <Td arriba rowSpan={pedido.lines.length}>
                           {pedido.entity.name}
@@ -153,7 +153,7 @@ export default async function PedidosPage({
                     {li === 0 && (
                       <>
                         <Td arriba rowSpan={pedido.lines.length} className="whitespace-nowrap">
-                          {pedido.deliveryDate ? pedido.deliveryDate.toLocaleDateString("es-AR") : "—"}
+                          {pedido.deliveryDate ? formatFecha(pedido.deliveryDate) : "—"}
                         </Td>
                         <Td arriba rowSpan={pedido.lines.length} className="text-foreground/60">
                           {pedido.comments || "—"}

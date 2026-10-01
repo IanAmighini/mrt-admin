@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { Banknote, Building2, HandCoins, Package, ShoppingCart } from "lucide-react";
 import type { Prisma, Currency } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
@@ -145,7 +146,7 @@ export default async function DashboardProveedoresPage() {
                       </Link>
                     </td>
                     <td className="py-2 pr-4">#{doc.number}</td>
-                    <td className="py-2 pr-4">{doc.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4">{formatFecha(doc.date)}</td>
                     <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
                   </tr>
                 ))}
@@ -186,7 +187,7 @@ export default async function DashboardProveedoresPage() {
                     </td>
                     <td className="py-2 pr-4">{formatMoney(payment.amount, payment.currency)}</td>
                     <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[payment.method]}</td>
-                    <td className="py-2 pr-4">{payment.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4">{formatFecha(payment.date)}</td>
                   </tr>
                 ))}
                 {pagos.length === 0 && (

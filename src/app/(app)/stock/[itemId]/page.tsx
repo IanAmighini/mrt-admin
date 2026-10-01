@@ -8,7 +8,7 @@ import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { createItemMovement, venderInsumo } from "./actions";
 import { FormModal } from "@/components/Modal";
-import { toDateInputValue } from "@/lib/period";
+import { formatFecha, hoyEnInput } from "@/lib/period";
 import { updateItemAjustes } from "../actions";
 
 export default async function ItemDetailPage({
@@ -72,7 +72,7 @@ export default async function ItemDetailPage({
                       type="date"
                       name="date"
                       required
-                      defaultValue={toDateInputValue(new Date())}
+                      defaultValue={hoyEnInput()}
                       className={inputClass}
                     />
                   </div>
@@ -367,7 +367,7 @@ export default async function ItemDetailPage({
             <tbody>
               {movementsDesc.map((m) => (
                 <tr key={m.id} className="border-b border-foreground/5">
-                  <td className="py-2 pr-4">{m.date.toLocaleDateString("es-AR")}</td>
+                  <td className="py-2 pr-4">{formatFecha(m.date)}</td>
                   <td className="py-2 pr-4">{ITEM_MOVEMENT_TYPE_LABELS[m.type]}</td>
                   <td className="py-2 pr-4">
                     {m.quantity.greaterThan(0) ? "+" : ""}

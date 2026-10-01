@@ -1,7 +1,7 @@
 import type { Prisma, Preforma } from "@prisma/client";
 import type { DeudaPreforma } from "@/lib/preformas";
 import { formatNumeroEditable, formatQuantity } from "@/lib/money";
-import { toDateInputValue } from "@/lib/period";
+import { formatFecha, hoyEnInput } from "@/lib/period";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import {
@@ -102,7 +102,7 @@ export function PreformasPanel({
                   type="date"
                   name="date"
                   required
-                  defaultValue={toDateInputValue(new Date())}
+                  defaultValue={hoyEnInput()}
                   className={inputClass}
                 />
               </div>
@@ -218,7 +218,7 @@ export function PreformasPanel({
                   {formatQuantity(e.quantity)} de {e.preforma.name}
                 </p>
                 <p className="text-xs text-foreground/50">
-                  {e.date.toLocaleDateString("es-AR")}
+                  {formatFecha(e.date)}
                   {e.comprobante ? ` · ${e.comprobante}` : ""}
                 </p>
               </div>

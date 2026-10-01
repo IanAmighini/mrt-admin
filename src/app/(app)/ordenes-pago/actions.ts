@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseFecha } from "@/lib/period";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
@@ -23,7 +24,7 @@ export async function crearOrdenPago(formData: FormData) {
 
   const fechaRaw = String(formData.get("date") || "").trim();
   if (!fechaRaw) throw new UserError("Falta la fecha.");
-  const date = new Date(`${fechaRaw}T00:00:00`);
+  const date = parseFecha(fechaRaw);
   const notes = String(formData.get("notes") || "").trim() || null;
 
   const pagos = await prisma.payment.findMany({

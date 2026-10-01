@@ -7,12 +7,7 @@ import {
   EXPENSE_CATEGORY_LABELS,
   TREASURY_MOVEMENT_CATEGORY_LABELS,
 } from "@/lib/labels";
-import {
-  formatPeriodLabel,
-  periodFromSearchParams,
-  periodLastDay,
-  toDateInputValue,
-} from "@/lib/period";
+import { formatFecha, formatPeriodLabel, hoyEnInput, periodFromSearchParams, periodLastDay } from "@/lib/period";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { GastoDeCajaFields, PaseDeCajaFields } from "@/components/CajaFormFields";
@@ -38,13 +33,13 @@ export default async function CajaChicaPage({
     getAccountStatement({ accountId: caja.accountId, from: period.from, to: period.to }),
   ]);
 
-  const hoy = toDateInputValue(new Date());
+  const hoy = hoyEnInput();
   // La tarjeta decía "Saldo de hoy" siempre, pero muestra el saldo al final del período elegido:
   // con "Mes pasado" mentía. Es el número contra el que se cuenta el efectivo del cajón, así que
   // tiene que decir a qué día corresponde.
   const ultimoDia = periodLastDay(period);
   const esHasta_hoy = ultimoDia >= new Date(new Date().setHours(0, 0, 0, 0));
-  const etiquetaSaldo = esHasta_hoy ? "Saldo de hoy" : `Saldo al ${ultimoDia.toLocaleDateString("es-AR")}`;
+  const etiquetaSaldo = esHasta_hoy ? "Saldo de hoy" : `Saldo al ${formatFecha(ultimoDia)}`;
 
   return (
     <div className="space-y-8">
@@ -137,7 +132,7 @@ export default async function CajaChicaPage({
               const propio = Boolean(doc && !doc.sourcePaymentId);
               return (
                 <Tr key={entry.key}>
-                  <Td className="pl-4 whitespace-nowrap">{entry.date.toLocaleDateString("es-AR")}</Td>
+                  <Td className="pl-4 whitespace-nowrap">{formatFecha(entry.date)}</Td>
                   <Td>{concepto}</Td>
                   <Td className="text-foreground/60">{rubro ?? "—"}</Td>
                   <Td numero>{entry.debe.greaterThan(ZERO) ? formatMoney(entry.debe) : "—"}</Td>

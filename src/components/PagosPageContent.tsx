@@ -15,7 +15,7 @@ import {
   deletePayment,
   updatePayment,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
-import { toDateInputValue } from "@/lib/period";
+import { formatFecha, toDateInputValue } from "@/lib/period";
 
 export async function PagosPageContent({
   typeFilter,
@@ -117,7 +117,7 @@ export async function PagosPageContent({
                     <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[payment.method]}</td>
                     <td className="py-2 pr-4">{destinoLabel ?? "—"}</td>
                     <td className="py-2 pr-4">{payment.reference ?? "—"}</td>
-                    <td className="py-2 pr-4">{payment.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4">{formatFecha(payment.date)}</td>
                     {canEdit && (
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
@@ -155,7 +155,7 @@ export async function PagosPageContent({
                             action={deletePayment}
                             hiddenName="paymentId"
                             hiddenValue={payment.id}
-                            nombre={`el pago de ${formatMoney(payment.amount, payment.currency)} del ${payment.date.toLocaleDateString("es-AR")}`}
+                            nombre={`el pago de ${formatMoney(payment.amount, payment.currency)} del ${formatFecha(payment.date)}`}
                           />
                         </div>
                       </td>

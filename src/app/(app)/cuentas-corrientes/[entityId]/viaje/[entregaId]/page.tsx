@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth-helpers";
 import { getEntregaDetalle } from "@/lib/entregas";
@@ -39,7 +40,7 @@ export default async function ViajePage({
               {entrega.destino && <span className="text-foreground/50"> · {entrega.destino}</span>}
             </h1>
             <p className="text-sm text-foreground/60">
-              {entrega.fecha.toLocaleDateString("es-AR")} · cargado por {entrega.createdBy.name}
+              {formatFecha(entrega.fecha)} · cargado por {entrega.createdBy.name}
             </p>
           </div>
           <div className="text-right">
@@ -85,7 +86,7 @@ export default async function ViajePage({
               const doc = m.documento;
               return (
                 <tr key={`${m.tipo}-${m.id}`} className="border-b border-foreground/5 last:border-0">
-                  <td className="py-2 px-4 whitespace-nowrap">{m.fecha.toLocaleDateString("es-AR")}</td>
+                  <td className="py-2 px-4 whitespace-nowrap">{formatFecha(m.fecha)}</td>
                   <td className="py-2 px-4">
                     {doc ? (
                       <>
@@ -108,7 +109,7 @@ export default async function ViajePage({
                   </td>
                   <td className="py-2 px-4 text-foreground/60">{CIRCUIT_LABELS[m.circuito]}</td>
                   <td className="py-2 px-4 text-foreground/60 whitespace-nowrap">
-                    {doc?.dueDate ? doc.dueDate.toLocaleDateString("es-AR") : "—"}
+                    {doc?.dueDate ? formatFecha(doc.dueDate) : "—"}
                   </td>
                   <td
                     className={`py-2 px-4 text-right tabular-nums ${

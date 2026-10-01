@@ -20,7 +20,7 @@ import {
   updateCompra,
   updateGasto,
 } from "../cuentas-corrientes/[entityId]/actions";
-import { addDays, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -48,8 +48,8 @@ export default async function ComprasPage({
   const tipoFilter = TIPO_FILTERS.some((f) => f.value === tipo) ? (tipo as "" | "insumos" | "gastos") : "";
   // El rango va a la consulta, no al filtrado posterior: el `take` de 500 recorta antes.
   const period = {
-    from: from ? new Date(`${from}T00:00:00`) : null,
-    to: to ? addDays(new Date(`${to}T00:00:00`), 1) : null,
+    from: from ? parseFecha(from) : null,
+    to: to ? addDays(parseFecha(to), 1) : null,
   };
   const hayFiltro = Boolean(q?.trim() || pagoFilter || tipoFilter || from || to);
 
@@ -173,7 +173,7 @@ export default async function ComprasPage({
                           .join(" · ")}
                   </p>
                 </Td>
-                <Td className="whitespace-nowrap">{doc.date.toLocaleDateString("es-AR")}</Td>
+                <Td className="whitespace-nowrap">{formatFecha(doc.date)}</Td>
                 <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
                 <Td>
                   <span

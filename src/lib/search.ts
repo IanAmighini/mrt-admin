@@ -1,4 +1,5 @@
 import "server-only";
+import { formatFecha } from "@/lib/period";
 import type { EntityType, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { CIRCUIT_SLUGS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
@@ -250,7 +251,7 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
         kind,
         id: doc.id,
         label: `Remito #${doc.number}`,
-        sublabel: `${doc.account.entity.name} · ${doc.date.toLocaleDateString("es-AR")}`,
+        sublabel: `${doc.account.entity.name} · ${formatFecha(doc.date)}`,
         href: `${kind === "entrega" ? "/entregas" : "/compras"}?q=${encodeURIComponent(doc.number)}`,
       },
     });

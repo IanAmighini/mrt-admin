@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, formatNumeroEditable, sumDecimals } from "@/lib/money";
@@ -167,7 +168,7 @@ export default async function ChequesPage({
                 </Td>
                 <Td className="whitespace-nowrap">
                   {c.fechaCobro ? (
-                    c.fechaCobro.toLocaleDateString("es-AR")
+                    formatFecha(c.fechaCobro)
                   ) : (
                     <span className="text-foreground/40">al día</span>
                   )}

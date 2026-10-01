@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseFecha } from "@/lib/period";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { parseNumeroEscrito, formatQuantity } from "@/lib/money";
@@ -10,7 +11,7 @@ import { UserError } from "@/lib/user-error";
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
-  return new Date(`${str}T00:00:00`);
+  return parseFecha(str);
 }
 
 /**

@@ -50,11 +50,52 @@ export function addDays(date: Date, days: number): Date {
 }
 
 /** Fecha en formato `yyyy-mm-dd` para un `<input type="date">`, en hora local (no UTC). */
+/**
+ * Una fecha guardada, en el formato que espera un `<input type="date">`.
+ *
+ * Lee las partes en **UTC** y no en la hora del servidor, porque así es como se guardan: ver
+ * `parseFecha`. Con las partes locales, el mismo comprobante se prellenaba con un día distinto
+ * según dónde corriera la app.
+ */
 export function toDateInputValue(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+/**
+ * Una fecha **sin hora** —la de un comprobante, un pago, una entrega— pasada a instante.
+ *
+ * Se ancla a medianoche **UTC** a propósito. Con `new Date("2026-10-01T00:00:00")` la hora sale
+ * del huso del servidor: en la computadora de acá queda 03:00Z y en Vercel, que corre en UTC,
+ * 00:00Z. Ese segundo caso, leído después en hora argentina, es el 30 de septiembre a las 21 —
+ * y por eso toda la app mostraba las fechas un día atrasadas.
+ *
+ * Como contrapartida, mostrarlas también va en UTC: `formatFecha`.
+ */
+export function parseFecha(valor: string): Date {
+  return new Date(`${valor}T00:00:00Z`);
+}
+
+/** Una fecha sin hora, escrita como la lee una persona: 30/9/2026. */
+export function formatFecha(date: Date): string {
+  return date.toLocaleDateString("es-AR", { timeZone: "UTC" });
+}
+
+/**
+ * El día de hoy para un `<input type="date">`, en hora argentina.
+ *
+ * No es `toDateInputValue(new Date())`: eso lee el instante en UTC, y a las 22 de acá ya es el
+ * día siguiente allá. Para "hoy" manda el reloj del negocio.
+ */
+export function hoyEnInput(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
 }
 
 /** Semana corriente, de lunes a lunes (el domingo cuenta como último día de la semana). */
@@ -103,7 +144,7 @@ function periodFromPreset(preset: PeriodPresetKey, reference: Date): Period {
 function parseDateInput(value: string | undefined): Date | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
-  const parsed = new Date(`${trimmed}T00:00:00`);
+  const parsed = parseFecha(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
@@ -141,7 +182,7 @@ export function periodLastDay(period: Period): Date {
 }
 
 export function formatPeriodLabel(period: Period): string {
-  const desde = period.from.toLocaleDateString("es-AR");
-  const hasta = periodLastDay(period).toLocaleDateString("es-AR");
+  const desde = formatFecha(period.from);
+  const hasta = formatFecha(periodLastDay(period));
   return `${desde} – ${hasta}`;
 }

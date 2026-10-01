@@ -14,7 +14,7 @@ import {
   crearDestinatario,
   crearEntrega,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/entregas-actions";
-import { toDateInputValue } from "@/lib/period";
+import { formatFecha, hoyEnInput, toDateInputValue } from "@/lib/period";
 
 /**
  * Los viajes de un cliente y la gente a cuyo nombre salen los papeles.
@@ -105,7 +105,7 @@ export function ViajesPanel({
                 {v.destino && <span className="text-foreground/50"> · {v.destino}</span>}
               </Link>
               <p className="text-xs text-foreground/50">
-                {v.fecha.toLocaleDateString("es-AR")} · {v.comprobantes}{" "}
+                {formatFecha(v.fecha)} · {v.comprobantes}{" "}
                 {v.comprobantes === 1 ? "comprobante" : "comprobantes"} · cobrado{" "}
                 {formatMoney(v.cobrado, moneda)}
               </p>
@@ -252,7 +252,7 @@ function ViajeCampos({
             type="date"
             name="fecha"
             required
-            defaultValue={defaultValues?.fecha ?? toDateInputValue(new Date())}
+            defaultValue={defaultValues?.fecha ?? hoyEnInput()}
             className={inputClass}
           />
         </Campo>

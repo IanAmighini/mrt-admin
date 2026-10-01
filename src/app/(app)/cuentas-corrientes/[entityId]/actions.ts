@@ -1,6 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
+import { parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import {
@@ -86,12 +87,12 @@ function parseManualTreasuryCategory(
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
-  return new Date(`${str}T00:00:00`);
+  return parseFecha(str);
 }
 
 function parseOptionalFormDate(value: FormDataEntryValue | null): Date | null {
   const str = String(value || "").trim();
-  return str ? new Date(`${str}T00:00:00`) : null;
+  return str ? parseFecha(str) : null;
 }
 
 function parseAmount(value: FormDataEntryValue | null, field: string): Prisma.Decimal {

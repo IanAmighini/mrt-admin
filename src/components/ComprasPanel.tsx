@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { Plus } from "lucide-react";
 import type { getRecentCompras } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -33,7 +34,7 @@ export function ComprasPanel({
             <div>
               <p className="text-sm font-medium">Remito #{doc.number}</p>
               <p className="text-xs text-foreground/50">
-                {doc.date.toLocaleDateString("es-AR")} ·{" "}
+                {formatFecha(doc.date)} ·{" "}
                 {doc.purchaseLines.map((l) => l.item.name).join(", ") || "—"}
               </p>
             </div>

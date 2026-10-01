@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseFecha } from "@/lib/period";
 import type { ExpenseCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
@@ -22,7 +23,7 @@ function leerFecha(raw: FormDataEntryValue | null) {
   if (!valor) throw new UserError("Falta la fecha.");
   // Igual que el resto de la app: la fecha del calendario se guarda como medianoche local, sin
   // convertir a UTC, para que no se corra un día.
-  return new Date(`${valor}T00:00:00`);
+  return parseFecha(valor);
 }
 
 function leerRubro(raw: FormDataEntryValue | null): ExpenseCategory | null {

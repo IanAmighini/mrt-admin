@@ -1,4 +1,5 @@
 import type { Entity } from "@prisma/client";
+import { formatFecha } from "@/lib/period";
 import type { RecentMovement } from "@/lib/ledger";
 import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -181,7 +182,7 @@ export function CuentaCorrientePanel({
                 <p className="text-sm font-medium">
                   {DOCUMENT_TYPE_LABELS[movement.document.type]} #{movement.document.number}
                 </p>
-                <p className="text-xs text-foreground/50">{movement.date.toLocaleDateString("es-AR")}</p>
+                <p className="text-xs text-foreground/50">{formatFecha(movement.date)}</p>
               </div>
               <p className="text-sm font-semibold">
                 {formatMoney(getDocumentEffect(movement.document), movement.document.currency)}
@@ -196,7 +197,7 @@ export function CuentaCorrientePanel({
                 <p className="text-sm font-medium">
                   Pago — {PAYMENT_METHOD_LABELS[movement.payment.method]}
                 </p>
-                <p className="text-xs text-foreground/50">{movement.date.toLocaleDateString("es-AR")}</p>
+                <p className="text-xs text-foreground/50">{formatFecha(movement.date)}</p>
               </div>
               <p className="text-sm font-semibold text-green-700 dark:text-green-400">
                 {formatMoney(movement.payment.amount, movement.payment.currency)}

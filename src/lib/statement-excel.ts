@@ -2,7 +2,7 @@ import "server-only";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { sheet, type ExcelSheet } from "@/lib/excel";
 import type { AccountStatement, StatementEntry } from "@/lib/account-statement";
-import { periodLastDay, toDateInputValue } from "@/lib/period";
+import { formatFecha, periodLastDay, toDateInputValue } from "@/lib/period";
 
 /** Fila del Excel: los movimientos del período más, si hay filtro, el "Saldo anterior" al inicio. */
 type StatementRow = {
@@ -18,8 +18,8 @@ type StatementRow = {
 function periodLabel(statement: AccountStatement): string {
   const { from, to } = statement.period;
   if (!from && !to) return "Período: todos los movimientos";
-  const desde = from ? from.toLocaleDateString("es-AR") : "el inicio";
-  const hasta = to ? periodLastDay({ from: from ?? to, to }).toLocaleDateString("es-AR") : "hoy";
+  const desde = from ? formatFecha(from) : "el inicio";
+  const hasta = to ? formatFecha(periodLastDay({ from: from ?? to, to })) : "hoy";
   return `Período: ${desde} – ${hasta}`;
 }
 
@@ -53,7 +53,7 @@ export function buildStatementSheets(statement: AccountStatement): ExcelSheet<ne
   const subtitle = [
     `Circuito: ${CIRCUIT_LABELS[statement.account.circuit]}`,
     periodLabel(statement),
-    `Generado el ${statement.generatedAt.toLocaleDateString("es-AR")}`,
+    `Generado el ${formatFecha(statement.generatedAt)}`,
   ];
   if (statement.currencies.length > 1) {
     subtitle.push(

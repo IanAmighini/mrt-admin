@@ -1,4 +1,5 @@
 import "server-only";
+import { formatFecha, parseFecha } from "@/lib/period";
 import { Prisma, type ChequeEstado, type Circuit } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
@@ -46,7 +47,7 @@ export async function crearChequeRecibido(
       esEcheq: params.esEcheq,
       amount: params.amount,
       // Sin fecha es un cheque al día: se puede cobrar desde que se recibió.
-      fechaCobro: fechaRaw ? new Date(`${fechaRaw}T00:00:00`) : null,
+      fechaCobro: fechaRaw ? parseFecha(fechaRaw) : null,
       estado: params.yaEntregado ? "ENTREGADO" : "EN_CARTERA",
       // Al pagar, el cheque queda del lado de la salida; al cobrar, del lado de la entrada.
       ...(params.yaEntregado
@@ -133,6 +134,6 @@ export async function getCarteraParaFormulario() {
     amount: formatNumeroEditable(c.amount),
     montoLabel: formatMoney(c.amount),
     deQuien: c.recibidoEn?.account.entity.name ?? null,
-    fechaCobro: c.fechaCobro ? c.fechaCobro.toLocaleDateString("es-AR") : null,
+    fechaCobro: c.fechaCobro ? formatFecha(c.fechaCobro) : null,
   }));
 }

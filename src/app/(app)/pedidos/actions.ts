@@ -1,6 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
+import { parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
 import type { Prisma, PedidoStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -16,7 +17,7 @@ const PEDIDO_STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
-  return new Date(`${str}T00:00:00`);
+  return parseFecha(str);
 }
 
 function parseLines(formData: FormData) {

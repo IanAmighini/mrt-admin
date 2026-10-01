@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatFecha } from "@/lib/period";
 import { notFound, redirect } from "next/navigation";
 import type { Account, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -185,7 +186,7 @@ export default async function EntityLedgerPage({
       card3Value = formatMoney(resumenGastos.delAnio);
       card4Label = "Último movimiento";
       card4Value = resumenGastos.ultimoMovimiento
-        ? resumenGastos.ultimoMovimiento.toLocaleDateString("es-AR")
+        ? formatFecha(resumenGastos.ultimoMovimiento)
         : "—";
     } else {
       card3Label = "Compras";
@@ -327,7 +328,7 @@ export default async function EntityLedgerPage({
             isProveedor
               ? pagosSinOrden.map((p) => ({
                   id: p.id,
-                  fecha: p.date.toLocaleDateString("es-AR"),
+                  fecha: formatFecha(p.date),
                   metodo: PAYMENT_METHOD_LABELS[p.method],
                   amount: formatNumeroEditable(p.amount),
                   montoLabel: formatMoney(p.amount, p.currency),
@@ -355,7 +356,7 @@ export default async function EntityLedgerPage({
                   comprobantes: invoiceableRemitos.map((doc) => ({
                     id: doc.id,
                     number: doc.number,
-                    date: doc.date.toLocaleDateString("es-AR"),
+                    date: formatFecha(doc.date),
                     // En formato argentino, que es el que el formulario vuelve a leer al guardar.
                     pending: formatNumeroEditable(doc.pending),
                     neto: formatNumeroEditable(doc.netAmount),
@@ -428,7 +429,7 @@ function PricesSection({
                     <Tr key={product.id}>
                       <Td>{productLabel(product)}</Td>
                       <Td numero>{formatMoney(price.amount, price.currency)}</Td>
-                      <Td className="whitespace-nowrap">{price.validFrom.toLocaleDateString("es-AR")}</Td>
+                      <Td className="whitespace-nowrap">{formatFecha(price.validFrom)}</Td>
                     </Tr>
                   );
                 })}
@@ -490,7 +491,7 @@ function PricesSection({
                     <Tr key={price.id}>
                       <Td>{productLabel(price.product)}</Td>
                       <Td numero>{formatMoney(price.amount, price.currency)}</Td>
-                      <Td className="whitespace-nowrap">{price.validFrom.toLocaleDateString("es-AR")}</Td>
+                      <Td className="whitespace-nowrap">{formatFecha(price.validFrom)}</Td>
                       <Td>{price.createdBy.name}</Td>
                     </Tr>
                   ))}

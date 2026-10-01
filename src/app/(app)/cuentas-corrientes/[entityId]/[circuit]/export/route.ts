@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { CIRCUIT_BY_SLUG } from "@/lib/labels";
-import { addDays } from "@/lib/period";
+import { addDays, parseFecha } from "@/lib/period";
 import { getAccountStatement } from "@/lib/account-statement";
 import { buildStatementSheets, statementFilename } from "@/lib/statement-excel";
 import { buildWorkbook, excelResponse } from "@/lib/excel";
@@ -41,9 +41,9 @@ export async function GET(
 
   const statement = await getAccountStatement({
     accountId: account.id,
-    from: from ? new Date(`${from}T00:00:00`) : null,
+    from: from ? parseFecha(from) : null,
     // El "hasta" de la UI es inclusivo; acá se espera exclusivo.
-    to: to ? addDays(new Date(`${to}T00:00:00`), 1) : null,
+    to: to ? addDays(parseFecha(to), 1) : null,
   });
 
   const workbook = await buildWorkbook(buildStatementSheets(statement));

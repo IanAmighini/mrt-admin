@@ -11,7 +11,7 @@ import { RemitoFormFields } from "@/components/RemitoForm";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { deleteRemito, updateRemito } from "../cuentas-corrientes/[entityId]/actions";
-import { addDays, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -31,8 +31,8 @@ export default async function EntregasPage({
   const pagoFilter = PAGO_FILTERS.some((f) => f.value === pago) ? (pago as "" | "pagado" | "sin_pagar") : "";
   // El rango va a la consulta: el `take` de 500 recorta antes que cualquier filtro en memoria.
   const period = {
-    from: from ? new Date(`${from}T00:00:00`) : null,
-    to: to ? addDays(new Date(`${to}T00:00:00`), 1) : null,
+    from: from ? parseFecha(from) : null,
+    to: to ? addDays(parseFecha(to), 1) : null,
   };
   const hayFiltro = Boolean(q?.trim() || pagoFilter || from || to);
 
@@ -164,7 +164,7 @@ export default async function EntregasPage({
                     {doc.account.entity.name}
                   </Link>
                 </Td>
-                <Td className="whitespace-nowrap">{doc.date.toLocaleDateString("es-AR")}</Td>
+                <Td className="whitespace-nowrap">{formatFecha(doc.date)}</Td>
                 <Td numero>{formatQuantity(pallets, "pallets")}</Td>
                 <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
                 <Td>

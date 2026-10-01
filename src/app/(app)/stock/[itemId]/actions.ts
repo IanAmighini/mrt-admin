@@ -1,6 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
+import { parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import { Prisma, type DocumentType, type EntityType, type ItemMovementType } from "@prisma/client";
@@ -15,7 +16,7 @@ const MOVEMENT_TYPES: ItemMovementType[] = ["INGRESO", "AJUSTE", "MERMA", "VENTA
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
-  return new Date(`${str}T00:00:00`);
+  return parseFecha(str);
 }
 
 export async function createItemMovement(formData: FormData) {

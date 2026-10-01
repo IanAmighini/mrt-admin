@@ -5,6 +5,7 @@ import { formatMoney } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { EntityFormFields } from "@/components/EntityFormFields";
 import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
+import { ORDENES, ordenarFilas } from "@/lib/orden-saldos";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { createEntity } from "./actions";
 
@@ -24,9 +25,9 @@ const SALDO_FILTERS = [
 export default async function ClientesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; saldo?: string }>;
+  searchParams: Promise<{ q?: string; saldo?: string; orden?: string }>;
 }) {
-  const { q, saldo } = await searchParams;
+  const { q, saldo, orden } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
@@ -37,7 +38,7 @@ export default async function ClientesPage({
 
   const busqueda = q?.trim().toLowerCase();
   const saldoFiltro = SALDO_FILTERS.some((f) => f.value === saldo) ? saldo : "";
-  const hayFiltro = Boolean(busqueda || saldoFiltro);
+  const hayFiltro = Boolean(busqueda || saldoFiltro || orden);
 
   const rows = todos
     .filter(
@@ -52,6 +53,8 @@ export default async function ClientesPage({
       if (saldoFiltro === "cero") return total === 0;
       return true;
     });
+
+  const filas = ordenarFilas(rows, orden);
 
   const { total: deudaTotal, dolaresSinValuar } = sumarSaldosEnPesos(rows, cotizacion);
   const conDeuda = rows.filter((r) => r.total > 0).length;
@@ -86,6 +89,14 @@ export default async function ClientesPage({
       <FilterBar limpiarHref="/clientes" hayFiltro={hayFiltro} textoBoton="Filtrar">
         <FiltroBuscar defaultValue={q} placeholder="Nombre o CUIT…" />
         <FiltroSelect label="Saldo" name="saldo" defaultValue={saldoFiltro} opciones={SALDO_FILTERS} />
+        <FiltroSelect
+          label="Ordenar por"
+          name="orden"
+          defaultValue={orden}
+          todos="Nombre (A-Z)"
+          className="w-full sm:w-56"
+          opciones={ORDENES.filter((o) => o.value).map((o) => ({ value: o.value, label: o.label }))}
+        />
       </FilterBar>
 
       <Table>
@@ -102,7 +113,7 @@ export default async function ClientesPage({
           <Th align="derecha">Total</Th>
         </Thead>
         <tbody>
-          {rows.map(({ entity, blancoSaldo, negroSaldo, total }) => (
+          {filas.map(({ entity, blancoSaldo, negroSaldo, total }) => (
             <Tr key={entity.id}>
               <Td>
                 <Link

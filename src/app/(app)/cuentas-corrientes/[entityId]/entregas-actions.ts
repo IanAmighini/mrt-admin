@@ -1,15 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseFecha } from "@/lib/period";
 import { UserError } from "@/lib/user-error";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
 
-function parseFecha(value: FormDataEntryValue | null): Date {
+function leerFecha(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
   if (!str) throw new UserError("Falta la fecha.");
-  return new Date(`${str}T00:00:00`);
+  return parseFecha(str);
 }
 
 async function getEntidad(entityId: string) {
@@ -33,7 +34,7 @@ export async function crearEntrega(formData: FormData) {
   if (!nombre) throw new UserError("Ponele un nombre al viaje, por ejemplo “Camión 4”.");
   const destino = String(formData.get("destino") || "").trim() || null;
   const notas = String(formData.get("notas") || "").trim() || null;
-  const fecha = parseFecha(formData.get("fecha"));
+  const fecha = leerFecha(formData.get("fecha"));
 
   const entrega = await prisma.entrega.create({
     data: { entityId, nombre, destino, fecha, notas, createdById: user.id },
@@ -69,7 +70,7 @@ export async function actualizarEntrega(formData: FormData) {
       nombre,
       destino: String(formData.get("destino") || "").trim() || null,
       notas: String(formData.get("notas") || "").trim() || null,
-      fecha: parseFecha(formData.get("fecha")),
+      fecha: leerFecha(formData.get("fecha")),
     },
   });
 

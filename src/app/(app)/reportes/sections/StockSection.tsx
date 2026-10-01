@@ -7,6 +7,7 @@ import { KpiCard } from "@/components/KpiCard";
 import { getStockReport, type StockReportRow } from "@/lib/reports";
 import type { Period } from "@/lib/period";
 import type { SupplierCategory } from "@prisma/client";
+import { formatFecha } from "@/lib/period";
 
 export async function StockSection({ period }: { period: Period }) {
   const report = await getStockReport(period);
@@ -24,7 +25,7 @@ export async function StockSection({ period }: { period: Period }) {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <KpiCard
           label="Último recuento"
-          value={ultimo ? ultimo.fecha.toLocaleDateString("es-AR") : "—"}
+          value={ultimo ? formatFecha(ultimo.fecha) : "—"}
           caption={ultimo ? `${ultimo.insumos} insumos · ${ultimo.productos} productos` : "todavía no se contó"}
           icon={CalendarCheck}
           color="blue"
@@ -56,7 +57,7 @@ export async function StockSection({ period }: { period: Period }) {
                 key={r.fecha.toISOString()}
                 className="rounded-lg border border-foreground/15 bg-background px-3 py-1.5 text-sm"
               >
-                {r.fecha.toLocaleDateString("es-AR")}
+                {formatFecha(r.fecha)}
                 <span className="text-foreground/50">
                   {" "}
                   · {r.insumos} insumos · {r.productos} productos

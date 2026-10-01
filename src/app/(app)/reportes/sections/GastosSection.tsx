@@ -6,6 +6,7 @@ import { CIRCUIT_LABELS, EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { getGastosReport } from "@/lib/reports";
 import type { Period } from "@/lib/period";
+import { formatFecha } from "@/lib/period";
 
 function ars(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
   return byCurrency.get("ARS") ?? ZERO;
@@ -133,7 +134,7 @@ export async function GastosSection({ period }: { period: Period }) {
               <tbody>
                 {report.detalle.map((d, i) => (
                   <tr key={`${d.number}-${i}`} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4 whitespace-nowrap">{d.date.toLocaleDateString("es-AR")}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(d.date)}</td>
                     <td className="py-2 pr-4">{d.number}</td>
                     <td className="py-2 pr-4">
                       {d.entityName}
