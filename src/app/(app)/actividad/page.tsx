@@ -11,6 +11,8 @@ const ACTION_LABELS: Record<AuditAction, string> = {
   DELETE: "Borrado",
 };
 
+const ACTION_ORDER: AuditAction[] = ["CREATE", "UPDATE", "DELETE"];
+
 const ACTION_COLORS: Record<AuditAction, string> = {
   CREATE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
   UPDATE: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
@@ -20,17 +22,27 @@ const ACTION_COLORS: Record<AuditAction, string> = {
 export default async function ActividadPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; entityType?: string; from?: string; to?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    entityType?: string;
+    action?: string;
+    userId?: string;
+    from?: string;
+    to?: string;
+  }>;
 }) {
-  const { q, entityType, from, to } = await searchParams;
+  const { q, entityType, action, userId, from, to } = await searchParams;
   await requireRole(["ADMIN"]);
 
   const searchTerm = q?.trim();
+  const accionValida = ACTION_ORDER.includes(action as AuditAction) ? (action as AuditAction) : undefined;
 
-  const [logs, entityTypeRows] = await Promise.all([
+  const [logs, entityTypeRows, usuarios] = await Promise.all([
     prisma.auditLog.findMany({
       where: {
         ...(entityType ? { entityType } : {}),
+        ...(accionValida ? { action: accionValida } : {}),
+        ...(userId ? { userId } : {}),
         ...(from || to
           ? {
               createdAt: {
@@ -53,87 +65,116 @@ export default async function ActividadPage({
       take: 200,
     }),
     prisma.auditLog.findMany({ distinct: ["entityType"], select: { entityType: true }, orderBy: { entityType: "asc" } }),
+    prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   const entityTypes = entityTypeRows.map((r) => r.entityType);
+  const hayFiltro = Boolean(searchTerm || entityType || accionValida || userId || from || to);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-semibold mb-1">Actividad</h1>
-        <p className="text-sm text-foreground/60">{logs.length} operaciones registradas (últimas 200)</p>
+        <p className="text-sm text-foreground/60">
+          {hayFiltro
+            ? `${logs.length} ${logs.length === 1 ? "operación" : "operaciones"} con este filtro`
+            : `Las últimas ${logs.length} operaciones`}
+        </p>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3">
-        <form className="flex flex-1 min-w-[240px] flex-wrap items-end gap-2">
-          {entityType && <input type="hidden" name="entityType" value={entityType} />}
-          <div className="relative flex-1 min-w-[200px]">
-            <label className="text-xs text-foreground/60">Buscar</label>
+      {/* Un solo formulario con todo adentro: antes el tipo eran veinte botones en dos renglones
+          —y crecen solos cada vez que se audita algo nuevo— mientras la fecha y el buscador
+          peleaban por el mismo renglón de arriba. */}
+      <form className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-xs text-foreground/60" htmlFor="q">
+              Buscar
+            </label>
             <div className="relative">
-              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
+              <Search
+                size={15}
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40"
+              />
               <input
+                id="q"
                 type="text"
                 name="q"
                 defaultValue={q}
                 placeholder="Usuario o resumen…"
-                className="w-full rounded-lg border border-foreground/20 bg-background py-2 pl-9 pr-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                className={`${inputClass} pl-9`}
               />
             </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60" htmlFor="entityType">
+              Tipo
+            </label>
+            <select id="entityType" name="entityType" defaultValue={entityType ?? ""} className={inputClass}>
+              <option value="">Todos</option>
+              {entityTypes.map((et) => (
+                <option key={et} value={et}>
+                  {et}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60" htmlFor="action">
+              Acción
+            </label>
+            <select id="action" name="action" defaultValue={accionValida ?? ""} className={inputClass}>
+              <option value="">Todas</option>
+              {ACTION_ORDER.map((a) => (
+                <option key={a} value={a}>
+                  {ACTION_LABELS[a]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60" htmlFor="userId">
+              Usuario
+            </label>
+            <select id="userId" name="userId" defaultValue={userId ?? ""} className={inputClass}>
+              <option value="">Todos</option>
+              {usuarios.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-foreground/60" htmlFor="from">
               Desde
             </label>
-            <input
-              id="from"
-              type="date"
-              name="from"
-              defaultValue={from}
-              className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            />
+            <input id="from" type="date" name="from" defaultValue={from} className={inputClass} />
           </div>
           <div className="space-y-1">
             <label className="text-xs text-foreground/60" htmlFor="to">
               Hasta
             </label>
-            <input
-              id="to"
-              type="date"
-              name="to"
-              defaultValue={to}
-              className="rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            />
+            <input id="to" type="date" name="to" defaultValue={to} className={inputClass} />
           </div>
-          <button type="submit" className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5">
-            Buscar
-          </button>
-        </form>
-      </div>
-
-      <div className="flex flex-wrap gap-1">
-        <Link
-          href={{ pathname: "/actividad", query: { ...(q ? { q } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}) } }}
-          className={`rounded px-3 py-1.5 text-sm ${
-            !entityType ? "bg-primary text-primary-foreground" : "border border-foreground/20 hover:bg-foreground/5"
-          }`}
-        >
-          Todos
-        </Link>
-        {entityTypes.map((et) => (
-          <Link
-            key={et}
-            href={{
-              pathname: "/actividad",
-              query: { ...(q ? { q } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), entityType: et },
-            }}
-            className={`rounded px-3 py-1.5 text-sm ${
-              entityType === et ? "bg-primary text-primary-foreground" : "border border-foreground/20 hover:bg-foreground/5"
-            }`}
-          >
-            {et}
-          </Link>
-        ))}
-      </div>
+          <div className="flex items-end gap-2">
+            <button
+              type="submit"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+            >
+              Buscar
+            </button>
+            {hayFiltro && (
+              <Link
+                href="/actividad"
+                className="rounded-lg border border-foreground/20 px-4 py-2 text-sm transition-colors hover:bg-foreground/5"
+              >
+                Limpiar
+              </Link>
+            )}
+          </div>
+        </div>
+      </form>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -152,7 +193,7 @@ export default async function ActividadPage({
                 <td className="py-2 pr-4 whitespace-nowrap">
                   {formatDateTime(log.createdAt)}
                 </td>
-                <td className="py-2 pr-4">{log.user.name}</td>
+                <td className="py-2 pr-4 whitespace-nowrap">{log.user.name}</td>
                 <td className="py-2 pr-4">
                   <span className={`rounded px-2 py-1 text-xs font-medium ${ACTION_COLORS[log.action]}`}>
                     {ACTION_LABELS[log.action]}
@@ -165,7 +206,7 @@ export default async function ActividadPage({
             {logs.length === 0 && (
               <tr>
                 <td colSpan={5} className="py-6 text-center text-foreground/40">
-                  {q || entityType || from || to ? "No hay actividad con este filtro." : "Todavía no hay actividad registrada."}
+                  {hayFiltro ? "No hay actividad con este filtro." : "Todavía no hay actividad registrada."}
                 </td>
               </tr>
             )}
@@ -175,3 +216,6 @@ export default async function ActividadPage({
     </div>
   );
 }
+
+const inputClass =
+  "w-full rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
