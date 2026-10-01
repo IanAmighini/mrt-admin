@@ -225,13 +225,33 @@ export async function getRecentRemitos(limit = 30, entityId?: string, search?: s
 }
 
 /** Compras de insumos a proveedores más recientes, entre todas las entidades o de una sola. */
-export async function getRecentCompras(limit = 30, entityId?: string, search?: string) {
+/** El filtro de fechas de un listado, en la forma que espera Prisma. Vacío = sin límite. */
+function enElPeriodo(period?: { from: Date | null; to: Date | null }) {
+  if (!period?.from && !period?.to) return {};
+  return {
+    date: {
+      ...(period?.from ? { gte: period.from } : {}),
+      ...(period?.to ? { lt: period.to } : {}),
+    },
+  };
+}
+
+export async function getRecentCompras(
+  limit = 30,
+  entityId?: string,
+  search?: string,
+  /** Acota por fecha del comprobante. Va en la consulta y no filtrando después, porque el `take`
+   * recorta antes: en memoria, "las compras de marzo" devolvería sólo las que entraran en las
+   * últimas 500. */
+  period?: { from: Date | null; to: Date | null }
+) {
   const trimmedSearch = search?.trim();
   return prisma.document.findMany({
     where: {
       type: "REMITO",
       purchaseLines: { some: {} },
       ...(entityId ? { account: { entityId } } : {}),
+      ...enElPeriodo(period),
       ...(trimmedSearch
         ? {
             OR: [
@@ -248,7 +268,12 @@ export async function getRecentCompras(limit = 30, entityId?: string, search?: s
 }
 
 /** Facturas de gasto: lo que se le compra a un proveedor y no es un insumo — flete, alquiler, luz. */
-export async function getRecentGastos(limit = 30, entityId?: string, search?: string) {
+export async function getRecentGastos(
+  limit = 30,
+  entityId?: string,
+  search?: string,
+  period?: { from: Date | null; to: Date | null }
+) {
   const trimmedSearch = search?.trim();
   // El rubro es un enum, así que buscar "flete" no lo encontraría por más que la fila lo muestre:
   // se traduce el texto a las categorías cuya etiqueta lo contenga.
@@ -262,6 +287,7 @@ export async function getRecentGastos(limit = 30, entityId?: string, search?: st
     where: {
       type: "GASTO",
       ...(entityId ? { account: { entityId } } : {}),
+      ...enElPeriodo(period),
       ...(trimmedSearch
         ? {
             OR: [

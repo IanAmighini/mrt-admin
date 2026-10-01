@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentCompras, getRecentGastos } from "@/lib/ledger";
-import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, formatQuantity, sumDecimals } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CompraFormFields } from "@/components/CompraForm";
@@ -11,6 +11,8 @@ import { GastoFormFields } from "@/components/GastoFormFields";
 import { desgloseDesdeDocumento } from "@/lib/impuestos";
 import { facturaDeCompra } from "@/lib/compra-factura";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
+import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
+import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import {
   createGasto,
   deleteCompra,
@@ -18,7 +20,7 @@ import {
   updateCompra,
   updateGasto,
 } from "../cuentas-corrientes/[entityId]/actions";
-import { toDateInputValue } from "@/lib/period";
+import { addDays, toDateInputValue } from "@/lib/period";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -36,14 +38,20 @@ const TIPO_FILTERS: { value: "" | "insumos" | "gastos"; label: string }[] = [
 export default async function ComprasPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; pago?: string; tipo?: string }>;
+  searchParams: Promise<{ q?: string; pago?: string; tipo?: string; from?: string; to?: string }>;
 }) {
-  const { q, pago, tipo } = await searchParams;
+  const { q, pago, tipo, from, to } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const pagoFilter = PAGO_FILTERS.some((f) => f.value === pago) ? (pago as "" | "pagado" | "sin_pagar") : "";
   const tipoFilter = TIPO_FILTERS.some((f) => f.value === tipo) ? (tipo as "" | "insumos" | "gastos") : "";
+  // El rango va a la consulta, no al filtrado posterior: el `take` de 500 recorta antes.
+  const period = {
+    from: from ? new Date(`${from}T00:00:00`) : null,
+    to: to ? addDays(new Date(`${to}T00:00:00`), 1) : null,
+  };
+  const hayFiltro = Boolean(q?.trim() || pagoFilter || tipoFilter || from || to);
 
   const [items, proveedores, compras, gastos] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
@@ -52,8 +60,8 @@ export default async function ComprasPage({
       select: { id: true, name: true, expenseCategory: true },
       orderBy: { name: "asc" },
     }),
-    tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q),
-    tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q),
+    tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
+    tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q, period),
   ]);
 
   const rows = [...compras, ...gastos]
@@ -66,13 +74,25 @@ export default async function ComprasPage({
     return true;
   });
 
+  // Cuánto suma lo que se está viendo, y cuánto de eso falta pagar. Sin esto hay que ir a
+  // Reportes para responder "cuánto gasté este mes", que es la pregunta de esta pantalla.
+  const total = sumDecimals(filteredRows.map((r) => r.doc.totalAmount));
+  const pendiente = sumDecimals(filteredRows.map((r) => getDocumentPending(r.doc)));
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold mb-1">Compras y gastos</h1>
           <p className="text-sm text-foreground/60">
-            {filteredRows.length} {filteredRows.length === 1 ? "comprobante" : "comprobantes"}
+            {filteredRows.length} {filteredRows.length === 1 ? "comprobante" : "comprobantes"} ·{" "}
+            {formatMoney(total)}
+            {pendiente.greaterThan(0) && (
+              <span className="text-amber-600 dark:text-amber-400">
+                {" "}
+                · {formatMoney(pendiente)} sin pagar
+              </span>
+            )}
           </p>
         </div>
         {canEdit && (
@@ -96,88 +116,47 @@ export default async function ComprasPage({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <form className="flex flex-1 min-w-[240px] gap-2">
-          {pagoFilter && <input type="hidden" name="pago" value={pagoFilter} />}
-          {tipoFilter && <input type="hidden" name="tipo" value={tipoFilter} />}
-          <div className="relative flex-1">
-            <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-foreground/40" />
-            <input
-              type="text"
-              name="q"
-              defaultValue={q}
-              placeholder="Buscar por proveedor, comprobante o concepto…"
-              className="w-full rounded-lg border border-foreground/20 bg-background py-2 pl-9 pr-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
-            />
-          </div>
-          <button type="submit" className="rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm hover:bg-foreground/5">
-            Buscar
-          </button>
-        </form>
-        <div className="flex flex-wrap gap-1">
-          {TIPO_FILTERS.map((f) => (
-            <Link
-              key={f.value}
-              href={{
-                pathname: "/compras",
-                query: { ...(q ? { q } : {}), ...(pagoFilter ? { pago: pagoFilter } : {}), ...(f.value ? { tipo: f.value } : {}) },
-              }}
-              className={`rounded px-3 py-1.5 text-sm ${
-                tipoFilter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-foreground/20 hover:bg-foreground/5"
-              }`}
-            >
-              {f.label}
-            </Link>
-          ))}
-        </div>
-        <div className="flex flex-wrap gap-1">
-          {PAGO_FILTERS.map((f) => (
-            <Link
-              key={f.value}
-              href={{
-                pathname: "/compras",
-                query: { ...(q ? { q } : {}), ...(tipoFilter ? { tipo: tipoFilter } : {}), ...(f.value ? { pago: f.value } : {}) },
-              }}
-              className={`rounded px-3 py-1.5 text-sm ${
-                pagoFilter === f.value
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-foreground/20 hover:bg-foreground/5"
-              }`}
-            >
-              {f.label}
-            </Link>
-          ))}
-        </div>
-      </div>
+      <FilterBar limpiarHref="/compras" hayFiltro={hayFiltro}>
+        <FiltroBuscar defaultValue={q} placeholder="Proveedor, comprobante o concepto…" />
+        <FiltroSelect
+          label="Tipo"
+          name="tipo"
+          defaultValue={tipoFilter}
+          todos="Insumos y gastos"
+          opciones={TIPO_FILTERS.filter((f) => f.value).map((f) => ({ value: f.value, label: f.label }))}
+        />
+        <FiltroSelect
+          label="Estado"
+          name="pago"
+          defaultValue={pagoFilter}
+          opciones={PAGO_FILTERS.filter((f) => f.value).map((f) => ({ value: f.value, label: f.label }))}
+        />
+        <FiltroFechas from={from} to={to} />
+      </FilterBar>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-foreground/10 text-left text-foreground/60">
-              <th className="py-2 pr-4">Proveedor</th>
-              <th className="py-2 pr-4">Comprobante</th>
-              <th className="py-2 pr-4">Fecha</th>
-              <th className="py-2 pr-4">Total</th>
-              <th className="py-2 pr-4">Pago</th>
-              {canEdit && <th className="py-2 pr-4">Acciones</th>}
-            </tr>
-          </thead>
+      <Table>
+        <Thead>
+          <Th>Proveedor</Th>
+          <Th>Comprobante</Th>
+          <Th>Fecha</Th>
+          <Th align="derecha">Total</Th>
+          <Th>Pago</Th>
+          {canEdit && <Th>Acciones</Th>}
+        </Thead>
           <tbody>
             {filteredRows.map(({ doc, pagado }) => {
               const esGasto = doc.type === "GASTO";
               return (
-              <tr key={doc.id} className="border-b border-foreground/5">
-                <td className="py-2 pr-4">
+              <Tr key={doc.id}>
+                <Td>
                   <Link
                     href={`/cuentas-corrientes/${doc.account.entity.slug}`}
                     className="underline underline-offset-2"
                   >
                     {doc.account.entity.name}
                   </Link>
-                </td>
-                <td className="py-2 pr-4">
+                </Td>
+                <Td>
                   <span className="flex items-center gap-1.5">
                     {esGasto && (
                       <span className="rounded bg-foreground/10 px-1.5 py-0.5 text-xs font-medium">Gasto</span>
@@ -193,10 +172,10 @@ export default async function ComprasPage({
                           .map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`)
                           .join(" · ")}
                   </p>
-                </td>
-                <td className="py-2 pr-4">{doc.date.toLocaleDateString("es-AR")}</td>
-                <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
-                <td className="py-2 pr-4">
+                </Td>
+                <Td className="whitespace-nowrap">{doc.date.toLocaleDateString("es-AR")}</Td>
+                <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
+                <Td>
                   <span
                     className={`rounded px-2 py-1 text-xs font-medium ${
                       pagado
@@ -206,9 +185,9 @@ export default async function ComprasPage({
                   >
                     {pagado ? "Pagado" : "Sin pagar"}
                   </span>
-                </td>
+                </Td>
                 {canEdit && (
-                  <td className="py-2 pr-4">
+                  <Td>
                     <div className="flex items-center gap-2">
                       {esGasto ? (
                         <>
@@ -285,21 +264,20 @@ export default async function ComprasPage({
                         </>
                       )}
                     </div>
-                  </td>
+                  </Td>
                 )}
-              </tr>
+              </Tr>
               );
             })}
             {filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={canEdit ? 6 : 5} className="py-6 text-center text-foreground/40">
-                  {q || pagoFilter ? "No hay compras con este filtro." : "Todavía no hay compras cargadas."}
-                </td>
-              </tr>
+              <TableEmpty colSpan={canEdit ? 6 : 5}>
+                {hayFiltro
+                  ? "No hay comprobantes con este filtro."
+                  : "Todavía no hay compras ni gastos cargados."}
+              </TableEmpty>
             )}
           </tbody>
-        </table>
-      </div>
+        </Table>
     </div>
   );
 }
