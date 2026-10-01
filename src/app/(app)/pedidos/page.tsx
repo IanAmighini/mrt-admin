@@ -85,7 +85,7 @@ export default async function PedidosPage({
           name="entityId"
           defaultValue={entityId}
           opciones={clientes.map((c) => ({ value: c.id, label: c.name }))}
-          className="sm:col-span-2"
+          className="w-full sm:w-56"
         />
         <FiltroSelect
           label="Estado"
@@ -146,9 +146,9 @@ export default async function PedidosPage({
                       </>
                     )}
                     <Td numero>{formatQuantity(line.pallets)}</Td>
-                    <Td>
-                      <span className="whitespace-nowrap">{formatProductBrandLabel(line.product)}</span>
-                      <span className="block text-xs text-foreground/50">{line.product.presentation}</span>
+                    <Td className="whitespace-nowrap">
+                      {formatProductBrandLabel(line.product)}
+                      <span className="text-foreground/50"> · {line.product.presentation}</span>
                     </Td>
                     {li === 0 && (
                       <>

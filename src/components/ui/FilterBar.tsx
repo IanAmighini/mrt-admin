@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { Button } from "./Button";
-import { FieldChico, controlClass } from "./Field";
+import { FieldChico, Select, controlClass } from "./Field";
 
 /**
  * La barra de filtros de una pantalla de listado.
@@ -25,9 +25,13 @@ export function FilterBar({
   hayFiltro: boolean;
   textoBoton?: string;
 }) {
+  // Cada filtro trae su propio ancho en vez de ocupar una celda de una grilla: con la grilla, el
+  // buscador se estiraba a media pantalla mientras los demás quedaban enormes y la última fila
+  // dejaba un hueco a la derecha. Así se acomodan en una sola línea cuando entran y bajan de a
+  // uno cuando no.
   return (
-    <form className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <form className="rounded-xl border border-foreground/10 bg-background shadow-sm px-4 py-3">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
         {children}
         <div className="flex items-end gap-2">
           <Button type="submit">{textoBoton}</Button>
@@ -51,7 +55,7 @@ export function FiltroBuscar({
   placeholder,
   label = "Buscar",
   name = "q",
-  className = "sm:col-span-2",
+  className = "w-full sm:w-auto sm:min-w-[13rem] sm:flex-1 sm:basis-64 sm:max-w-sm",
 }: {
   defaultValue?: string;
   placeholder: string;
@@ -86,7 +90,7 @@ export function FiltroSelect({
   defaultValue,
   opciones,
   todos = "Todos",
-  className,
+  className = "w-full sm:w-40",
 }: {
   label: string;
   name: string;
@@ -98,14 +102,14 @@ export function FiltroSelect({
 }) {
   return (
     <FieldChico label={label} htmlFor={name} className={className}>
-      <select id={name} name={name} defaultValue={defaultValue ?? ""} className={controlClass()}>
+      <Select id={name} name={name} defaultValue={defaultValue ?? ""}>
         <option value="">{todos}</option>
         {opciones.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
           </option>
         ))}
-      </select>
+      </Select>
     </FieldChico>
   );
 }
@@ -114,10 +118,10 @@ export function FiltroSelect({
 export function FiltroFechas({ from, to }: { from?: string; to?: string }) {
   return (
     <>
-      <FieldChico label="Desde" htmlFor="from">
+      <FieldChico label="Desde" htmlFor="from" className="w-full sm:w-40">
         <input id="from" type="date" name="from" defaultValue={from} className={controlClass()} />
       </FieldChico>
-      <FieldChico label="Hasta" htmlFor="to">
+      <FieldChico label="Hasta" htmlFor="to" className="w-full sm:w-40">
         <input id="to" type="date" name="to" defaultValue={to} className={controlClass()} />
       </FieldChico>
     </>
