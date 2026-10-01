@@ -9,6 +9,7 @@ export function ProductionRunFormFields({
   formatos,
   tapas,
   cajas,
+  etiquetas,
   editingRunId,
   defaultValues,
 }: {
@@ -16,6 +17,7 @@ export function ProductionRunFormFields({
   formatos: FormatoInfo[];
   tapas: ItemInfo[];
   cajas: ItemInfo[];
+  etiquetas: ItemInfo[];
   /** Si viene, el formulario edita esta carga en vez de crear una nueva — los ítems se cargan
    * de nuevo desde cero (no se prellenan), pero la fecha y las notas sí. */
   editingRunId?: string;
@@ -42,7 +44,13 @@ export function ProductionRunFormFields({
           className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
         />
       </div>
-      <ProductionLinesFields marcas={marcas} formatos={formatos} tapas={tapas} cajas={cajas} />
+      <ProductionLinesFields
+        marcas={marcas}
+        formatos={formatos}
+        tapas={tapas}
+        cajas={cajas}
+        etiquetas={etiquetas}
+      />
       <div className="space-y-1">
         <label className="text-sm" htmlFor="notes">
           Notas

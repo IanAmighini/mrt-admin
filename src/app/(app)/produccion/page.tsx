@@ -15,7 +15,7 @@ export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [runs, oilFillEfficiencyPercent, marcas, formatos, tapas, cajas] = await Promise.all([
+  const [runs, oilFillEfficiencyPercent, marcas, formatos, tapas, cajas, etiquetas] = await Promise.all([
     prisma.productionRun.findMany({
       orderBy: { date: "desc" },
       include: {
@@ -39,6 +39,12 @@ export default async function ProduccionPage() {
     }),
     prisma.item.findMany({
       where: { category: "CAJAS" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    // A veces se etiqueta con las de papel en vez de las autoadhesivas, que es lo que dice la receta.
+    prisma.item.findMany({
+      where: { category: "ETIQUETAS" },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
@@ -79,7 +85,13 @@ export default async function ProduccionPage() {
               action={createProductionRun}
               maxWidthClass="max-w-xl"
             >
-              <ProductionRunFormFields marcas={marcas} formatos={formatos} tapas={tapas} cajas={cajas} />
+              <ProductionRunFormFields
+                marcas={marcas}
+                formatos={formatos}
+                tapas={tapas}
+                cajas={cajas}
+                etiquetas={etiquetas}
+              />
             </FormModal>
             <FormModal
               triggerLabel="Rendimiento de aceite"
@@ -128,6 +140,7 @@ export default async function ProduccionPage() {
                         formatos={formatos}
                         tapas={tapas}
                         cajas={cajas}
+                        etiquetas={etiquetas}
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
                       />

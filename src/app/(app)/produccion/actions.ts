@@ -54,6 +54,7 @@ async function createProductionRunCore(
   const quantities = formData.getAll("quantity").map(String);
   const tapaUsadaIds = formData.getAll("tapaUsadaItemId").map(String);
   const cajaUsadaIds = formData.getAll("cajaUsadaItemId").map(String);
+  const etiquetaUsadaIds = formData.getAll("etiquetaUsadaItemId").map(String);
 
   // Los campos del formulario llegan como arrays paralelos que se aparean por posición. Si alguno
   // viniera con distinto largo, los reemplazos caerían en la fila equivocada y descontarían del
@@ -62,7 +63,8 @@ async function createProductionRunCore(
     formatoIds.length !== marcaIds.length ||
     quantities.length !== marcaIds.length ||
     tapaUsadaIds.length !== marcaIds.length ||
-    cajaUsadaIds.length !== marcaIds.length
+    cajaUsadaIds.length !== marcaIds.length ||
+    etiquetaUsadaIds.length !== marcaIds.length
   ) {
     throw new UserError("El formulario llegó incompleto — recargá la página y volvé a cargar la producción.");
   }
@@ -74,6 +76,7 @@ async function createProductionRunCore(
       quantity: parseNumeroOpcional(quantities[i] ?? "", "pallets"),
       tapaUsadaItemId: tapaUsadaIds[i] || "",
       cajaUsadaItemId: cajaUsadaIds[i] || "",
+      etiquetaUsadaItemId: etiquetaUsadaIds[i] || "",
     }))
     .filter((l) => l.marcaId && l.formatoId && !l.quantity.isZero());
 
@@ -86,7 +89,11 @@ async function createProductionRunCore(
   // Los reemplazos se validan contra la base y no solo con el filtro del desplegable: un POST
   // armado a mano podría, si no, descontar tapas del aceite.
   const reemplazoIds = Array.from(
-    new Set(lines.flatMap((l) => [l.tapaUsadaItemId, l.cajaUsadaItemId]).filter(Boolean))
+    new Set(
+      lines
+        .flatMap((l) => [l.tapaUsadaItemId, l.cajaUsadaItemId, l.etiquetaUsadaItemId])
+        .filter(Boolean)
+    )
   );
   const reemplazos = reemplazoIds.length
     ? await prisma.item.findMany({
@@ -99,6 +106,7 @@ async function createProductionRunCore(
     for (const [itemId, categoria, rol] of [
       [line.tapaUsadaItemId, "TAPAS", "tapa"],
       [line.cajaUsadaItemId, "CAJAS", "caja"],
+      [line.etiquetaUsadaItemId, "ETIQUETAS", "etiqueta"],
     ] as const) {
       if (!itemId) continue;
       const item = reemplazoPorId.get(itemId);
@@ -156,9 +164,15 @@ async function createProductionRunCore(
       const reemplazoPorCategoria: Partial<Record<SupplierCategory, string>> = {
         ...(line.tapaUsadaItemId ? { TAPAS: line.tapaUsadaItemId } : {}),
         ...(line.cajaUsadaItemId ? { CAJAS: line.cajaUsadaItemId } : {}),
+        ...(line.etiquetaUsadaItemId ? { ETIQUETAS: line.etiquetaUsadaItemId } : {}),
+      };
+      const ROL_DE_CATEGORIA: Partial<Record<SupplierCategory, string>> = {
+        TAPAS: "tapa",
+        CAJAS: "caja",
+        ETIQUETAS: "etiqueta",
       };
       for (const categoria of Object.keys(reemplazoPorCategoria) as SupplierCategory[]) {
-        const rol = categoria === "TAPAS" ? "tapa" : "caja";
+        const rol = ROL_DE_CATEGORIA[categoria] ?? "insumo";
         const enReceta = product.recipe.filter((r) => r.item.category === categoria);
         // Aceptar la instrucción y descartarla en silencio dejaría el stock mal sin que nadie se
         // entere, así que se avisa.

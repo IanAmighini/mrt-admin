@@ -15,6 +15,7 @@ type Row = {
   /** Vacío = la que dice la receta. Se completa solo cuando se usó otra. */
   tapaUsadaItemId: string;
   cajaUsadaItemId: string;
+  etiquetaUsadaItemId: string;
 };
 
 const filaVacia = (key: number): Row => ({
@@ -24,6 +25,7 @@ const filaVacia = (key: number): Row => ({
   pallets: "",
   tapaUsadaItemId: "",
   cajaUsadaItemId: "",
+  etiquetaUsadaItemId: "",
 });
 
 const inputClass =
@@ -34,11 +36,13 @@ export function ProductionLinesFields({
   formatos,
   tapas,
   cajas,
+  etiquetas,
 }: {
   marcas: MarcaInfo[];
   formatos: FormatoInfo[];
   tapas: ItemInfo[];
   cajas: ItemInfo[];
+  etiquetas: ItemInfo[];
 }) {
   const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
   const [nextKey, setNextKey] = useState(1);
@@ -120,9 +124,10 @@ export function ProductionLinesFields({
             </select>
           </div>
           {/* Se completan solo si se usó algo distinto a la receta: las tres tapas de 29mm son
-              intercambiables, y cuando se acaba la caja de la marca se usa la Lisa. Siempre se
-              renderizan, aunque estén vacías, porque el servidor aparea las filas por posición. */}
-          <div className="grid grid-cols-2 gap-2">
+              intercambiables, cuando se acaba la caja de la marca se usa la Lisa, y a veces se
+              etiqueta con las de papel en vez de las autoadhesivas. Siempre se renderizan, aunque
+              estén vacías, porque el servidor aparea las filas por posición. */}
+          <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="text-xs text-foreground/60">Tapa usada</label>
               <select
@@ -151,6 +156,22 @@ export function ProductionLinesFields({
                 {cajas.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-foreground/60">Etiqueta usada</label>
+              <select
+                name="etiquetaUsadaItemId"
+                value={row.etiquetaUsadaItemId}
+                onChange={(e) => updateRow(row.key, { etiquetaUsadaItemId: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">— la de la receta —</option>
+                {etiquetas.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
                   </option>
                 ))}
               </select>
