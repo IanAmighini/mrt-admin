@@ -63,6 +63,7 @@ export function Tr({ children, className }: { children: React.ReactNode; classNa
 export function Td({
   children,
   align = "izquierda",
+  colSpan,
   /** Para los números: los alinea a la derecha y usa cifras de ancho fijo, que es lo que hace que
    *  una columna de montos se pueda leer de un vistazo. */
   numero = false,
@@ -71,6 +72,7 @@ export function Td({
   children?: React.ReactNode;
   align?: Alineacion;
   numero?: boolean;
+  colSpan?: number;
   className?: string;
 }) {
   const clases = [
@@ -78,7 +80,11 @@ export function Td({
     numero ? "text-right tabular-nums" : alineacionClase[align],
     className ?? "",
   ];
-  return <td className={clases.filter(Boolean).join(" ")}>{children}</td>;
+  return (
+    <td colSpan={colSpan} className={clases.filter(Boolean).join(" ")}>
+      {children}
+    </td>
+  );
 }
 
 /** La fila que explica por qué no hay filas. Siempre con un texto propio: "Sin datos" no ayuda. */

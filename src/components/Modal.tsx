@@ -3,6 +3,7 @@
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Pencil, Plus, X, type LucideIcon } from "lucide-react";
+import { buttonClass, type PesoDeBoton } from "./ui/Button";
 
 const TRIGGER_ICONS: Record<string, LucideIcon> = {
   plus: Plus,
@@ -16,6 +17,7 @@ export function FormModal({
   children,
   maxWidthClass = "max-w-lg",
   iconName = "plus",
+  peso = "primario",
 }: {
   triggerLabel: string;
   title: string;
@@ -23,6 +25,9 @@ export function FormModal({
   children: React.ReactNode;
   maxWidthClass?: string;
   iconName?: keyof typeof TRIGGER_ICONS;
+  /** Cuánto pesa el botón que abre el diálogo. Cuando todos son primarios, el que se usa veinte
+   * veces por día se ve igual que el que se usa una vez por mes. */
+  peso?: PesoDeBoton;
 }) {
   const TriggerIcon = TRIGGER_ICONS[iconName];
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -66,7 +71,7 @@ export function FormModal({
           setResetKey((k) => k + 1);
           dialogRef.current?.showModal();
         }}
-        className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+        className={buttonClass(peso, "flex w-fit items-center gap-1.5")}
       >
         <TriggerIcon size={16} />
         {triggerLabel}
