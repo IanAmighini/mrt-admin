@@ -208,6 +208,10 @@ enum ExpenseCategory {
   BALANZA
   FERRETERIA
   COMBUSTIBLE
+  /// El gas de los autoelevadores. Va aparte de SERVICIOS a propósito: ese es el gas de red del
+  /// lugar, y mezclarlos hacía que el consumo de las máquinas se perdiera dentro de la factura de
+  /// la planta.
+  GAS
   IMPUESTOS
   HONORARIOS
   SEGUROS

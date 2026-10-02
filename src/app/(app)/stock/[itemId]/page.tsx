@@ -6,7 +6,9 @@ import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getItemMovements, getItemStock } from "@/lib/stock";
 import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
-import { createItemMovement, venderInsumo } from "./actions";
+import { borrarMovimientoDeInsumo, createItemMovement, venderInsumo } from "./actions";
+import { DeleteButton } from "@/components/DeleteButton";
+import { FormConError } from "@/components/FormConError";
 import { FormModal } from "@/components/Modal";
 import { formatFecha, hoyEnInput } from "@/lib/period";
 import { updateItemAjustes } from "../actions";
@@ -240,9 +242,11 @@ export default async function ItemDetailPage({
       )}
 
       {canEdit && (
-        <form
+        <FormConError
           action={createItemMovement}
           className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
+          submitLabel="Registrar movimiento"
+          pendingLabel="Registrando…"
         >
           <h2 className="text-sm font-semibold">Nuevo movimiento</h2>
           <input type="hidden" name="itemId" value={item.id} />
@@ -342,13 +346,7 @@ export default async function ItemDetailPage({
               className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />
           </div>
-          <button
-            type="submit"
-            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Registrar movimiento
-          </button>
-        </form>
+        </FormConError>
       )}
 
       <div>
@@ -362,6 +360,7 @@ export default async function ItemDetailPage({
                 <th className="py-2 pr-4">Cantidad</th>
                 <th className="py-2 pr-4">Motivo</th>
                 <th className="py-2 pr-4">Usuario</th>
+                <th className="py-2 w-10" />
               </tr>
             </thead>
             <tbody>
@@ -381,11 +380,25 @@ export default async function ItemDetailPage({
                   </td>
                   <td className="py-2 pr-4">{m.reason}</td>
                   <td className="py-2 pr-4">{m.createdBy.name}</td>
+                  {/* Sólo los movimientos sueltos. El que trae una compra o el que descuenta una
+                      producción se corrigen en su origen, que reescribe el movimiento solo; un
+                      botón acá dejaría la compra diciendo que entró algo que el stock no tiene. */}
+                  <td className="py-2">
+                    {canEdit && !m.documentId && !m.productionLineId && (
+                      <DeleteButton
+                        action={borrarMovimientoDeInsumo}
+                        hiddenName="movementId"
+                        hiddenValue={m.id}
+                        nombre={`el ${ITEM_MOVEMENT_TYPE_LABELS[m.type].toLowerCase()} de ${formatQuantity(m.quantity, item.unit)} del ${formatFecha(m.date)}`}
+                        consecuencia="El stock vuelve a lo que era antes de esta carga."
+                      />
+                    )}
+                  </td>
                 </tr>
               ))}
               {movementsDesc.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-foreground/40">
+                  <td colSpan={6} className="py-4 text-center text-foreground/40">
                     Sin movimientos todavía.
                   </td>
                 </tr>

@@ -44,6 +44,15 @@ export async function createItemMovement(formData: FormData) {
   if (sourceKgRaw && conversionFactorRaw) {
     sourceKg = parseNumeroEscrito(sourceKgRaw, "kilos");
     conversionFactor = parseNumeroEscrito(conversionFactorRaw, "factor de conversión");
+    // Un kilo de aceite son poco más de un litro: el factor siempre anda cerca de 1. Fuera de ese
+    // rango lo que pasó es que en el casillero del factor se volvieron a escribir los kilos —ya
+    // pasó, 28.100 × 28.100 dio un ingreso de 789 millones de litros— y el número entra al stock
+    // sin que nada avise hasta que alguien mira el saldo.
+    if (!conversionFactor.greaterThan(0) || conversionFactor.greaterThan(10)) {
+      throw new UserError(
+        `El factor de conversión tiene que ser un número cercano a 1 —un kilo de aceite son más o menos 1,1 litros—, y escribiste ${conversionFactorRaw}. Si eso eran los kilos, van en el casillero de al lado.`
+      );
+    }
     quantity = sourceKg.times(conversionFactor);
   } else {
     const quantityRaw = String(formData.get("quantity") || "").trim();
@@ -98,6 +107,77 @@ export async function createItemMovement(formData: FormData) {
   });
 
   revalidatePath(`/stock/${item.slug}`);
+  revalidatePath("/stock");
+}
+
+/**
+ * Borra un movimiento cargado a mano desde esta misma ficha.
+ *
+ * Hasta ahora un ingreso mal cargado no se podía tocar: quedaba ahí y había que compensarlo con un
+ * ajuste en contra, que arregla el saldo pero deja los dos números falsos en el kardex. Pasó con
+ * una entrega de aceite cargada con el factor de conversión equivocado —789 millones de litros— y
+ * la única salida fue entrar a la base.
+ *
+ * **Sólo los movimientos sueltos.** El que trae una compra o el que descuenta una producción no se
+ * borran desde acá: son la consecuencia de otra cosa, y sacarlos por separado dejaría la compra
+ * diciendo que entró mercadería que el stock no tiene. Esos se corrigen en su origen, que ya
+ * reescribe el movimiento solo.
+ */
+export async function borrarMovimientoDeInsumo(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const movementId = String(formData.get("movementId") || "");
+  const movimiento = await prisma.itemMovement.findUnique({
+    where: { id: movementId },
+    include: { item: { select: { name: true, slug: true, unit: true } } },
+  });
+  if (!movimiento) throw new UserError("El movimiento ya no existe.");
+
+  if (movimiento.documentId) {
+    throw new UserError(
+      "Este movimiento lo generó una compra o una venta: corregí el comprobante y el stock se acomoda solo."
+    );
+  }
+  if (movimiento.productionLineId) {
+    throw new UserError(
+      "Este movimiento lo generó una producción: editá la producción y el consumo se vuelve a calcular solo."
+    );
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.itemMovement.delete({ where: { id: movementId } });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Movimiento de insumo",
+      entityId: movimiento.itemId,
+      summary: `${ITEM_MOVEMENT_TYPE_LABELS[movimiento.type]} — ${movimiento.item.name} — ${formatQuantity(movimiento.quantity, movimiento.item.unit)}`,
+      cambios: diffDeCampos(
+        {
+          tipo: ITEM_MOVEMENT_TYPE_LABELS[movimiento.type],
+          insumo: movimiento.item.name,
+          date: movimiento.date,
+          quantity: formatQuantity(movimiento.quantity, movimiento.item.unit),
+          reason: movimiento.reason,
+          sourceKg: movimiento.sourceKg,
+          conversionFactor: movimiento.conversionFactor,
+        },
+        null,
+        {
+          tipo: "Tipo",
+          insumo: "Insumo",
+          date: "Fecha",
+          quantity: "Cantidad",
+          reason: "Motivo",
+          sourceKg: "Kilos",
+          conversionFactor: "Factor de conversi\u00f3n",
+        }
+      ),
+    });
+  });
+
+  revalidatePath(`/stock/${movimiento.item.slug}`);
   revalidatePath("/stock");
 }
 
