@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import type { Currency } from "@prisma/client";
 import { formatProductLabel } from "@/lib/product-label";
+import { formatMoney, parseNumeroSuave } from "@/lib/money";
 
 type Circuit = "BLANCO" | "NEGRO";
 
@@ -31,11 +33,25 @@ export function RemitoLinesFields({
   products,
   priceMapByCircuit,
   defaultRows,
+  moneda = "ARS",
+  defaultCotizacion,
 }: {
   products: ProductInfo[];
   priceMapByCircuit: Record<Circuit, Record<string, PriceInfo>>;
   defaultRows?: { productId: string; quantity: string; pricePerBottle: string; circuit: Circuit }[];
+  /** La moneda de la cuenta: en una en dólares, el precio ya es en dólares y no hay cotización. */
+  moneda?: Currency;
+  defaultCotizacion?: string;
 }) {
+  // La cotización vive acá y no en el encabezado porque es la que decide en qué moneda se escriben
+  // los precios de las líneas: con ella cargada, van en dólares y los pesos salen solos.
+  const [cotizacion, setCotizacion] = useState(defaultCotizacion ?? "");
+  const cuentaEnDolares = moneda === "USD";
+  const cotizacionNum = parseNumeroSuave(cotizacion)?.toNumber() ?? 0;
+  const enDolares = !cuentaEnDolares && cotizacionNum > 0;
+  // Con `parseNumeroSuave` y no `Number()`: `Number("1350,50")` es NaN, y el precio se iba en cero.
+  const num = (raw: string) => parseNumeroSuave(raw)?.toNumber() ?? 0;
+  const pesosPorBotella = (row: Row) => (enDolares ? num(row.pricePerBottle) * cotizacionNum : num(row.pricePerBottle));
   const [rows, setRows] = useState<Row[]>(
     defaultRows && defaultRows.length > 0
       ? defaultRows.map((r, i) => ({ key: i, ...r }))
@@ -72,12 +88,12 @@ export function RemitoLinesFields({
   function botellasOf(row: Row): number {
     const product = products.find((p) => p.id === row.productId);
     const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
-    return (Number(row.quantity) || 0) * perPallet;
+    return num(row.quantity) * perPallet;
   }
 
   const totals = rows.reduce(
     (acc, r) => {
-      const subtotal = botellasOf(r) * (Number(r.pricePerBottle) || 0);
+      const subtotal = botellasOf(r) * pesosPorBotella(r);
       acc[r.circuit] += subtotal;
       acc.total += subtotal;
       return acc;
@@ -87,13 +103,27 @@ export function RemitoLinesFields({
 
   return (
     <div className="space-y-3">
+      {cuentaEnDolares ? (
+        <p className="text-xs text-foreground/50">La cuenta se lleva en dólares: los precios van en U$S.</p>
+      ) : (
+        <div className="max-w-xs space-y-1">
+          <label className="text-sm">Cotización del dólar (si el precio es en U$S)</label>
+          <input
+            name="exchangeRate"
+            value={cotizacion}
+            onChange={(e) => setCotizacion(e.target.value)}
+            inputMode="decimal"
+            placeholder="1.523"
+            className={inputClass}
+          />
+        </div>
+      )}
       <p className="text-sm font-medium">Líneas del remito</p>
       {rows.map((row) => {
         const product = products.find((p) => p.id === row.productId);
         const botellas = botellasOf(row);
-        const subtotal = botellas * (Number(row.pricePerBottle) || 0);
+        const subtotal = botellas * pesosPorBotella(row);
         const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
-        const unitPrice = (Number(row.pricePerBottle) || 0) * perPallet;
 
         return (
           <div
@@ -128,13 +158,21 @@ export function RemitoLinesFields({
               {botellas > 0 && <p className="text-xs text-foreground/40">{botellas} botellas</p>}
             </div>
             <div className="col-span-2 min-w-0">
-              <label className="text-xs text-foreground/60">Precio/bot.</label>
+              <label className="text-xs text-foreground/60">
+                {enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
+              </label>
               <input
                 value={row.pricePerBottle}
                 onChange={(e) => updateRow(row.key, { pricePerBottle: e.target.value })}
                 inputMode="decimal"
                 className={inputClass}
               />
+              {enDolares && num(row.pricePerBottle) > 0 && (
+                <p className="text-xs text-foreground/40 tabular-nums">
+                  = {formatMoney(pesosPorBotella(row))}/bot.
+                  {perPallet > 0 && ` · ${formatMoney(pesosPorBotella(row) * perPallet)}/pallet`}
+                </p>
+              )}
             </div>
             <div className="col-span-2 min-w-0">
               <label className="text-xs text-foreground/60">Circuito</label>
@@ -150,7 +188,7 @@ export function RemitoLinesFields({
             </div>
             <div className="col-span-2 min-w-0">
               <label className="text-xs text-foreground/60">Subtotal</label>
-              <p className="px-2 py-2 text-sm">{subtotal.toFixed(2)}</p>
+              <p className="px-2 py-2 text-sm tabular-nums">{formatMoney(subtotal, moneda)}</p>
             </div>
             <div className="col-span-1 min-w-0">
               {rows.length > 1 && (
@@ -164,7 +202,10 @@ export function RemitoLinesFields({
                 </button>
               )}
             </div>
-            <input type="hidden" name="lineUnitPrice" value={unitPrice} />
+            {/* El precio va tal como se escribió; el del pallet lo calcula el servidor. Los dos
+                campos van siempre, uno vacío, porque se aparean por posición. */}
+            <input type="hidden" name="linePrecioBotella" value={enDolares ? "" : row.pricePerBottle} />
+            <input type="hidden" name="linePrecioBotellaUsd" value={enDolares ? row.pricePerBottle : ""} />
           </div>
         );
       })}
@@ -172,9 +213,9 @@ export function RemitoLinesFields({
         + Agregar línea
       </button>
       <div className="flex gap-4 border-t border-foreground/10 pt-2 text-sm">
-        <span>Total Blanco: {totals.BLANCO.toFixed(2)}</span>
-        <span>Total Negro: {totals.NEGRO.toFixed(2)}</span>
-        <span className="font-semibold">Total: {totals.total.toFixed(2)}</span>
+        <span>Total Blanco: {formatMoney(totals.BLANCO, moneda)}</span>
+        <span>Total Negro: {formatMoney(totals.NEGRO, moneda)}</span>
+        <span className="font-semibold">Total: {formatMoney(totals.total, moneda)}</span>
       </div>
     </div>
   );

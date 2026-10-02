@@ -379,6 +379,10 @@ model DocumentLine {
   product    Product  @relation(fields: [productId], references: [id])
   quantity   Decimal  @db.Decimal(14, 3)
   unitPrice  Decimal  @db.Decimal(14, 2)
+  /// El precio por botella en U$S que se pactó, cuando el cliente paga en dólares (La Campechana).
+  /// `unitPrice` es esto × cotización × botellas por pallet, en la moneda de la cuenta; se guarda el
+  /// original porque es el número con el que se controla, y la cotización ya queda en el remito.
+  precioBotellaUsd Decimal? @db.Decimal(14, 6)
   subtotal   Decimal  @db.Decimal(14, 2)
 
   productMovements ProductMovement[]
@@ -400,6 +404,12 @@ model PurchaseLine {
   /// Precio pactado en U$S por unidad, cuando lo hay. `unitPrice` es este por la cotización del
   /// remito; se guarda el original porque es el que no se mueve y con el que se controla la cuenta.
   unitPriceUsd Decimal? @db.Decimal(14, 6)
+  /// Aceite: los kilos del ticket de balanza. La cantidad son los litros que dan (kilos ÷ 0,91); se
+  /// guardan los kilos porque son el dato del papel, y los litros son una cuenta.
+  kilos          Decimal? @db.Decimal(14, 3)
+  /// Aceite: el precio pactado en U$S por tonelada. El subtotal sale de kilos ÷ 1000 × esto, y no
+  /// de litros × precio por litro: por litro habría que redondear y el total se correría.
+  precioTonelada Decimal? @db.Decimal(14, 4)
   subtotal     Decimal  @db.Decimal(14, 2)
 
   @@index([documentId])

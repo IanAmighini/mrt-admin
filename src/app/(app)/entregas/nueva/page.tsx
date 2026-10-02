@@ -99,7 +99,7 @@ export default async function NuevaEntregaPage({
       {canEdit && (
         <NuevaEntregaForm
           action={submitRemito}
-          clientes={clientes.map((c) => ({ id: c.id, name: c.name }))}
+          clientes={clientes.map((c) => ({ id: c.id, name: c.name, moneda: c.moneda }))}
           products={products.map((p) => ({
             id: p.id,
             name: p.name,
@@ -112,7 +112,9 @@ export default async function NuevaEntregaPage({
           pedidosByEntity={pedidosByEntity}
           viajesByEntity={viajesByEntity}
           destinatariosByEntity={destinatariosByEntity}
-          fixedEntity={fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name } : undefined}
+          fixedEntity={
+            fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name, moneda: fixedEntity.moneda } : undefined
+          }
         />
       )}
     </div>

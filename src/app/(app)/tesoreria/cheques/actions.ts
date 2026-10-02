@@ -8,6 +8,8 @@ import { UserError } from "@/lib/user-error";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { marcarCheque } from "@/lib/cheques";
+import { circuitoDeTesoreria } from "@/lib/pagos";
+import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
 import { formatMoney, parseNumeroEscrito, parseNumeroOpcional, sumDecimals } from "@/lib/money";
 
@@ -63,16 +65,16 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
   const user = await requireRole(["ADMIN"]);
 
   const treasuryId = String(formData.get("treasuryId") || "");
-  const circuit = String(formData.get("circuit") || "");
-  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Cuenta inválida.");
-
-  const account = await prisma.account.findUnique({
-    where: { entityId_circuit: { entityId: treasuryId, circuit } },
-    include: { entity: true },
-  });
-  if (!account || account.entity.type !== "TESORERIA") {
+  const tesoreria = await prisma.entity.findUnique({ where: { id: treasuryId } });
+  if (!tesoreria || tesoreria.type !== "TESORERIA") {
     throw new UserError("Elegí de qué caja sale el efectivo.");
   }
+  // Cada caja tiene una sola cuenta: el efectivo sale de ahí, sin elegir circuito.
+  const account = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId: treasuryId, circuit: circuitoDeTesoreria(tesoreria.name) } },
+    include: { entity: true },
+  });
+  if (!account) throw new UserError("Elegí de qué caja sale el efectivo.");
 
   const cambiadoA = String(formData.get("cambiadoA") || "").trim() || null;
   const date = parseFormDate(formData.get("date"));
@@ -132,6 +134,9 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
         createdById: user.id,
       })),
     });
+
+    // El efectivo que se da a cambio tiene que estar en la caja.
+    await asegurarSinNegativos(tx, { cuentas: [account.id] });
 
     await logAudit(tx, {
       userId: user.id,

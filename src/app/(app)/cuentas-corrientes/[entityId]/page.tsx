@@ -3,6 +3,7 @@ import { formatFecha } from "@/lib/period";
 import { notFound, redirect } from "next/navigation";
 import type { Account, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { circuitoDeTesoreria } from "@/lib/pagos";
 import { requireUser } from "@/lib/auth-helpers";
 import { puedeVerRuta } from "@/lib/nav";
 import { CAJA_CHICA_SLUG } from "@/lib/caja";
@@ -258,6 +259,7 @@ export default async function EntityLedgerPage({
         card3Value={isCaja ? undefined : card3Value}
         card4Label={isCaja ? undefined : card4Label}
         card4Value={isCaja ? undefined : card4Value}
+        soloCircuito={isCaja ? circuitoDeTesoreria(entity.name) : undefined}
       />
 
       {entity.llevaCuentaPreformas && (

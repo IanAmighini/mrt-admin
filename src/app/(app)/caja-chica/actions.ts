@@ -7,8 +7,10 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
 import { diffDeCampos, logAudit } from "@/lib/audit";
+import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { formatMoney, parseNumeroEscrito } from "@/lib/money";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
+import { circuitoDeTesoreria } from "@/lib/pagos";
 import { getCajaChica, proximoNumeroDeCaja, type CajaConCuenta } from "@/lib/caja";
 
 /** Todas las pantallas de caja escriben en la caja chica; la grande se maneja desde su ficha. */
@@ -85,6 +87,7 @@ export async function crearGastoDeCaja(formData: FormData) {
         createdById: user.id,
       },
     });
+    await asegurarSinNegativos(tx, { cuentas: [caja.accountId] });
     return number;
   });
 
@@ -131,9 +134,10 @@ export async function crearPaseDeCaja(formData: FormData) {
 
   const otra = await prisma.entity.findUnique({
     where: { id: otraCajaId },
-    include: { accounts: { where: { circuit: "NEGRO" } } },
+    include: { accounts: true },
   });
-  const otraAccount = otra?.accounts[0];
+  // La cuenta propia de la otra tesorería: Blanco si es el banco, Negro si es una caja.
+  const otraAccount = otra?.accounts.find((a) => a.circuit === circuitoDeTesoreria(otra.name));
   if (!otra || otra.type !== "TESORERIA" || !otraAccount) {
     throw new UserError("No se encontró la otra caja.");
   }
@@ -164,6 +168,8 @@ export async function crearPaseDeCaja(formData: FormData) {
     await tx.document.create({
       data: pata(otraAccount.id, numeroAlla, entra ? -1 : 1, aca.id),
     });
+    // La que da la plata tiene que tenerla: las dos se miran, que es más simple que decidir cuál.
+    await asegurarSinNegativos(tx, { cuentas: [caja.accountId, otraAccount.id] });
   });
 
   await logAudit(prisma, {
@@ -205,6 +211,10 @@ export async function borrarMovimientoDeCaja(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     if (otraPata) await tx.document.deleteMany({ where: { id: otraPata } });
     await tx.document.deleteMany({ where: { id: documentId } });
+    // Borrar un pase que trajo plata la saca de esta caja; si ya se gastó, quedaría en rojo.
+    await asegurarSinNegativos(tx, {
+      cuentas: [caja.accountId, documento.contraparte?.accountId ?? documento.contraparteDe?.accountId ?? null],
+    });
   });
 
   await logAudit(prisma, {

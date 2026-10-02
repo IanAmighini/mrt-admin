@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getTreasuries } from "@/lib/ledger";
+import { circuitoDeTesoreria } from "@/lib/pagos";
 import { puedeVerRuta } from "@/lib/nav";
 import { CAJA_CHICA_SLUG } from "@/lib/caja";
 import { getAccountStatement, type StatementEntry } from "@/lib/account-statement";
@@ -31,8 +32,8 @@ import {
 } from "../actions";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { RemitoFormFields } from "@/components/RemitoForm";
-import { CompraFormFields } from "@/components/CompraForm";
+import { RemitoFormFields, lineaDeRemito } from "@/components/RemitoForm";
+import { CompraFormFields, filaDeCompra } from "@/components/CompraForm";
 import { EditFacturaFields } from "@/components/EditFacturaFields";
 import { GastoFormFields } from "@/components/GastoFormFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
@@ -68,6 +69,7 @@ export default async function AccountLedgerPage({
   if (entityParam !== entity.slug) redirect(`/cuentas-corrientes/${entity.slug}/${circuitSlug}`);
   const entityId = entity.id;
   const monedaCuenta = entity.moneda;
+  const nombreEntidad = entity.name;
   const rotuloSubcuenta = entity.rotuloSubcuenta ?? "Viaje";
 
   const account = await prisma.account.findUnique({
@@ -80,6 +82,11 @@ export default async function AccountLedgerPage({
   // ruta la compartan los clientes y los proveedores.
   if (isTreasuryEntity && !puedeVerRuta(user.role, "/tesoreria")) {
     redirect(entity.slug === CAJA_CHICA_SLUG ? "/caja-chica" : "/");
+  }
+  // Una caja tiene una sola cuenta. Un link viejo a la otra mostraría un libro vacío que parece
+  // que se perdió la plata, así que se lo manda a la buena.
+  if (isTreasuryEntity && circuit !== circuitoDeTesoreria(entity.name)) {
+    redirect(`/cuentas-corrientes/${entity.slug}/${circuitoDeTesoreria(entity.name).toLowerCase()}`);
   }
   const isClienteEntity = entity.type !== "PROVEEDOR" && entity.type !== "TESORERIA";
 
@@ -181,21 +188,13 @@ export default async function AccountLedgerPage({
       ) : null;
 
     if (doc.lines.length > 0) {
-      const defaultLines = doc.lines.map((l) => {
-        const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
-        const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
-        return {
-          productId: l.productId,
-          quantity: formatNumeroExacto(l.quantity),
-          pricePerBottle: formatNumeroExacto(pricePerBottle),
-          circuit,
-        };
-      });
+      const defaultLines = doc.lines.map((l) => lineaDeRemito(l, circuit));
       return (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-2xl">
+          <FormModal triggerLabel="Editar" iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-3xl">
             <RemitoFormFields
               entityId={entityId}
+              moneda={monedaCuenta}
               products={products}
               priceMapByCircuit={priceMapByCircuit}
               editingDocumentId={doc.id}
@@ -220,19 +219,13 @@ export default async function AccountLedgerPage({
     if (doc.purchaseLines.length > 0) {
       return (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" iconName="edit" title="Editar compra" action={updateCompra} maxWidthClass="max-w-2xl">
+          <FormModal triggerLabel="Editar" iconName="edit" title="Editar compra" action={updateCompra} maxWidthClass="max-w-5xl">
             <CompraFormFields
-              entityId={entityId}
+              entidad={{ id: entityId, name: nombreEntidad, moneda: monedaCuenta }}
               items={items}
               editingDocumentId={doc.id}
               defaultValues={headerDefaults}
-              defaultRows={doc.purchaseLines.map((l) => ({
-                itemId: l.itemId,
-                quantity: formatNumeroExacto(l.quantity),
-                unitPrice: formatNumeroExacto(l.unitPrice),
-                unitPriceUsd: formatNumeroExacto(l.unitPriceUsd),
-                circuit,
-              }))}
+              defaultRows={doc.purchaseLines.map((l) => filaDeCompra(l, circuit))}
               impuestos={desgloseDesdeDocumento(doc)}
               factura={facturaDeCompra(doc)}
             />

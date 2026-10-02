@@ -11,6 +11,7 @@ import { formatProductBrandLabel } from "@/lib/product-label";
 import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { getSetting } from "@/lib/settings";
 import { diffDeCampos, logAudit } from "@/lib/audit";
+import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { litrosPorPallet } from "@/lib/recipe-template";
 
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
@@ -326,8 +327,12 @@ export async function createProductMovement(formData: FormData) {
     quantity = quantity.abs();
   }
 
-  await prisma.productMovement.create({
-    data: { productId, date, quantity, type, reason, createdById: user.id },
+  await prisma.$transaction(async (tx) => {
+    await tx.productMovement.create({
+      data: { productId, date, quantity, type, reason, createdById: user.id },
+    });
+    // Una merma o un ajuste que resta no pueden sacar pallets que no hay.
+    await asegurarSinNegativos(tx, { productos: [productId] });
   });
 
   await logAudit(prisma, {

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { formatMoney, sumDecimals } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { CAJA_CHICA_SLUG } from "@/lib/caja";
+import { circuitoDeTesoreria } from "@/lib/pagos";
 
 /** La caja de efectivo, que es donde están los cheques en papel. Se identifica por nombre, igual
  *  que "Banco Galicia" en el formulario de pago. */
@@ -27,16 +28,14 @@ export default async function TesoreriaPage() {
     };
   };
 
+  // Cada tesorería tiene una sola cuenta —el banco Blanco, las cajas Negro—, así que su saldo es
+  // ése y nada más. Ver `circuitoDeTesoreria`.
   const cards = await Promise.all(
     treasuries.map(async (treasury) => {
-      const blanco = treasury.accounts.find((a) => a.circuit === "BLANCO");
-      const negro = treasury.accounts.find((a) => a.circuit === "NEGRO");
-      const [blancoSaldo, negroSaldo] = await Promise.all([
-        blanco ? getAccountBalance(blanco.id) : null,
-        negro ? getAccountBalance(negro.id) : null,
-      ]);
-      const total = (blancoSaldo?.toNumber() ?? 0) + (negroSaldo?.toNumber() ?? 0);
-      return { treasury, blanco, negro, blancoSaldo, negroSaldo, total };
+      const circuito = circuitoDeTesoreria(treasury.name);
+      const cuenta = treasury.accounts.find((a) => a.circuit === circuito);
+      const saldo = cuenta ? await getAccountBalance(cuenta.id) : null;
+      return { treasury, circuito, saldo };
     })
   );
 
@@ -52,44 +51,24 @@ export default async function TesoreriaPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        {cards.map(({ treasury, blanco, negro, blancoSaldo, negroSaldo, total }) => (
+        {cards.map(({ treasury, circuito, saldo }) => (
           <div key={treasury.id} className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">{treasury.name}</h2>
-              <p className="text-lg font-semibold">{formatMoney(total)}</p>
-            </div>
-            {treasury.slug === CAJA_CHICA_SLUG ? (
-              // La caja chica se lleva entera en Negro y tiene su propia pantalla, que es la que
-              // usa la secretaría: mostrar acá un recuadro de Blanco siempre en cero sería ruido.
-              <Link
-                href="/caja-chica"
-                className="block rounded-lg border border-foreground/10 p-3 text-sm hover:bg-foreground/5 transition-colors"
-              >
-                <p className="text-foreground/60">Efectivo del cajón</p>
-                <p className="font-medium">{negroSaldo ? formatMoney(negroSaldo) : "—"}</p>
-              </Link>
-            ) : (
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              {blanco && (
-                <Link
-                  href={`/cuentas-corrientes/${treasury.slug}/blanco`}
-                  className="rounded-lg border border-foreground/10 p-3 hover:bg-foreground/5 transition-colors"
-                >
-                  <p className="text-foreground/60">{CIRCUIT_LABELS.BLANCO}</p>
-                  <p className="font-medium">{blancoSaldo ? formatMoney(blancoSaldo) : "—"}</p>
-                </Link>
-              )}
-              {negro && (
-                <Link
-                  href={`/cuentas-corrientes/${treasury.slug}/negro`}
-                  className="rounded-lg border border-foreground/10 p-3 hover:bg-foreground/5 transition-colors"
-                >
-                  <p className="text-foreground/60">{CIRCUIT_LABELS.NEGRO}</p>
-                  <p className="font-medium">{negroSaldo ? formatMoney(negroSaldo) : "—"}</p>
-                </Link>
-              )}
-            </div>
-            )}
+            <Link
+              href={treasury.slug === CAJA_CHICA_SLUG ? "/caja-chica" : `/cuentas-corrientes/${treasury.slug}/${circuito.toLowerCase()}`}
+              className="-m-2 flex items-center justify-between rounded-lg p-2 transition-colors hover:bg-foreground/5"
+            >
+              <div>
+                <h2 className="text-sm font-semibold">{treasury.name}</h2>
+                <p className="text-xs text-foreground/50">
+                  {treasury.slug === CAJA_CHICA_SLUG ? "Efectivo del cajón" : CIRCUIT_LABELS[circuito]}
+                </p>
+              </div>
+              {/* En rojo si está en negativo: una caja no puede tener menos que nada, así que eso
+                  siempre es algo sin cargar o mal cargado, y tiene que saltar a la vista. */}
+              <p className={`text-lg font-semibold ${saldo?.isNegative() ? "text-red-600 dark:text-red-400" : ""}`}>
+                {saldo ? formatMoney(saldo) : "—"}
+              </p>
+            </Link>
             {/* No suman al saldo: un cheque no es plata hasta que se cobra. Los cheques viven en la
                 caja grande y los echeqs en el banco; la caja chica no guarda ninguno. */}
             {treasury.slug !== CAJA_CHICA_SLUG && (() => {

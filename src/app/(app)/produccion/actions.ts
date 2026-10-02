@@ -11,6 +11,7 @@ import { getSetting, setSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
 import { diffDeCampos, logAudit } from "@/lib/audit";
+import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { formatNumeroExacto } from "@/lib/money";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
@@ -168,8 +169,10 @@ async function createProductionRunCore(
       data: { date, notes, createdById: user.id },
     });
 
+    const lineasCreadas: string[] = [];
     for (const line of lines) {
       const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
+      lineasCreadas.push(product.id);
 
       const productionLine = await tx.productionLine.create({
         data: { productionRunId: run.id, productId: product.id, quantity: line.quantity },
@@ -247,6 +250,25 @@ async function createProductionRunCore(
 
     await syncPedidoStatuses(tx);
 
+    // Todo lo que esta carga movió, y lo que movía la que reemplaza: el cliente global todavía la ve,
+    // porque la transacción no se confirmó.
+    const [movidos, anteriores] = await Promise.all([
+      tx.itemMovement.findMany({
+        where: { productionLine: { productionRunId: run.id } },
+        select: { itemId: true },
+      }),
+      replaceRunId
+        ? prisma.productionLine.findMany({
+            where: { productionRunId: replaceRunId },
+            select: { productId: true, itemMovements: { select: { itemId: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+    await asegurarSinNegativos(tx, {
+      insumos: [...movidos.map((m) => m.itemId), ...anteriores.flatMap((l) => l.itemMovements.map((m) => m.itemId))],
+      productos: [...lineasCreadas, ...anteriores.map((l) => l.productId)],
+    });
+
     await logAudit(tx, {
       userId: user.id,
       action: auditAction,
@@ -289,8 +311,16 @@ export async function deleteProductionRun(formData: FormData) {
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
   if (!run) throw new UserError("La carga de producción ya no existe.");
   const antes = await fotoDeLaProduccion(prisma, runId);
+  const productosDeLaCarga = await prisma.productionLine.findMany({
+    where: { productionRunId: runId },
+    select: { productId: true },
+  });
 
-  await prisma.productionRun.delete({ where: { id: runId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.productionRun.delete({ where: { id: runId } });
+    // Lo producido puede haberse entregado ya: sacarlo dejaría el producto en rojo desde ese día.
+    await asegurarSinNegativos(tx, { productos: productosDeLaCarga.map((l) => l.productId) });
+  });
 
   await logAudit(prisma, {
     userId: user.id,

@@ -24,6 +24,14 @@ export async function aplicarSaldoInicial(
     where: { accountId, type: "AJUSTE", number: NUMERO_SALDO_INICIAL },
     include: { allocations: true },
   });
+  // En la moneda de la cuenta. Se guardaba siempre en pesos, y en la de Cristian —que se lleva en
+  // dólares— el saldo inicial quedó marcado como pesos: el número era de dólares, pero un pago en
+  // dólares no lo encontraba para imputarle, porque la imputación busca comprobantes de su moneda.
+  const cuenta = await tx.account.findUnique({
+    where: { id: accountId },
+    select: { entity: { select: { moneda: true } } },
+  });
+  const currency = cuenta?.entity.moneda ?? "ARS";
   const imputado = sumDecimals(existente?.allocations.map((a) => a.amount) ?? []);
   const amount = raw.trim() ? parseNumeroEscrito(raw, "saldo inicial") : ZERO;
 
@@ -49,7 +57,7 @@ export async function aplicarSaldoInicial(
   if (existente) {
     await tx.document.update({
       where: { id: existente.id },
-      data: { netAmount: amount, totalAmount: amount },
+      data: { netAmount: amount, totalAmount: amount, currency },
     });
     return;
   }
@@ -60,7 +68,7 @@ export async function aplicarSaldoInicial(
       type: "AJUSTE",
       number: NUMERO_SALDO_INICIAL,
       date: new Date(),
-      currency: "ARS",
+      currency,
       netAmount: amount,
       totalAmount: amount,
       reason: "Saldo inicial",

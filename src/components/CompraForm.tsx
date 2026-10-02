@@ -1,10 +1,17 @@
-import type { Item } from "@prisma/client";
-import { CompraLinesFields, type FilaDeCompra } from "./CompraLinesFields";
-import { ImpuestosFields, type ImpuestosValores } from "./ImpuestosFields";
-import { FacturaDeCompraFields } from "./FacturaDeCompraFields";
+import type { Circuit, Currency, Item, Prisma } from "@prisma/client";
+import { formatNumeroExacto } from "@/lib/money";
+import { NuevaCompraFields, type FilaDeCompra } from "./NuevaCompraForm";
+import type { ImpuestosValores } from "./ImpuestosFields";
 
+/**
+ * Editar una compra: el mismo formulario que el alta, abierto con lo que ya tiene.
+ *
+ * Había uno aparte para editar, más viejo, que se fue quedando atrás —no mostraba el precio en pesos
+ * que sale de la cotización, ni sabía del aceite por kilo ni de las cuentas en dólares—. Dos
+ * formularios para lo mismo terminan diciendo cosas distintas sobre la misma compra.
+ */
 export function CompraFormFields({
-  entityId,
+  entidad,
   items,
   editingDocumentId,
   defaultValues,
@@ -12,10 +19,10 @@ export function CompraFormFields({
   factura,
   defaultRows,
 }: {
-  entityId: string;
+  entidad: { id: string; name: string; moneda: Currency };
   items: Item[];
   editingDocumentId?: string;
-  defaultValues?: { number?: string; date?: string; dueDate?: string; currency?: string; exchangeRate?: string };
+  defaultValues?: { number?: string; date?: string; dueDate?: string; exchangeRate?: string };
   /** Los tributos ya cargados, al editar: alícuota, percepciones y retención. */
   impuestos?: ImpuestosValores;
   /** La factura que la compra ya trae, al editar. */
@@ -26,55 +33,50 @@ export function CompraFormFields({
   return (
     <>
       <p className="text-xs text-foreground/50">
-        {editingDocumentId
-          ? "Al guardar se reemplazan las líneas de esta compra por las que queden acá, y el stock se recalcula. Vienen cargadas las que ya tenía."
-          : "Al cargar la compra se suma el stock de cada insumo automáticamente y se imputa a la cuenta corriente del proveedor — una misma compra puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro)."}
+        Al guardar se reemplazan las líneas de esta compra por las que queden acá, y el stock se
+        recalcula. Vienen cargadas las que ya tenía.
       </p>
-      <input type="hidden" name="entityId" value={entityId} />
-      {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Número">
-          <input name="number" required defaultValue={defaultValues?.number} className={inputClass} />
-        </Field>
-        <Field label="Fecha">
-          <input type="date" name="date" required defaultValue={defaultValues?.date} className={inputClass} />
-        </Field>
-        <Field label="Vencimiento (opcional)">
-          <input type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />
-        </Field>
-        <Field label="Moneda">
-          <select name="currency" defaultValue={defaultValues?.currency ?? "ARS"} className={selectClass}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </Field>
-        <Field label="Cotización (si es USD)">
-          <input name="exchangeRate" defaultValue={defaultValues?.exchangeRate} className={inputClass} />
-        </Field>
-      </div>
-      <CompraLinesFields
-        items={items.map((i) => ({ id: i.id, name: i.name, unit: i.unit }))}
+      <NuevaCompraFields
+        proveedores={[entidad]}
+        fixedEntity={entidad}
+        items={items.map((i) => ({
+          id: i.id,
+          name: i.name,
+          unit: i.unit,
+          category: i.category,
+          unitsPerPallet: i.unitsPerPallet,
+          precioSopladoUsd: i.precioSopladoUsd ? i.precioSopladoUsd.toString() : null,
+        }))}
+        editingDocumentId={editingDocumentId}
+        defaultValues={defaultValues}
         defaultRows={defaultRows}
+        impuestosDefaults={impuestos}
+        factura={factura}
+        textoBoton="Guardar cambios"
       />
-      <ImpuestosFields defaults={impuestos} />
-      <FacturaDeCompraFields defaultNumber={factura?.number} defaultDate={factura?.date} />
-      <button type="submit" className={submitClass}>
-        {editingDocumentId ? "Guardar cambios" : "Crear compra"}
-      </button>
     </>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1">
-      <label className="text-sm">{label}</label>
-      {children}
-    </div>
-  );
+/** Una línea guardada, en la forma en que la abre el formulario. */
+export function filaDeCompra(
+  l: {
+    itemId: string;
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    unitPriceUsd: Prisma.Decimal | null;
+    kilos: Prisma.Decimal | null;
+    precioTonelada: Prisma.Decimal | null;
+  },
+  circuit: Circuit
+): FilaDeCompra {
+  return {
+    itemId: l.itemId,
+    quantity: formatNumeroExacto(l.quantity),
+    unitPrice: formatNumeroExacto(l.unitPrice),
+    unitPriceUsd: formatNumeroExacto(l.unitPriceUsd),
+    kilos: formatNumeroExacto(l.kilos),
+    precioTonelada: formatNumeroExacto(l.precioTonelada),
+    circuit,
+  };
 }
-
-const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
-const selectClass = inputClass;
-const submitClass =
-  "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";

@@ -6,7 +6,7 @@ import { getDocumentPending, getRecentCompras, getRecentGastos } from "@/lib/led
 import { formatMoney, formatNumeroExacto, formatQuantity, sumDecimals } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { CompraFormFields } from "@/components/CompraForm";
+import { CompraFormFields, filaDeCompra } from "@/components/CompraForm";
 import { GastoFormFields } from "@/components/GastoFormFields";
 import { desgloseDesdeDocumento } from "@/lib/impuestos";
 import { facturaDeCompra } from "@/lib/compra-factura";
@@ -208,7 +208,6 @@ export default async function ComprasPage({
                                 number: doc.number,
                                 date: toDateInputValue(doc.date),
                                 dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
-                                currency: doc.currency,
                                 exchangeRate: formatNumeroExacto(doc.exchangeRate),
                                 amount: formatNumeroExacto(doc.totalAmount),
                                 retentionAmount: formatNumeroExacto(doc.retentionAmount),
@@ -230,26 +229,19 @@ export default async function ComprasPage({
                             iconName="edit"
                             title="Editar compra"
                             action={updateCompra}
-                            maxWidthClass="max-w-2xl"
+                            maxWidthClass="max-w-5xl"
                           >
                             <CompraFormFields
-                              entityId={doc.account.entityId}
+                              entidad={{ id: doc.account.entity.id, name: doc.account.entity.name, moneda: doc.account.entity.moneda }}
                               items={items}
                               editingDocumentId={doc.id}
                               defaultValues={{
                                 number: doc.number,
                                 date: toDateInputValue(doc.date),
                                 dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
-                                currency: doc.currency,
                                 exchangeRate: formatNumeroExacto(doc.exchangeRate),
                               }}
-                              defaultRows={doc.purchaseLines.map((l) => ({
-                                itemId: l.itemId,
-                                quantity: formatNumeroExacto(l.quantity),
-                                unitPrice: formatNumeroExacto(l.unitPrice),
-                                unitPriceUsd: formatNumeroExacto(l.unitPriceUsd),
-                                circuit: doc.account.circuit,
-                              }))}
+                              defaultRows={doc.purchaseLines.map((l) => filaDeCompra(l, doc.account.circuit))}
                               impuestos={desgloseDesdeDocumento(doc)}
                               factura={facturaDeCompra(doc)}
                             />

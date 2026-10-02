@@ -14,6 +14,19 @@ export function esCaja(nombreTesoreria: string) {
   return nombreTesoreria.toLowerCase().includes("caja");
 }
 
+/**
+ * La única cuenta que tiene cada tesorería: el banco es Blanco, las cajas son Negro.
+ *
+ * Antes las tres tenían las dos cuentas y la plata caía en la que coincidía con el pago. Pagarle en
+ * efectivo una factura en Blanco a un proveedor mandaba la salida a "Caja Bufano Blanco", que no
+ * tiene un peso porque el efectivo está todo del otro lado, y la caja quedaba en negativo aunque la
+ * plata estuviera. El circuito del pago dice contra qué cuenta del proveedor se imputa; de dónde sale
+ * la plata lo dice la caja, y la caja es una sola.
+ */
+export function circuitoDeTesoreria(nombreTesoreria: string): Circuit {
+  return esCaja(nombreTesoreria) ? "NEGRO" : "BLANCO";
+}
+
 const METODOS: PaymentMethod[] = [
   "EFECTIVO",
   "TRANSFERENCIA",

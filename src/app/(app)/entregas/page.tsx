@@ -7,7 +7,7 @@ import { getAllCurrentPrices } from "@/lib/pricing";
 import { formatMoney, formatNumeroExacto, formatQuantity, sumDecimals } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { RemitoFormFields } from "@/components/RemitoForm";
+import { RemitoFormFields, lineaDeRemito } from "@/components/RemitoForm";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { deleteRemito, updateRemito } from "../cuentas-corrientes/[entityId]/actions";
@@ -81,16 +81,7 @@ export default async function EntregasPage({
   const rows = remitos.map((doc) => {
     const pending = getDocumentPending(doc);
     const pallets = doc.lines.reduce((acc, l) => acc + l.quantity.toNumber(), 0);
-    const defaultLines = doc.lines.map((l) => {
-      const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
-      const pricePerBottle = perPallet > 0 ? l.unitPrice.dividedBy(perPallet) : l.unitPrice;
-      return {
-        productId: l.productId,
-        quantity: formatNumeroExacto(l.quantity),
-        pricePerBottle: formatNumeroExacto(pricePerBottle),
-        circuit: doc.account.circuit,
-      };
-    });
+    const defaultLines = doc.lines.map((l) => lineaDeRemito(l, doc.account.circuit));
     return { doc, pallets, pagado: pending.lessThanOrEqualTo(0), defaultLines };
   });
 
@@ -186,10 +177,11 @@ export default async function EntregasPage({
                         iconName="edit"
                         title="Editar remito"
                         action={updateRemito}
-                        maxWidthClass="max-w-2xl"
+                        maxWidthClass="max-w-3xl"
                       >
                         <RemitoFormFields
                           entityId={doc.account.entityId}
+                          moneda={doc.account.entity.moneda}
                           products={products}
                           priceMapByCircuit={pricesByEntity[doc.account.entityId] ?? { BLANCO: {}, NEGRO: {} }}
                           editingDocumentId={doc.id}

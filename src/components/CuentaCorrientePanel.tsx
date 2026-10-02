@@ -110,6 +110,7 @@ export function CuentaCorrientePanel({
                 <CargarEnCuentaFields
                   entityId={entityId}
                   entityName={entityName}
+                  moneda={moneda}
                   rubroGasto={rubroGasto}
                   isTreasury={isTreasury}
                   items={items ?? []}

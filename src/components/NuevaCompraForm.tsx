@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { SupplierCategory } from "@prisma/client";
+import { useActionState, useMemo, useState } from "react";
+import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
+import type { Currency, SupplierCategory } from "@prisma/client";
 import {
   DEFAULT_IVA_RATE,
   formatMoney,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/money";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
+import { litrosDeKilos } from "@/lib/aceite";
 import { FacturaDeCompraFields } from "./FacturaDeCompraFields";
 import {
   ImpuestosFields,
@@ -22,7 +24,8 @@ import {
 
 type Circuit = "BLANCO" | "NEGRO";
 
-type ProveedorInfo = { id: string; name: string };
+/** La moneda manda: en una cuenta en dólares, todos los precios de la compra son dólares. */
+type ProveedorInfo = { id: string; name: string; moneda: Currency };
 type ItemInfo = {
   id: string;
   name: string;
@@ -44,8 +47,15 @@ type Row = {
   quantity: string;
   unitPrice: string;
   unitPriceUsd: string;
+  /** Aceite: los kilos del ticket de balanza. Los litros salen de acá. */
+  kilos: string;
+  /** Aceite: el precio en U$S por tonelada. */
+  precioTonelada: string;
   circuit: Circuit;
 };
+
+/** Una línea ya cargada, para abrir el formulario al editar. */
+export type FilaDeCompra = Omit<Row, "key" | "category" | "pallets">;
 
 const filaVacia = (key: number): Row => ({
   key,
@@ -55,6 +65,8 @@ const filaVacia = (key: number): Row => ({
   quantity: "",
   unitPrice: "",
   unitPriceUsd: "",
+  kilos: "",
+  precioTonelada: "",
   circuit: "BLANCO",
 });
 
@@ -69,21 +81,52 @@ export function NuevaCompraFields({
   items,
   fixedEntity,
   textoBoton = "Crear compra",
+  editingDocumentId,
+  defaultValues,
+  defaultRows,
+  impuestosDefaults,
+  factura,
+  error,
+  pending,
 }: {
   proveedores: ProveedorInfo[];
   items: ItemInfo[];
   /** Si se llega desde la ficha de un proveedor puntual, fija el proveedor y oculta el selector. */
   fixedEntity?: ProveedorInfo;
   textoBoton?: string;
+  /** Al editar: la compra que se reemplaza. Es el mismo formulario que el alta, a propósito: uno
+   * aparte para editar se había quedado atrás y no mostraba ni el precio en pesos derivado. */
+  editingDocumentId?: string;
+  defaultValues?: { number?: string; date?: string; dueDate?: string; exchangeRate?: string };
+  defaultRows?: FilaDeCompra[];
+  impuestosDefaults?: ImpuestosValores;
+  factura?: { number: string; date: string };
+  /** El error de la acción, cuando el formulario no vive adentro de un FormModal que ya lo muestra. */
+  error?: string | null;
+  pending?: boolean;
 }) {
-  const [rows, setRows] = useState<Row[]>([filaVacia(0)]);
-  const [nextKey, setNextKey] = useState(1);
-  // La cotización deja de ser un dato suelto del encabezado: con ella cargada, las líneas piden el
-  // precio en U$S y el de pesos pasa a ser derivado.
-  const [cotizacion, setCotizacion] = useState("");
-  const [impuestos, setImpuestos] = useState<ImpuestosValores>(() => impuestosIniciales());
+  const [rows, setRows] = useState<Row[]>(() =>
+    defaultRows && defaultRows.length > 0
+      ? defaultRows.map((fila, i) => ({
+          ...filaVacia(i),
+          ...fila,
+          // El tipo no se guarda: sale del insumo, para que el desplegable abra en el suyo.
+          category: items.find((it) => it.id === fila.itemId)?.category ?? "",
+        }))
+      : [filaVacia(0)]
+  );
+  const [nextKey, setNextKey] = useState(() => Math.max(1, defaultRows?.length ?? 1));
+  const [proveedorId, setProveedorId] = useState(fixedEntity?.id ?? "");
+  const proveedor = fixedEntity ?? proveedores.find((p) => p.id === proveedorId);
+  const moneda: Currency = proveedor?.moneda ?? "ARS";
+  const cuentaEnDolares = moneda === "USD";
+  // En una cuenta en pesos, la cotización es lo que convierte: con ella cargada, las líneas piden el
+  // precio en U$S y el de pesos pasa a ser derivado. En una en dólares no convierte nada.
+  const [cotizacion, setCotizacion] = useState(defaultValues?.exchangeRate ?? "");
+  const [impuestos, setImpuestos] = useState<ImpuestosValores>(() => impuestosIniciales(impuestosDefaults));
   const cotizacionNum = parseNumeroSuave(cotizacion);
-  const enDolares = cotizacionNum !== null && cotizacionNum.greaterThan(0);
+  const enDolares = !cuentaEnDolares && cotizacionNum !== null && cotizacionNum.greaterThan(0);
+  const plata = (n: number) => formatMoney(n, moneda);
 
   const itemsPorCategoria = useMemo(() => {
     const m = new Map<SupplierCategory, ItemInfo[]>();
@@ -120,6 +163,8 @@ export function NuevaCompraFields({
       itemId,
       pallets: "",
       quantity: "",
+      kilos: "",
+      precioTonelada: "",
       unitPriceUsd: item?.precioSopladoUsd ? formatNumeroEditable(item.precioSopladoUsd, 4) : "",
     });
   }
@@ -144,19 +189,36 @@ export function NuevaCompraFields({
 
   /** Cantidad cargada y precio vacío: la línea entra igual, sin cargo. */
   const cantidadSinPrecio = (row: Row) =>
-    Boolean(parseNumeroSuave(row.quantity)?.greaterThan(0)) &&
+    Boolean(parseNumeroSuave(row.quantity)?.greaterThan(0) || parseNumeroSuave(row.kilos)?.greaterThan(0)) &&
     !row.unitPrice.trim() &&
-    !row.unitPriceUsd.trim();
+    !row.unitPriceUsd.trim() &&
+    !row.precioTonelada.trim();
 
+  // Mismo cálculo que hace el servidor al guardar; acá sólo para mostrar.
   const computedRows = rows.map((row) => {
     const item = items.find((i) => i.id === row.itemId);
+    const esAceite = item?.category === "ACEITE";
+
+    if (esAceite) {
+      const kilos = parseNumeroSuave(row.kilos);
+      const ton = parseNumeroSuave(row.precioTonelada);
+      const litros = kilos && kilos.greaterThan(0) ? litrosDeKilos(kilos) : null;
+      const enUsd = kilos && ton ? kilos.dividedBy(1000).times(ton) : null;
+      const subtotal = enUsd
+        ? cuentaEnDolares
+          ? enUsd.toNumber()
+          : cotizacionNum?.greaterThan(0)
+            ? enUsd.times(cotizacionNum).toNumber()
+            : 0
+        : 0;
+      return { row, item, esAceite, litros, precio: null, subtotal, faltaCotizacion: Boolean(enUsd && !cuentaEnDolares && !cotizacionNum?.greaterThan(0)) };
+    }
+
     const cantidad = parseNumeroSuave(row.quantity);
-    // Mismo cálculo que hace el servidor al guardar; acá sólo para mostrar.
     const usd = parseNumeroSuave(row.unitPriceUsd);
-    const precio =
-      enDolares && usd ? usd.times(cotizacionNum!) : parseNumeroSuave(row.unitPrice);
+    const precio = enDolares && usd ? usd.times(cotizacionNum!) : parseNumeroSuave(row.unitPrice);
     const subtotal = cantidad && precio ? cantidad.times(precio).toNumber() : 0;
-    return { row, item, precio, subtotal };
+    return { row, item, esAceite, litros: null, precio, subtotal, faltaCotizacion: false };
   });
 
   const netos = computedRows.reduce(
@@ -198,6 +260,7 @@ export function NuevaCompraFields({
 
   return (
     <div className="space-y-6">
+      {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
       <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
         <h2 className="text-sm font-semibold">Información general</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -211,7 +274,14 @@ export function NuevaCompraFields({
                 <input type="hidden" name="entityId" value={fixedEntity.id} />
               </>
             ) : (
-              <select id="entityId" name="entityId" required defaultValue="" className={inputClass}>
+              <select
+                id="entityId"
+                name="entityId"
+                required
+                value={proveedorId}
+                onChange={(e) => setProveedorId(e.target.value)}
+                className={inputClass}
+              >
                 <option value="" disabled>
                   — Elegir proveedor —
                 </option>
@@ -227,28 +297,34 @@ export function NuevaCompraFields({
             <label className="text-sm" htmlFor="number">
               Número *
             </label>
-            <input id="number" name="number" required placeholder="Ej: 991" className={inputClass} />
+            <input
+              id="number"
+              name="number"
+              required
+              placeholder="Ej: 991"
+              defaultValue={defaultValues?.number}
+              className={inputClass}
+            />
           </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="date">
               Fecha *
             </label>
-            <input id="date" type="date" name="date" required className={inputClass} />
+            <input id="date" type="date" name="date" required defaultValue={defaultValues?.date} className={inputClass} />
           </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="dueDate">
               Vencimiento (opcional)
             </label>
-            <input id="dueDate" type="date" name="dueDate" className={inputClass} />
+            <input id="dueDate" type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />
           </div>
+          {/* La moneda no se elige: es la de la cuenta del proveedor. Elegirla a mano es lo que
+              hacía que una compra a Cristian en dólares entrara en pesos. */}
           <div className="space-y-1">
-            <label className="text-sm" htmlFor="currency">
-              Moneda
-            </label>
-            <select id="currency" name="currency" defaultValue="ARS" className={inputClass}>
-              <option value="ARS">ARS</option>
-              <option value="USD">USD</option>
-            </select>
+            <p className="text-sm">Moneda</p>
+            <p className={`${inputClass} bg-foreground/5`}>
+              {cuentaEnDolares ? "Dólares — la cuenta se lleva en U$S" : "Pesos"}
+            </p>
           </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="exchangeRate">
@@ -264,9 +340,11 @@ export function NuevaCompraFields({
               className={inputClass}
             />
             <p className="text-xs text-foreground/50">
-              {enDolares
-                ? "Las líneas piden el precio en U$S y el peso se calcula con esta cotización."
-                : "Cargala si el precio está pactado en dólares, como el soplado de los envases."}
+              {cuentaEnDolares
+                ? "Los precios ya van en dólares: la cotización queda sólo como referencia."
+                : enDolares
+                  ? "Las líneas piden el precio en U$S y el peso se calcula con esta cotización."
+                  : "Cargala si el precio está pactado en dólares, como el soplado de los envases o el aceite."}
             </p>
           </div>
         </div>
@@ -281,7 +359,7 @@ export function NuevaCompraFields({
         </div>
 
         <div className="space-y-3">
-          {computedRows.map(({ row, item, precio, subtotal }) => (
+          {computedRows.map(({ row, item, esAceite, litros, precio, subtotal, faltaCotizacion }) => (
             // flex-wrap y no una grilla de columnas fijas: la cantidad de campos cambia según el
             // insumo (pallets) y según si hay cotización (precio en U$S), y una grilla con el
             // número de columnas cableado se desalinea en cuanto aparece o desaparece uno.
@@ -320,6 +398,37 @@ export function NuevaCompraFields({
                   ))}
                 </select>
               </div>
+              {esAceite ? (
+                <>
+                  {/* El aceite entra por el ticket de balanza: kilos y precio por tonelada. Los
+                      litros y la plata son una cuenta, y se muestran para que se vea si dan. */}
+                  <div className="min-w-0 flex-1 basis-[130px]">
+                    <label className="text-xs text-foreground/60">Kilos (ticket)</label>
+                    <input
+                      value={row.kilos}
+                      onChange={(e) => updateRow(row.key, { kilos: e.target.value })}
+                      inputMode="decimal"
+                      placeholder="28.100"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1 basis-[130px]">
+                    <label className="text-xs text-foreground/60">U$S por tonelada</label>
+                    <input
+                      value={row.precioTonelada}
+                      onChange={(e) => updateRow(row.key, { precioTonelada: e.target.value })}
+                      inputMode="decimal"
+                      placeholder="1.250"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1 basis-[120px]">
+                    <label className="text-xs text-foreground/60">Litros (kilos ÷ 0,91)</label>
+                    <p className="px-2 py-2 text-sm tabular-nums">{litros ? formatQuantity(litros, "L") : "—"}</p>
+                  </div>
+                </>
+              ) : (
+                <>
               {item?.unitsPerPallet && (
                 <div className="min-w-0 flex-1 basis-[110px]">
                   {/* Las unidades por pallet van en la etiqueta y no debajo del campo: abajo
@@ -359,11 +468,11 @@ export function NuevaCompraFields({
                 </div>
               )}
               <div className="min-w-0 flex-1 basis-[120px]">
-                <label className="text-xs text-foreground/60">Precio unit.</label>
+                <label className="text-xs text-foreground/60">{cuentaEnDolares ? "Precio U$S" : "Precio unit."}</label>
                 {enDolares && row.unitPriceUsd.trim() ? (
                   // Con precio en dólares el de pesos es derivado: mostrarlo editable invitaría a
                   // cambiarlo, y el servidor lo recalcula igual.
-                  <p className="px-2 py-2 text-sm tabular-nums">{precio ? formatMoney(precio.toNumber()) : "—"}</p>
+                  <p className="px-2 py-2 text-sm tabular-nums">{precio ? plata(precio.toNumber()) : "—"}</p>
                 ) : (
                   <input
                     value={row.unitPrice}
@@ -373,6 +482,8 @@ export function NuevaCompraFields({
                   />
                 )}
               </div>
+                </>
+              )}
               <div className="min-w-0 flex-1 basis-[160px]">
                 <label className="text-xs text-foreground/60">Circuito</label>
                 <select
@@ -389,10 +500,12 @@ export function NuevaCompraFields({
                 {/* Una línea sin precio ya no se descarta: entra sin cargo. Decirlo con palabras y
                     no con "$ 0,00" es lo que diferencia una decisión de un olvido. */}
                 <p className="px-2 py-2 text-sm tabular-nums">
-                  {cantidadSinPrecio(row) ? (
+                  {faltaCotizacion ? (
+                    <span className="text-amber-700 dark:text-amber-400">falta la cotización</span>
+                  ) : cantidadSinPrecio(row) ? (
                     <span className="text-foreground/50">sin cargo</span>
                   ) : (
-                    formatMoney(subtotal)
+                    plata(subtotal)
                   )}
                 </p>
               </div>
@@ -409,10 +522,14 @@ export function NuevaCompraFields({
                 )}
               </div>
 
+              {/* Todos los campos van siempre, vacíos si no aplican: el servidor los aparea por
+                  posición, y uno que falte en una línea corre los de las siguientes. */}
               <input type="hidden" name="lineItemId" value={row.itemId} />
-              <input type="hidden" name="lineQuantity" value={row.quantity} />
-              <input type="hidden" name="lineUnitPrice" value={row.unitPrice} />
-              <input type="hidden" name="lineUnitPriceUsd" value={enDolares ? row.unitPriceUsd : ""} />
+              <input type="hidden" name="lineQuantity" value={esAceite ? "" : row.quantity} />
+              <input type="hidden" name="lineUnitPrice" value={esAceite ? "" : row.unitPrice} />
+              <input type="hidden" name="lineUnitPriceUsd" value={!esAceite && enDolares ? row.unitPriceUsd : ""} />
+              <input type="hidden" name="lineKilos" value={esAceite ? row.kilos : ""} />
+              <input type="hidden" name="linePrecioTonelada" value={esAceite ? row.precioTonelada : ""} />
               <input type="hidden" name="lineCircuit" value={row.circuit} />
             </div>
           ))}
@@ -420,39 +537,45 @@ export function NuevaCompraFields({
 
         {netos.BLANCO > 0 && (
           <>
-            <ImpuestosFields onChange={setImpuestos} netoDeLineas={netos.BLANCO} />
-            <FacturaDeCompraFields />
+            <ImpuestosFields defaults={impuestosDefaults} onChange={setImpuestos} netoDeLineas={netos.BLANCO} />
+            <FacturaDeCompraFields defaultNumber={factura?.number} defaultDate={factura?.date} />
           </>
         )}
 
         <div className="flex flex-wrap justify-end gap-6 border-t border-foreground/10 pt-3 text-sm">
           <div className="text-right">
             <p className="text-xs text-foreground/50">Neto Blanco</p>
-            <p className="font-semibold">{formatMoney(netos.BLANCO)}</p>
+            <p className="font-semibold">{plata(netos.BLANCO)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">IVA</p>
-            <p className="font-semibold">{formatMoney(iva)}</p>
+            <p className="font-semibold">{plata(iva)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">Total Blanco</p>
-            <p className="font-semibold">{formatMoney(totals.BLANCO)}</p>
+            <p className="font-semibold">{plata(totals.BLANCO)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">Total Negro</p>
-            <p className="font-semibold">{formatMoney(totals.NEGRO)}</p>
+            <p className="font-semibold">{plata(totals.NEGRO)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">Total</p>
-            <p className="text-lg font-bold">{formatMoney(totals.total)}</p>
+            <p className="text-lg font-bold">{plata(totals.total)}</p>
           </div>
         </div>
       </div>
 
+      {error && (
+        <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+          {error}
+        </p>
+      )}
       <div className="flex justify-end">
         <button
           type="submit"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+          disabled={pending}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:opacity-50"
         >
           {textoBoton}
         </button>
@@ -471,9 +594,21 @@ export function NuevaCompraForm({
   items: ItemInfo[];
   fixedEntity?: ProveedorInfo;
 }) {
+  // Sin esto, un error —que no haya stock, que falte la cotización— reemplazaba la pantalla entera
+  // por "This page couldn't load" y se perdía todo lo cargado.
+  const [error, formAction, pending] = useActionState<string | null, FormData>(async (_prev, formData) => {
+    try {
+      await action(formData);
+      return null;
+    } catch (e) {
+      if (esSenalDeNavegacion(e)) throw e;
+      return userErrorMessage(e);
+    }
+  }, null);
+
   return (
-    <form action={action}>
-      <NuevaCompraFields {...props} />
+    <form action={formAction}>
+      <NuevaCompraFields {...props} error={error} pending={pending} />
     </form>
   );
 }

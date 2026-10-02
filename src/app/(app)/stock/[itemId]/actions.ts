@@ -9,6 +9,8 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, formatQuantity, parseNumeroEscrito } from "@/lib/money";
 import { diffDeCampos, logAudit } from "@/lib/audit";
+import { asegurarSinNegativos } from "@/lib/sin-negativos";
+import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 
 const MOVEMENT_TYPES: ItemMovementType[] = ["INGRESO", "AJUSTE", "MERMA", "VENTA"];
@@ -35,25 +37,22 @@ export async function createItemMovement(formData: FormData) {
 
   const effect = String(formData.get("effect") || "SUMA");
   const sourceKgRaw = String(formData.get("sourceKg") || "").trim();
-  const conversionFactorRaw = String(formData.get("conversionFactor") || "").trim();
 
   let quantity: Prisma.Decimal;
   let sourceKg: Prisma.Decimal | null = null;
+  // Se guarda la densidad con la que se convirtió, para poder reconstruir los litros desde el ticket.
   let conversionFactor: Prisma.Decimal | null = null;
 
-  if (sourceKgRaw && conversionFactorRaw) {
-    sourceKg = parseNumeroEscrito(sourceKgRaw, "kilos");
-    conversionFactor = parseNumeroEscrito(conversionFactorRaw, "factor de conversión");
-    // Un kilo de aceite son poco más de un litro: el factor siempre anda cerca de 1. Fuera de ese
-    // rango lo que pasó es que en el casillero del factor se volvieron a escribir los kilos —ya
-    // pasó, 28.100 × 28.100 dio un ingreso de 789 millones de litros— y el número entra al stock
-    // sin que nada avise hasta que alguien mira el saldo.
-    if (!conversionFactor.greaterThan(0) || conversionFactor.greaterThan(10)) {
-      throw new UserError(
-        `El factor de conversión tiene que ser un número cercano a 1 —un kilo de aceite son más o menos 1,1 litros—, y escribiste ${conversionFactorRaw}. Si eso eran los kilos, van en el casillero de al lado.`
-      );
+  if (sourceKgRaw) {
+    // Sólo el aceite entra por kilos. Con cualquier otro insumo esto es un error de carga, no una
+    // conversión: dividir rollos de stretch por 0,91 no significa nada.
+    if (item.category !== "ACEITE") {
+      throw new UserError("Los kilos son sólo para el aceite. Para este insumo cargá la cantidad.");
     }
-    quantity = sourceKg.times(conversionFactor);
+    sourceKg = parseNumeroEscrito(sourceKgRaw, "kilos");
+    if (!sourceKg.greaterThan(0)) throw new UserError("Los kilos tienen que ser mayores a cero.");
+    quantity = litrosDeKilos(sourceKg);
+    conversionFactor = DENSIDAD_ACEITE;
   } else {
     const quantityRaw = String(formData.get("quantity") || "").trim();
     if (!quantityRaw) throw new UserError("Falta la cantidad.");
@@ -64,17 +63,21 @@ export async function createItemMovement(formData: FormData) {
     quantity = quantity.negated();
   }
 
-  await prisma.itemMovement.create({
-    data: {
-      itemId: item.id,
-      date,
-      quantity,
-      type,
-      reason,
-      sourceKg,
-      conversionFactor,
-      createdById: user.id,
-    },
+  await prisma.$transaction(async (tx) => {
+    await tx.itemMovement.create({
+      data: {
+        itemId: item.id,
+        date,
+        quantity,
+        type,
+        reason,
+        sourceKg,
+        conversionFactor,
+        createdById: user.id,
+      },
+    });
+    // Un ajuste o una merma no pueden sacar más de lo que hay.
+    await asegurarSinNegativos(tx, { insumos: [item.id] });
   });
 
   await logAudit(prisma, {
@@ -101,7 +104,7 @@ export async function createItemMovement(formData: FormData) {
         quantity: "Cantidad",
         reason: "Motivo",
         sourceKg: "Kilos",
-        conversionFactor: "Factor de conversi\u00f3n",
+        conversionFactor: "Densidad",
       }
     ),
   });
@@ -146,6 +149,8 @@ export async function borrarMovimientoDeInsumo(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     await tx.itemMovement.delete({ where: { id: movementId } });
+    // Borrar un ingreso del que ya se consumió dejaría el stock en rojo desde ese día.
+    await asegurarSinNegativos(tx, { insumos: [movimiento.itemId] });
 
     await logAudit(tx, {
       userId: user.id,
@@ -171,7 +176,7 @@ export async function borrarMovimientoDeInsumo(formData: FormData) {
           quantity: "Cantidad",
           reason: "Motivo",
           sourceKg: "Kilos",
-          conversionFactor: "Factor de conversi\u00f3n",
+          conversionFactor: "Densidad",
         }
       ),
     });
@@ -261,6 +266,8 @@ export async function venderInsumo(formData: FormData) {
         createdById: user.id,
       },
     });
+
+    await asegurarSinNegativos(tx, { insumos: [itemId] });
 
     await logAudit(tx, {
       userId: user.id,

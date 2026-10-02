@@ -1,4 +1,5 @@
-import type { Product } from "@prisma/client";
+import type { Circuit, Currency, Prisma, Product } from "@prisma/client";
+import { formatNumeroExacto } from "@/lib/money";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import type { PedidoPendiente } from "@/lib/pedidos";
 import { RemitoLinesFields } from "./RemitoLinesFields";
@@ -18,8 +19,11 @@ export function RemitoFormFields({
   viajes,
   destinatarios,
   rotuloSubcuenta,
+  moneda = "ARS",
 }: {
   entityId: string;
+  /** La moneda de la cuenta del cliente. En una en dólares, el precio ya es en dólares. */
+  moneda?: Currency;
   products: Product[];
   priceMapByCircuit: PriceMap;
   /** Si viene, el formulario edita este remito en vez de crear uno nuevo — el encabezado y las
@@ -64,15 +68,6 @@ export function RemitoFormFields({
         <Field label="Vencimiento (opcional)">
           <input type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />
         </Field>
-        <Field label="Moneda">
-          <select name="currency" defaultValue={defaultValues?.currency ?? "ARS"} className={selectClass}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </Field>
-        <Field label="Cotización (si es USD)">
-          <input name="exchangeRate" defaultValue={defaultValues?.exchangeRate} className={inputClass} />
-        </Field>
       </div>
       <ViajeFields
         viajes={viajes}
@@ -92,6 +87,8 @@ export function RemitoFormFields({
         }))}
         priceMapByCircuit={priceMapByCircuit}
         defaultRows={defaultLines}
+        moneda={moneda}
+        defaultCotizacion={defaultValues?.exchangeRate}
       />
       {!editingDocumentId && <PedidoLinkChecklist pedidosPendientes={pedidosPendientes ?? []} />}
       <Field label="Notas (opcional)">
@@ -144,6 +141,31 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
-const selectClass = inputClass;
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
+
+/**
+ * Una línea guardada, en la forma en que la abre el formulario.
+ *
+ * Si se pactó en dólares se abre con ese precio, que es el que se escribió y el que se controla; si
+ * no, con el del pallet vuelto a pasar a botella.
+ */
+export function lineaDeRemito(
+  l: {
+    productId: string;
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    precioBotellaUsd: Prisma.Decimal | null;
+    product: { boxesPerPallet: number | null; unitsPerBox: number | null };
+  },
+  circuit: Circuit
+) {
+  const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
+  const enPesos = perPallet > 0 ? l.unitPrice.dividedBy(perPallet).toDecimalPlaces(4) : l.unitPrice;
+  return {
+    productId: l.productId,
+    quantity: formatNumeroExacto(l.quantity),
+    pricePerBottle: formatNumeroExacto(l.precioBotellaUsd ?? enPesos),
+    circuit,
+  };
+}

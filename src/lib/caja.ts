@@ -7,7 +7,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
-import { esCaja } from "@/lib/pagos";
+import { circuitoDeTesoreria, esCaja } from "@/lib/pagos";
 
 /**
  * La caja chica: la que maneja la secretaría para los sueldos y los gastos del día. La plata sale
@@ -95,12 +95,15 @@ export function getCajaChica() {
 export async function getOtrasCajas(excluirId: string): Promise<CajaConCuenta[]> {
   const entities = await prisma.entity.findMany({
     where: { type: "TESORERIA", id: { not: excluirId } },
-    include: { accounts: { where: { circuit: CIRCUITO_DE_CAJA } } },
+    include: { accounts: true },
     orderBy: { name: "asc" },
   });
+  // Cada una con su propia cuenta: el banco es Blanco y las cajas Negro. Antes se pedía la Negro de
+  // todas, y la del banco no tiene nada, así que un pase con el banco se anotaba en una cuenta vacía.
   return entities
-    .filter((e) => e.accounts[0])
-    .map((e) => ({ id: e.id, name: e.name, slug: e.slug, accountId: e.accounts[0].id }))
+    .map((e) => ({ e, cuenta: e.accounts.find((a) => a.circuit === circuitoDeTesoreria(e.name)) }))
+    .filter(({ cuenta }) => cuenta)
+    .map(({ e, cuenta }) => ({ id: e.id, name: e.name, slug: e.slug, accountId: cuenta!.id }))
     // Las cajas primero: el pase es casi siempre con la caja grande, y el banco quedaba arriba sólo
     // por orden alfabético, así que la opción preseleccionada era la equivocada.
     .sort((a, b) => Number(esCaja(b.name)) - Number(esCaja(a.name)) || a.name.localeCompare(b.name, "es"));

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ViajeOption } from "./ViajeFields";
 import { ArrowLeft, Package, Receipt, Scale } from "lucide-react";
-import type { Entity } from "@prisma/client";
+import type { Currency, Entity } from "@prisma/client";
 import { GastoFormFields } from "./GastoFormFields";
 import { DocumentFormFields } from "./DocumentFormFields";
 import { NuevaCompraFields, type ItemDeCompra } from "./NuevaCompraForm";
@@ -28,9 +28,12 @@ export function CargarEnCuentaFields({
   items,
   viajes,
   rotuloSubcuenta,
+  moneda = "ARS",
 }: {
   entityId: string;
   entityName: string;
+  /** La moneda de la cuenta: la compra se carga en ésa. */
+  moneda?: Currency;
   rubroGasto?: Entity["expenseCategory"];
   isTreasury?: boolean;
   /** Los insumos, para el formulario de compra. */
@@ -93,8 +96,8 @@ export function CargarEnCuentaFields({
       {/* La compra necesita todo el ancho por sus líneas; las otras dos se leen mejor angostas. */}
       {vista === "COMPRA" ? (
         <NuevaCompraFields
-          proveedores={[{ id: entityId, name: entityName }]}
-          fixedEntity={{ id: entityId, name: entityName }}
+          proveedores={[{ id: entityId, name: entityName, moneda }]}
+          fixedEntity={{ id: entityId, name: entityName, moneda }}
           items={items}
           textoBoton="Cargar la compra"
         />

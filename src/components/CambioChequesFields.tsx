@@ -7,8 +7,6 @@ import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-1 text-sm";
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
-const toggleClass =
-  "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
 type Fila = { key: number; numero: string; banco: string; monto: string; fecha: string };
 const filaVacia = (key: number): Fila => ({ key, numero: "", banco: "", monto: "", fecha: "" });
@@ -59,20 +57,6 @@ export function CambioChequesFields({ treasuries }: { treasuries: Entity[] }) {
             </option>
           ))}
         </select>
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-sm">Cuenta</p>
-        <div className="grid grid-cols-2 gap-2">
-          <label className={toggleClass}>
-            <input type="radio" name="circuit" value="NEGRO" defaultChecked className="sr-only" />
-            Negro
-          </label>
-          <label className={toggleClass}>
-            <input type="radio" name="circuit" value="BLANCO" className="sr-only" />
-            Blanco
-          </label>
-        </div>
       </div>
 
       <div className="space-y-2">

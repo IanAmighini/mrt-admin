@@ -1,3 +1,5 @@
+import { KilosALitros } from "./KilosALitros";
+
 type ItemInfo = { id: string; name: string; unit: string };
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -16,7 +18,7 @@ export function ItemMovementFields({
 }: {
   items: ItemInfo[];
   type: "INGRESO" | "MERMA";
-  /** Aceite se suele ingresar por Kg + factor de conversión, no directo en litros. */
+  /** El aceite se ingresa con los kilos del ticket de balanza; los litros salen solos. */
   showConversion?: boolean;
 }) {
   return (
@@ -50,33 +52,7 @@ export function ItemMovementFields({
           <input id={`quantity-${type}`} name="quantity" inputMode="decimal" className={inputClass} />
         </div>
       </div>
-      {showConversion && (
-        <>
-          <p className="text-xs text-foreground/50">
-            Si cargás Kg + factor de conversión, la cantidad se calcula sola (Kg × factor) y pisa
-            el campo de arriba.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor={`sourceKg-${type}`}>
-                Kg (opcional)
-              </label>
-              <input id={`sourceKg-${type}`} name="sourceKg" inputMode="decimal" className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor={`conversionFactor-${type}`}>
-                Factor de conversión Kg→L
-              </label>
-              <input
-                id={`conversionFactor-${type}`}
-                name="conversionFactor"
-                inputMode="decimal"
-                className={inputClass}
-              />
-            </div>
-          </div>
-        </>
-      )}
+      {showConversion && <KilosALitros id={`sourceKg-${type}`} className={inputClass} />}
       <div className="space-y-1">
         <label className="text-sm" htmlFor={`reason-${type}`}>
           Motivo

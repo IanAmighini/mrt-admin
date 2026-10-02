@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { formatMoney, formatQuantity } from "@/lib/money";
+import { useActionState, useMemo, useState } from "react";
+import type { Currency } from "@prisma/client";
+import { formatMoney, formatQuantity, parseNumeroSuave } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
+import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 
 const IVA_RATE = 21;
 
@@ -22,7 +24,8 @@ type PedidoLineaInfo = { productId: string; pallets: number; label: string };
 type PedidoPendienteInfo = { id: string; orderNumber: string; status: string; lines: PedidoLineaInfo[] };
 type PedidosByEntity = Record<string, PedidoPendienteInfo[]>;
 
-type ClienteInfo = { id: string; name: string };
+/** La moneda de la cuenta: en una en dólares, el precio por botella ya es en dólares. */
+type ClienteInfo = { id: string; name: string; moneda: Currency };
 type ViajeInfo = { id: string; nombre: string; destino: string | null };
 type DestinatarioInfo = { id: string; nombre: string; taxId: string | null };
 type ViajesByEntity = Record<string, ViajeInfo[]>;
@@ -70,6 +73,26 @@ export function NuevaEntregaForm({
   fixedEntity?: ClienteInfo;
 }) {
   const [entityId, setEntityId] = useState(fixedEntity?.id ?? "");
+  // La cotización convierte: con ella cargada, el precio por botella se escribe en dólares y los
+  // pesos salen solos. Es lo que hoy se hace a mano para La Campechana.
+  const [cotizacion, setCotizacion] = useState("");
+  const cliente = fixedEntity ?? clientes.find((c) => c.id === entityId);
+  const cuentaEnDolares = cliente?.moneda === "USD";
+  const cotizacionNum = parseNumeroSuave(cotizacion);
+  const enDolares = !cuentaEnDolares && Boolean(cotizacionNum?.greaterThan(0));
+  const monedaCuenta: Currency = cuentaEnDolares ? "USD" : "ARS";
+
+  // El error de la acción —por ejemplo, que no haya stock para entregar— se muestra acá, arriba del
+  // botón. Sin esto, cualquier error reemplazaba la pantalla por "This page couldn't load".
+  const [error, formAction, pending] = useActionState<string | null, FormData>(async (_prev, formData) => {
+    try {
+      await action(formData);
+      return null;
+    } catch (e) {
+      if (esSenalDeNavegacion(e)) throw e;
+      return userErrorMessage(e);
+    }
+  }, null);
   const [rows, setRows] = useState<Row[]>([
     { key: 0, marcaKey: "", productId: "", pallets: "", pricePerBottle: "", facturado: true },
   ]);
@@ -133,16 +156,18 @@ export function NuevaEntregaForm({
     setRows((prev) => prev.filter((r) => r.key !== key));
   }
 
+  // Sólo para mostrar: la cuenta que vale la hace el servidor con los mismos números. Con
+  // `parseNumeroSuave` y no `Number()`, que no entiende la coma y leía "1350,50" como cero.
   const computedRows = rows.map((row) => {
     const product = productById.get(row.productId);
-    const pallets = Number(row.pallets) || 0;
+    const pallets = parseNumeroSuave(row.pallets)?.toNumber() ?? 0;
     const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
     const botellas = pallets * perPallet;
-    const pricePerBottle = Number(row.pricePerBottle) || 0;
+    const escrito = parseNumeroSuave(row.pricePerBottle)?.toNumber() ?? 0;
+    const pricePerBottle = enDolares ? escrito * (cotizacionNum?.toNumber() ?? 0) : escrito;
     const subtotal = botellas * pricePerBottle;
     const iva = row.facturado ? subtotal * (IVA_RATE / 100) : 0;
-    const unitPrice = pricePerBottle * perPallet; // precio equivalente por pallet, lo que se guarda
-    return { row, product, pallets, botellas, subtotal, iva, unitPrice };
+    return { row, product, pallets, botellas, subtotal, iva, pricePerBottle, perPallet };
   });
 
   const totals = computedRows.reduce(
@@ -163,7 +188,7 @@ export function NuevaEntregaForm({
   const destinatarios = entityId ? (destinatariosByEntity[entityId] ?? []) : [];
 
   return (
-    <form action={action} className="space-y-6">
+    <form action={formAction} className="space-y-6">
       <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
         <h2 className="text-sm font-semibold">Información general</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -206,6 +231,32 @@ export function NuevaEntregaForm({
             </label>
             <input id="date" type="date" name="date" required className={inputClass} />
           </div>
+          {cuentaEnDolares ? (
+            <div className="space-y-1">
+              <p className="text-sm">Moneda</p>
+              <p className={`${inputClass} bg-foreground/5`}>Dólares — la cuenta se lleva en U$S</p>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="exchangeRate">
+                Cotización del dólar (si el precio es en U$S)
+              </label>
+              <input
+                id="exchangeRate"
+                name="exchangeRate"
+                inputMode="decimal"
+                placeholder="1.523"
+                value={cotizacion}
+                onChange={(e) => setCotizacion(e.target.value)}
+                className={inputClass}
+              />
+              <p className="text-xs text-foreground/50">
+                {enDolares
+                  ? "El precio por botella va en U$S; los pesos se calculan con esta cotización."
+                  : "Vacía, los precios van en pesos."}
+              </p>
+            </div>
+          )}
           {viajes.length > 0 && (
             <div className="space-y-1">
               <label className="text-sm" htmlFor="entregaId">
@@ -249,7 +300,7 @@ export function NuevaEntregaForm({
         </div>
 
         <div className="space-y-3">
-          {computedRows.map(({ row, botellas, subtotal, iva, unitPrice }) => {
+          {computedRows.map(({ row, botellas, subtotal, iva, pricePerBottle, perPallet }) => {
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
               <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
@@ -298,13 +349,21 @@ export function NuevaEntregaForm({
                   <p className="px-2 py-2 text-sm text-foreground/60">{formatQuantity(botellas)}</p>
                 </div>
                 <div className="col-span-2 min-w-0">
-                  <label className="text-xs text-foreground/60">Precio/bot.</label>
+                  <label className="text-xs text-foreground/60">
+                    {enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
+                  </label>
                   <input
                     value={row.pricePerBottle}
                     onChange={(e) => updateRow(row.key, { pricePerBottle: e.target.value })}
                     inputMode="decimal"
                     className={inputClass}
                   />
+                  {enDolares && pricePerBottle > 0 && (
+                    <p className="text-xs text-foreground/50 tabular-nums">
+                      = {formatMoney(pricePerBottle)}/bot.
+                      {perPallet > 0 && ` · ${formatMoney(pricePerBottle * perPallet)}/pallet`}
+                    </p>
+                  )}
                 </div>
                 <div className="col-span-1 min-w-0">
                   <label className="text-xs text-foreground/60">Fact.</label>
@@ -323,9 +382,9 @@ export function NuevaEntregaForm({
                 <div className="col-span-1 min-w-0">
                   <label className="text-xs text-foreground/60">Subtotal</label>
                   <p className="px-2 py-2 text-sm">
-                    {formatMoney(subtotal)}
+                    {formatMoney(subtotal, monedaCuenta)}
                     {row.facturado && iva > 0 && (
-                      <span className="block text-xs text-green-700 dark:text-green-400">+IVA {formatMoney(iva)}</span>
+                      <span className="block text-xs text-green-700 dark:text-green-400">+IVA {formatMoney(iva, monedaCuenta)}</span>
                     )}
                   </p>
                 </div>
@@ -342,9 +401,12 @@ export function NuevaEntregaForm({
                   )}
                 </div>
 
+                {/* El precio va tal como se escribió y el servidor hace la cuenta del pallet. Los dos
+                    campos van siempre, uno vacío: se aparean por posición. */}
                 <input type="hidden" name="lineProductId" value={row.productId} />
                 <input type="hidden" name="lineQuantity" value={row.pallets} />
-                <input type="hidden" name="lineUnitPrice" value={unitPrice} />
+                <input type="hidden" name="linePrecioBotella" value={enDolares ? "" : row.pricePerBottle} />
+                <input type="hidden" name="linePrecioBotellaUsd" value={enDolares ? row.pricePerBottle : ""} />
                 <input type="hidden" name="lineCircuit" value={row.facturado ? "BLANCO" : "NEGRO"} />
               </div>
             );
@@ -362,19 +424,19 @@ export function NuevaEntregaForm({
           </div>
           <div className="text-right">
             <p className="text-xs text-green-700 dark:text-green-400">Facturado (s/IVA)</p>
-            <p className="font-semibold text-green-700 dark:text-green-400">{formatMoney(totals.facturado)}</p>
+            <p className="font-semibold text-green-700 dark:text-green-400">{formatMoney(totals.facturado, monedaCuenta)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">IVA {IVA_RATE}%</p>
-            <p className="font-semibold">{formatMoney(totals.iva)}</p>
+            <p className="font-semibold">{formatMoney(totals.iva, monedaCuenta)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">No facturado</p>
-            <p className="font-semibold">{formatMoney(totals.noFacturado)}</p>
+            <p className="font-semibold">{formatMoney(totals.noFacturado, monedaCuenta)}</p>
           </div>
           <div className="text-right">
             <p className="text-xs text-foreground/50">Total</p>
-            <p className="text-lg font-bold">{formatMoney(total)}</p>
+            <p className="text-lg font-bold">{formatMoney(total, monedaCuenta)}</p>
           </div>
         </div>
       </div>
@@ -420,12 +482,18 @@ export function NuevaEntregaForm({
         <textarea id="reason" name="reason" rows={2} placeholder="Notas adicionales…" className={inputClass} />
       </div>
 
+      {error && (
+        <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+          {error}
+        </p>
+      )}
       <div className="flex justify-end">
         <button
           type="submit"
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+          disabled={pending}
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:opacity-50"
         >
-          Crear entrega
+          {pending ? "Creando…" : "Crear entrega"}
         </button>
       </div>
     </form>

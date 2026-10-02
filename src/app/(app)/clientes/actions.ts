@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { diffDeCampos, logAudit } from "@/lib/audit";
+import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { generateUniqueSlug } from "@/lib/slug";
 import { aplicarSaldoInicial, NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 import { parseRubro, rubroLabel } from "@/lib/rubro-proveedor";
@@ -197,6 +198,9 @@ export async function updateEntity(formData: FormData) {
       const account = entity.accounts.find((a) => a.circuit === circuit);
       if (account) await aplicarSaldoInicial(tx, account.id, raw, user.id);
     }
+
+    // Bajarle el saldo inicial a una caja puede dejar en rojo todo lo que se pagó después.
+    await asegurarSinNegativos(tx, { cuentas: entity.accounts.map((a) => a.id) });
 
     return entity;
   });

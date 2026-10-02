@@ -52,7 +52,7 @@ export default async function NuevaCompraPage({
       {canEdit && (
         <NuevaCompraForm
           action={submitCompra}
-          proveedores={proveedores.map((p) => ({ id: p.id, name: p.name }))}
+          proveedores={proveedores.map((p) => ({ id: p.id, name: p.name, moneda: p.moneda }))}
           items={items.map((i) => ({
             id: i.id,
             name: i.name,
@@ -61,7 +61,9 @@ export default async function NuevaCompraPage({
             unitsPerPallet: i.unitsPerPallet,
             precioSopladoUsd: i.precioSopladoUsd ? i.precioSopladoUsd.toString() : null,
           }))}
-          fixedEntity={fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name } : undefined}
+          fixedEntity={
+            fixedEntity ? { id: fixedEntity.id, name: fixedEntity.name, moneda: fixedEntity.moneda } : undefined
+          }
         />
       )}
     </div>

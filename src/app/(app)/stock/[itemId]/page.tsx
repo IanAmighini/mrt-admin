@@ -9,6 +9,7 @@ import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { borrarMovimientoDeInsumo, createItemMovement, venderInsumo } from "./actions";
 import { DeleteButton } from "@/components/DeleteButton";
 import { FormConError } from "@/components/FormConError";
+import { KilosALitros } from "@/components/KilosALitros";
 import { FormModal } from "@/components/Modal";
 import { formatFecha, hoyEnInput } from "@/lib/period";
 import { updateItemAjustes } from "../actions";
@@ -306,34 +307,13 @@ export default async function ItemDetailPage({
               </select>
             </div>
           </div>
-          <p className="text-xs text-foreground/50">
-            Para ingresos de aceite a granel: si cargás Kg + factor de conversión, la cantidad se
-            calcula sola (Kg × factor) y pisa el campo de arriba.
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="sourceKg">
-                Kg (opcional, solo aceite)
-              </label>
-              <input
-                id="sourceKg"
-                name="sourceKg"
-                inputMode="decimal"
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="conversionFactor">
-                Factor de conversión Kg→{item.unit}
-              </label>
-              <input
-                id="conversionFactor"
-                name="conversionFactor"
-                inputMode="decimal"
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
+          {/* Sólo el aceite entra por kilos: es lo que dice el ticket de la balanza. */}
+          {item.category === "ACEITE" && (
+            <KilosALitros
+              id="sourceKg"
+              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
+            />
+          )}
           <div className="space-y-1">
             <label className="text-sm" htmlFor="reason">
               Motivo
@@ -371,10 +351,10 @@ export default async function ItemDetailPage({
                   <td className="py-2 pr-4">
                     {m.quantity.greaterThan(0) ? "+" : ""}
                     {formatQuantity(m.quantity, item.unit)}
-                    {m.sourceKg && m.conversionFactor && (
+                    {m.sourceKg && (
                       <span className="text-foreground/40">
                         {" "}
-                        ({formatQuantity(m.sourceKg, "Kg")} × {m.conversionFactor.toString()})
+                        ({formatQuantity(m.sourceKg, "kg")} ÷ 0,91)
                       </span>
                     )}
                   </td>

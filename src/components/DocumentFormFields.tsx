@@ -94,7 +94,8 @@ export function DocumentFormFields({
       {fixedEntityId && <input type="hidden" name="entityId" value={fixedEntityId} />}
       {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
 
-      {!esEdicion && (
+      {/* En una caja no se elige: tiene una sola cuenta, y el servidor la usa siempre. */}
+      {!esEdicion && !isTreasury && (
         <div className="space-y-1">
           <p className="text-sm">Cuenta</p>
           <div className="grid grid-cols-2 gap-2">

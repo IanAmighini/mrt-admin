@@ -27,9 +27,11 @@ import {
   RETENTION_KIND_LABELS,
 } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
-import { motivoMetodoInvalido, motivoTesoreriaInvalida } from "@/lib/pagos";
+import { circuitoDeTesoreria, motivoMetodoInvalido, motivoTesoreriaInvalida } from "@/lib/pagos";
 import { crearChequeRecibido, devolverChequesALaCartera, entregarCheque, esMetodoCheque } from "@/lib/cheques";
 import { diffDeCampos, logAudit } from "@/lib/audit";
+import { asegurarCajaAlcanza, asegurarSinNegativos } from "@/lib/sin-negativos";
+import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
 import type { AuditAction } from "@prisma/client";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
@@ -260,6 +262,9 @@ export async function updateDocument(formData: FormData) {
     if (taxRows.length > 0) {
       await tx.documentTax.createMany({ data: taxRows.map((row) => ({ ...row, documentId })) });
     }
+
+    // Si es un movimiento a mano de una caja, que no la deje en rojo.
+    await asegurarSinNegativos(tx, { cuentas: [document.accountId] });
   });
 
   const [viajeNuevo, destinatarioNuevo] = await Promise.all([
@@ -333,6 +338,12 @@ export async function deleteDocument(formData: FormData) {
     await tx.itemMovement.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
 
+    // Borrar una entrada de plata —o la pata que entraba de un pase— puede dejar una caja en rojo.
+    const cuentaDeLaOtraPata = otraPata
+      ? (await prisma.document.findUnique({ where: { id: otraPata }, select: { accountId: true } }))?.accountId
+      : null;
+    await asegurarSinNegativos(tx, { cuentas: [document.accountId, cuentaDeLaOtraPata ?? null] });
+
     await logAudit(tx, {
       userId: user.id,
       action: "DELETE",
@@ -357,7 +368,14 @@ export async function createDocumentForEntity(formData: FormData) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta el cliente o proveedor.");
 
-  const circuit = String(formData.get("circuit") || "");
+  const entidad = await prisma.entity.findUnique({ where: { id: entityId } });
+  if (!entidad) throw new UserError("No se encontró la entidad.");
+  // En una caja el circuito no se elige: es el suyo. Que el formulario ya no lo muestre no alcanza,
+  // porque uno viejo abierto en otra pestaña lo seguiría mandando.
+  const circuit =
+    entidad.type === "TESORERIA"
+      ? circuitoDeTesoreria(entidad.name)
+      : String(formData.get("circuit") || "");
   if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Cuenta inválida.");
 
   const account = await prisma.account.findUnique({
@@ -419,6 +437,8 @@ export async function createDocumentForEntity(formData: FormData) {
     if (taxRows.length > 0) {
       await tx.documentTax.createMany({ data: taxRows.map((row) => ({ ...row, documentId: creado.id })) });
     }
+
+    await asegurarSinNegativos(tx, { cuentas: [account.id] });
 
     return creado;
   });
@@ -692,7 +712,13 @@ async function createRemitoCore(
   formData: FormData,
   auditAction: AuditAction,
   /** Cómo estaba la entrega antes de editarla. Vacío en un alta. */
-  antes?: Record<string, unknown> | null
+  antes?: Record<string, unknown> | null,
+  /**
+   * Al editar: la entrega que ésta reemplaza. Se borra DENTRO de la misma transacción, igual que en
+   * producción: si el alta falla, la original sigue estando, y la verificación de stock compara
+   * contra cómo estaba de verdad antes de editar.
+   */
+  reemplaza?: { documentId: string; productIds: string[] }
 ) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
@@ -705,9 +731,15 @@ async function createRemitoCore(
 
   const date = parseFormDate(formData.get("date"));
   const dueDateOverride = parseOptionalFormDate(formData.get("dueDate"));
-  const currency = String(formData.get("currency") || "ARS") as Currency;
+  // La moneda es la de la cuenta del cliente, no un desplegable: mismo motivo que en las compras.
+  const currency: Currency = entity.moneda;
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+  // En una cuenta en pesos, la cotización es con lo que se pasa a pesos el precio en dólares —el de
+  // La Campechana—. Antes sólo se guardaba si el remito era en dólares, y se pasaba a mano.
+  const exchangeRate = exchangeRateRaw ? parseNumeroEscrito(exchangeRateRaw, "cotización") : null;
+  if (exchangeRate && !exchangeRate.greaterThan(0)) {
+    throw new UserError("La cotización tiene que ser mayor a cero.");
+  }
   const reason = String(formData.get("reason") || "").trim() || null;
   const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, entityId);
 
@@ -715,17 +747,75 @@ async function createRemitoCore(
   const quantities = formData.getAll("lineQuantity").map(String);
   const unitPrices = formData.getAll("lineUnitPrice").map(String);
   const circuits = formData.getAll("lineCircuit").map(String);
+  // El precio por botella tal cual se escribió, en la moneda de la cuenta o en dólares. Se manda así
+  // y la cuenta del pallet se hace acá: el navegador la hacía con `Number()`, que no entiende la coma,
+  // y un "1350,50" llegaba como cero.
+  const preciosBotella = formData.getAll("linePrecioBotella").map(String);
+  const preciosBotellaUsd = formData.getAll("linePrecioBotellaUsd").map(String);
+  for (const [nombre, arr] of [
+    ["precio por botella", preciosBotella],
+    ["precio por botella en U$S", preciosBotellaUsd],
+  ] as const) {
+    if (arr.length > 0 && arr.length !== productIds.length) {
+      throw new UserError(`El formulario llegó incompleto (${nombre}) — recargá la página y volvé a cargarlo.`);
+    }
+  }
+  const botellasPorPallet = new Map(
+    (
+      await prisma.product.findMany({
+        where: { id: { in: productIds.filter(Boolean) } },
+        select: { id: true, boxesPerPallet: true, unitsPerBox: true, name: true, presentation: true },
+      })
+    ).map((p) => [p.id, p])
+  );
 
   const lines = productIds
-    .map((productId, i) => ({
-      productId,
+    .map((productId, i) => {
       // Opcional y no obligatorio: la fila vacía que queda al tocar "+ Agregar línea" y no
       // completarla se descarta con el filter de abajo, no tiene que cortar la carga. Un número
       // mal escrito sigue dando error.
-      quantity: parseNumeroOpcional(quantities[i] ?? "", "cantidad"),
-      unitPrice: parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario"),
-      circuit: circuits[i] as "BLANCO" | "NEGRO",
-    }))
+      const quantity = parseNumeroOpcional(quantities[i] ?? "", "cantidad");
+      const circuit = circuits[i] as "BLANCO" | "NEGRO";
+      const usdRaw = (preciosBotellaUsd[i] ?? "").trim();
+      const botellaRaw = (preciosBotella[i] ?? "").trim();
+
+      if (!usdRaw && !botellaRaw) {
+        // Un formulario viejo, que todavía manda el precio del pallet ya calculado.
+        return { productId, quantity, circuit, precioBotellaUsd: null, unitPrice: parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario") };
+      }
+
+      const p = botellasPorPallet.get(productId);
+      const porPallet = p?.boxesPerPallet && p?.unitsPerBox ? p.boxesPerPallet * p.unitsPerBox : null;
+      if (!porPallet) {
+        throw new UserError(
+          `${p ? `${p.name} ${p.presentation}` : "Uno de los productos"} no tiene cargadas cajas por pallet y botellas por caja, así que no se puede pasar el precio por botella a precio del pallet.`
+        );
+      }
+
+      if (usdRaw) {
+        const usd = parseNumeroEscrito(usdRaw, "precio por botella en U$S");
+        // En una cuenta en dólares no hay nada que convertir.
+        if (currency !== "USD" && !exchangeRate) {
+          throw new UserError("El precio está en dólares: cargá la cotización para pasarlo a pesos.");
+        }
+        const porBotella = currency === "USD" ? usd : usd.times(exchangeRate!);
+        return {
+          productId,
+          quantity,
+          circuit,
+          precioBotellaUsd: usd,
+          unitPrice: porBotella.times(porPallet).toDecimalPlaces(2),
+        };
+      }
+
+      return {
+        productId,
+        quantity,
+        circuit,
+        precioBotellaUsd: null,
+        unitPrice: parseNumeroEscrito(botellaRaw, "precio por botella").times(porPallet).toDecimalPlaces(2),
+      };
+    })
     // Sin exigir precio > 0: una línea sin cargo es legítima (una muestra) y descartarla en
     // silencio es peor que cobrarla mal. Lo que distingue una línea cargada de una vacía es la
     // cantidad.
@@ -753,6 +843,11 @@ async function createRemitoCore(
   let combinedTotal = toDecimal(0);
 
   await prisma.$transaction(async (tx) => {
+    if (reemplaza) {
+      await tx.paymentAllocation.deleteMany({ where: { documentId: reemplaza.documentId } });
+      await tx.document.delete({ where: { id: reemplaza.documentId } });
+    }
+
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
       if (!account) throw new UserError(`No se encontró la cuenta ${circuit} de esta entidad.`);
@@ -761,7 +856,8 @@ async function createRemitoCore(
         productId: l.productId,
         quantity: l.quantity,
         unitPrice: l.unitPrice,
-        subtotal: l.quantity.times(l.unitPrice),
+        precioBotellaUsd: l.precioBotellaUsd,
+        subtotal: l.quantity.times(l.unitPrice).toDecimalPlaces(2),
       }));
       const netAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
       // Blanco = facturado, así que ya lleva IVA; Negro no factura, sin IVA.
@@ -815,6 +911,11 @@ async function createRemitoCore(
         data: { status: "ENTREGADO", deliveryDate: date },
       });
     }
+
+    // No se puede entregar lo que no está: cada producto, desde la fecha del remito en adelante.
+    await asegurarSinNegativos(tx, {
+      productos: [...lines.map((l) => l.productId), ...(reemplaza?.productIds ?? [])],
+    });
 
     const nombres = new Map(
       (await tx.product.findMany({
@@ -926,14 +1027,12 @@ export async function updateRemito(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
-  const antes = fotoDeComprobanteConLineas(await getRemitoOrThrow(documentId));
+  const original = await getRemitoOrThrow(documentId);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.paymentAllocation.deleteMany({ where: { documentId } });
-    await tx.document.delete({ where: { id: documentId } });
+  await createRemitoCore(user, formData, "UPDATE", fotoDeComprobanteConLineas(original), {
+    documentId,
+    productIds: original.lines.map((l) => l.productId),
   });
-
-  await createRemitoCore(user, formData, "UPDATE", antes);
 }
 
 /** Núcleo compartido por createCompra y updateCompra (que borra y vuelve a llamar a este núcleo)
@@ -960,7 +1059,13 @@ async function createCompraCore(
   formData: FormData,
   auditAction: AuditAction,
   /** Cómo estaba la compra antes de editarla. Vacío en un alta. */
-  antes?: Record<string, unknown> | null
+  antes?: Record<string, unknown> | null,
+  /**
+   * Al editar: la compra que ésta reemplaza, que se borra DENTRO de la misma transacción. Antes se
+   * borraba en una aparte, y si el alta fallaba la compra desaparecía; además la verificación de
+   * stock no tendría contra qué comparar.
+   */
+  reemplaza?: { documentId: string; facturaId: string | null; itemIds: string[] }
 ) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
@@ -970,10 +1075,20 @@ async function createCompraCore(
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
-  const currency = String(formData.get("currency") || "ARS") as Currency;
+
+  const entity = await prisma.entity.findUnique({ where: { id: entityId } });
+  if (!entity) throw new UserError("Entidad inexistente.");
+  // **La moneda es la de la cuenta, no la del formulario.** Antes se elegía en un desplegable, y en
+  // la cuenta de Cristian —que se lleva en dólares— una compra con precio en dólares se multiplicaba
+  // por la cotización y entraba en pesos: U$S 20.000 quedaban como 20.000 × 1.500 "dólares". Un
+  // comprobante en otra moneda que su cuenta además no se imputa, porque la imputación busca los de
+  // su moneda.
+  const currency: Currency = entity.moneda;
+  const enCuentaEnDolares = currency === "USD";
+
   const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  // La cotización ya no depende de que la moneda sea USD: el proveedor de envases factura en pesos
-  // pero el precio está pactado en dólares, así que la cotización es el dato con el que se calcula.
+  // En una cuenta en pesos, la cotización es con lo que se pasa a pesos un precio pactado en dólares
+  // —el soplado de los envases—. En una en dólares no convierte nada: se guarda como referencia.
   const exchangeRate = exchangeRateRaw ? parseNumeroEscrito(exchangeRateRaw, "cotización") : null;
   if (exchangeRate && !exchangeRate.greaterThan(0)) {
     throw new UserError("La cotización tiene que ser mayor a cero.");
@@ -984,6 +1099,8 @@ async function createCompraCore(
   const unitPrices = formData.getAll("lineUnitPrice").map(String);
   const unitPricesUsd = formData.getAll("lineUnitPriceUsd").map(String);
   const circuits = formData.getAll("lineCircuit").map(String);
+  const kilosPorLinea = formData.getAll("lineKilos").map(String);
+  const preciosTonelada = formData.getAll("linePrecioTonelada").map(String);
 
   // Los campos llegan como arrays paralelos que se aparean por posición: si vinieran con distinto
   // largo, el precio de una línea caería en otra sin que nadie lo note.
@@ -1006,23 +1123,84 @@ async function createCompraCore(
       "El formulario llegó incompleto (precio en U$S) — recargá la página y volvé a cargar la compra."
     );
   }
+  // Lo mismo con los kilos y el precio por tonelada del aceite: pueden no venir, pero si vienen, completos.
+  for (const [nombre, arr] of [
+    ["kilos", kilosPorLinea],
+    ["precio por tonelada", preciosTonelada],
+  ] as const) {
+    if (arr.length > 0 && arr.length !== itemIds.length) {
+      throw new UserError(
+        `El formulario llegó incompleto (${nombre}) — recargá la página y volvé a cargar la compra.`
+      );
+    }
+  }
+
+  const categoriaPorItem = new Map(
+    (
+      await prisma.item.findMany({
+        where: { id: { in: itemIds.filter(Boolean) } },
+        select: { id: true, category: true, name: true },
+      })
+    ).map((i) => [i.id, i])
+  );
 
   const lines = itemIds
     .map((itemId, i) => {
+      const circuit = circuits[i] as "BLANCO" | "NEGRO";
+      const kilosRaw = (kilosPorLinea[i] ?? "").trim();
+
+      // **Aceite: kilos del ticket y precio por tonelada.** Los litros que entran al stock son una
+      // cuenta (kilos ÷ 0,91), y el subtotal sale directo de los kilos —kilos ÷ 1000 × precio—, no
+      // de litros × un precio por litro redondeado, que correría el total.
+      if (kilosRaw) {
+        const item = categoriaPorItem.get(itemId);
+        if (item && item.category !== "ACEITE") {
+          throw new UserError(`"${item.name}" no es aceite: los kilos son sólo para el aceite.`);
+        }
+        const kilos = parseNumeroEscrito(kilosRaw, "kilos");
+        if (!kilos.greaterThan(0)) throw new UserError("Los kilos tienen que ser mayores a cero.");
+        const tonRaw = (preciosTonelada[i] ?? "").trim();
+        const precioTonelada = tonRaw ? parseNumeroEscrito(tonRaw, "precio por tonelada") : null;
+        const quantity = litrosDeKilos(kilos).toDecimalPlaces(3);
+        const enDolares = precioTonelada ? kilos.dividedBy(1000).times(precioTonelada) : toDecimal(0);
+        if (precioTonelada && !enCuentaEnDolares && !exchangeRate) {
+          throw new UserError(
+            "El precio del aceite está en dólares y esta cuenta se lleva en pesos: cargá la cotización para pasarlo a pesos."
+          );
+        }
+        const subtotal = (enCuentaEnDolares || !precioTonelada ? enDolares : enDolares.times(exchangeRate!)).toDecimalPlaces(2);
+        return {
+          itemId,
+          quantity,
+          unitPrice: quantity.isZero() ? toDecimal(0) : subtotal.dividedBy(quantity).toDecimalPlaces(4),
+          unitPriceUsd: !enCuentaEnDolares && precioTonelada ? enDolares.dividedBy(quantity).toDecimalPlaces(6) : null,
+          kilos,
+          precioTonelada,
+          subtotal,
+          circuit,
+        };
+      }
+
       const usdRaw = (unitPricesUsd[i] ?? "").trim();
       const usd = usdRaw ? parseNumeroEscrito(usdRaw, "precio en U$S") : null;
-      // Con precio en dólares el de pesos es derivado, y se calcula acá y no en el navegador: es el
+      const quantity = parseNumeroOpcional(quantities[i] ?? "", "cantidad");
+      // En una cuenta en dólares el precio YA es en dólares: venga del casillero que venga, entra tal
+      // cual. En una en pesos, el de dólares se pasa a pesos acá y no en el navegador, porque es el
       // que termina en la cuenta corriente.
-      const unitPrice =
-        usd && exchangeRate
+      const unitPrice = enCuentaEnDolares
+        ? (usd ?? parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario"))
+        : usd && exchangeRate
           ? usd.times(exchangeRate)
           : parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario");
       return {
         itemId,
-        quantity: parseNumeroOpcional(quantities[i] ?? "", "cantidad"),
+        quantity,
         unitPrice,
-        unitPriceUsd: usd && exchangeRate ? usd : null,
-        circuit: circuits[i] as "BLANCO" | "NEGRO",
+        unitPriceUsd: !enCuentaEnDolares && usd && exchangeRate ? usd : null,
+        kilos: null,
+        precioTonelada: null,
+        subtotal: quantity.times(unitPrice).toDecimalPlaces(2),
+        circuit,
       };
     })
     // Sin exigir precio > 0: el pallet descartable entra gratis con la compra, y descartar esa
@@ -1064,9 +1242,6 @@ async function createCompraCore(
     linesByCircuit.set(line.circuit, group);
   }
 
-  const entity = await prisma.entity.findUnique({ where: { id: entityId } });
-  if (!entity) throw new UserError("Entidad inexistente.");
-
   const llevaStockPorItem = new Map(
     (
       await prisma.item.findMany({
@@ -1083,6 +1258,8 @@ async function createCompraCore(
   let combinedTotal = toDecimal(0);
 
   await prisma.$transaction(async (tx) => {
+    if (reemplaza) await borrarCompraYSuFactura(tx, reemplaza.documentId, reemplaza.facturaId);
+
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
       if (!account) throw new UserError(`No se encontró la cuenta ${circuit} de esta entidad.`);
@@ -1092,7 +1269,9 @@ async function createCompraCore(
         quantity: l.quantity,
         unitPrice: l.unitPrice,
         unitPriceUsd: l.unitPriceUsd,
-        subtotal: l.quantity.times(l.unitPrice),
+        kilos: l.kilos,
+        precioTonelada: l.precioTonelada,
+        subtotal: l.subtotal,
       }));
       // El neto sale de las líneas; en Blanco el IVA y las percepciones se suman encima, igual que
       // en un remito de venta. El desglose se guarda en DocumentTax, como en las facturas de gasto.
@@ -1159,6 +1338,8 @@ async function createCompraCore(
           itemId: l.itemId,
           date,
           quantity: l.quantity,
+          sourceKg: l.kilos,
+          conversionFactor: l.kilos ? DENSIDAD_ACEITE : null,
           type: "INGRESO" as const,
           reason: `Compra a ${entity.name} — remito ${number}`,
           documentId: document.id,
@@ -1170,13 +1351,20 @@ async function createCompraCore(
     // El precio pactado en U$S queda como el vigente del insumo, para que el próximo remito lo
     // proponga solo. Los envases lo tienen fijo; las tapas lo mueven seguido y así se mantiene al día.
     for (const line of lines) {
-      if (line.unitPriceUsd) {
+      // El del aceite no: va por tonelada, y un "precio por litro en U$S" derivado no le sirve a nadie
+      // como sugerencia para la próxima compra.
+      if (line.unitPriceUsd && !line.kilos) {
         await tx.item.update({
           where: { id: line.itemId },
           data: { precioSopladoUsd: line.unitPriceUsd },
         });
       }
     }
+
+    // Bajar una cantidad al editar puede sacar del stock algo que ya se consumió.
+    await asegurarSinNegativos(tx, {
+      insumos: [...lines.map((l) => l.itemId), ...(reemplaza?.itemIds ?? [])],
+    });
 
     const nombres = new Map(
       (await tx.item.findMany({
@@ -1268,6 +1456,8 @@ export async function deleteCompra(formData: FormData) {
 
   await prisma.$transaction(async (tx) => {
     await borrarCompraYSuFactura(tx, documentId, document.facturaPropia?.id ?? null);
+    // Lo que entró con esta compra puede haberse consumido ya.
+    await asegurarSinNegativos(tx, { insumos: document.purchaseLines.map((l) => l.itemId) });
 
     await logAudit(tx, {
       userId: user.id,
@@ -1293,14 +1483,13 @@ export async function updateCompra(formData: FormData) {
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getCompraOrThrow(documentId);
-  const antes = fotoDeComprobanteConLineas(document);
-
-  await prisma.$transaction(async (tx) => {
-    await borrarCompraYSuFactura(tx, documentId, document.facturaPropia?.id ?? null);
-  });
 
   // La factura vuelve a crearse desde el formulario, que la trae precargada.
-  await createCompraCore(user, formData, "UPDATE", antes);
+  await createCompraCore(user, formData, "UPDATE", fotoDeComprobanteConLineas(document), {
+    documentId,
+    facturaId: document.facturaPropia?.id ?? null,
+    itemIds: document.purchaseLines.map((l) => l.itemId),
+  });
 }
 
 export async function createFactura(formData: FormData) {
@@ -1748,28 +1937,24 @@ async function applyPaymentDestino(params: {
     return;
   }
 
-  const treasuryAccount = await prisma.account.findUnique({
-    where: { entityId_circuit: { entityId: destino, circuit: payment.circuit } },
-    include: { entity: true },
-  });
-  if (!treasuryAccount || treasuryAccount.entity.type !== "TESORERIA") {
+  const tesoreriaDestino = await prisma.entity.findUnique({ where: { id: destino } });
+  if (!tesoreriaDestino || tesoreriaDestino.type !== "TESORERIA") {
     throw new UserError("Destino inválido.");
   }
-  const motivo = motivoTesoreriaInvalida(payment.circuit, treasuryAccount.entity.name);
+  const motivo = motivoTesoreriaInvalida(payment.circuit, tesoreriaDestino.name);
   if (motivo) throw new UserError(motivo);
+  // La cuenta de la caja, no la que coincide con el pago: un pago en Blanco hecho en efectivo sale
+  // de la caja igual, y la caja se lleva en Negro. Ver `circuitoDeTesoreria`.
+  const treasuryAccount = await prisma.account.findUnique({
+    where: {
+      entityId_circuit: { entityId: destino, circuit: circuitoDeTesoreria(tesoreriaDestino.name) },
+    },
+    include: { entity: true },
+  });
+  if (!treasuryAccount) throw new UserError("Destino inválido.");
 
   const category: TreasuryMovementCategory = isCobro ? "COBRO" : "PAGO_PROVEEDOR";
-  // **La caja lleva pesos, siempre.** El monto del pago está en la moneda de la cuenta, así que
-  // en una cuenta en dólares —la de Cristian— hay que multiplicarlo por la cotización antes de
-  // tocar la caja. Sin esto, pagarle U$S 5.000 a 1.500 descontaba 5.000 pesos de Caja Bufano en
-  // vez de 7.500.000: la caja quedaba con plata que ya no está.
-  // Los pesos que se escribieron al cargarlo. El `times` es el plan B para los pagos viejos,
-  // cargados antes de que se guardaran: pierde unos pesos por el redondeo, pero es muchísimo más
-  // cerca que copiar los dólares.
-  const enPesos =
-    monedaOrigen === "USD"
-      ? (payment.amountArs ?? (payment.exchangeRate ? payment.amount.times(payment.exchangeRate) : payment.amount))
-      : payment.amount;
+  const enPesos = pesosDelPago(payment, monedaOrigen);
   const signedAmount = isCobro ? enPesos : enPesos.negated();
   await prisma.document.create({
     data: {
@@ -1790,6 +1975,60 @@ async function applyPaymentDestino(params: {
     },
   });
   await prisma.payment.update({ where: { id: payment.id }, data: { treasuryId: destino } });
+}
+
+/**
+ * **La caja lleva pesos, siempre.** El monto del pago está en la moneda de la cuenta, así que en
+ * una cuenta en dólares —la de Cristian— hay que multiplicarlo por la cotización antes de tocar la
+ * caja. Sin esto, pagarle U$S 5.000 a 1.500 descontaba 5.000 pesos de Caja Bufano en vez de
+ * 7.500.000: la caja quedaba con plata que ya no está.
+ *
+ * Usa los pesos que se escribieron al cargarlo. El `times` es el plan B para los pagos viejos,
+ * cargados antes de que se guardaran: pierde unos pesos por el redondeo, pero es muchísimo más cerca
+ * que copiar los dólares.
+ */
+function pesosDelPago(
+  payment: { amount: Prisma.Decimal; exchangeRate: Prisma.Decimal | null; amountArs: Prisma.Decimal | null },
+  moneda: Currency
+) {
+  if (moneda !== "USD") return payment.amount;
+  return payment.amountArs ?? (payment.exchangeRate ? payment.amount.times(payment.exchangeRate) : payment.amount);
+}
+
+/**
+ * Que la caja tenga la plata, antes de grabar nada. Ver `asegurarCajaAlcanza`.
+ *
+ * `quitar` son los movimientos de caja que la operación va a borrar: al editar un pago, el que
+ * generó la versión anterior. Si el pago cambia de caja, la vieja también se mira — sacarle un cobro
+ * puede dejarla en rojo aunque la nueva reciba la plata.
+ */
+async function verificarCajaDelPago(params: {
+  destino: string;
+  isCobro: boolean;
+  date: Date;
+  enPesos: Prisma.Decimal;
+  movimientosAnteriores?: { id: string; accountId: string }[];
+}) {
+  const anteriores = params.movimientosAnteriores ?? [];
+  const tesoreria =
+    params.destino && params.destino !== PROVEEDOR_DIRECTO_VALUE
+      ? await prisma.entity.findUnique({ where: { id: params.destino }, include: { accounts: true } })
+      : null;
+  const cuentaNueva =
+    tesoreria?.type === "TESORERIA"
+      ? tesoreria.accounts.find((a) => a.circuit === circuitoDeTesoreria(tesoreria.name))
+      : undefined;
+
+  const cuentas = new Set([...anteriores.map((m) => m.accountId), ...(cuentaNueva ? [cuentaNueva.id] : [])]);
+  for (const accountId of cuentas) {
+    await asegurarCajaAlcanza(accountId, {
+      quitar: anteriores.filter((m) => m.accountId === accountId).map((m) => m.id),
+      agregar:
+        cuentaNueva?.id === accountId
+          ? { date: params.date, monto: params.isCobro ? params.enPesos : params.enPesos.negated() }
+          : null,
+    });
+  }
 }
 
 export async function createPaymentForEntity(formData: FormData) {
@@ -1830,6 +2069,13 @@ export async function createPaymentForEntity(formData: FormData) {
     : null;
   const alcance = await alcanceDeImputacion(entityId, entregaId);
   const allocations = await allocateFifo(account.id, amount, account.entity.moneda, alcance);
+
+  await verificarCajaDelPago({
+    destino,
+    isCobro,
+    date,
+    enPesos: pesosDelPago({ amount, exchangeRate, amountArs }, account.entity.moneda),
+  });
 
   const payment = await prisma.$transaction(async (tx) => {
     const payment = await tx.payment.create({
@@ -1932,6 +2178,12 @@ export async function deletePayment(formData: FormData) {
       })
     : null;
 
+  // Las cajas donde este pago dejó plata: borrar un cobro se la saca, y eso puede dejarlas en rojo.
+  const cajasDelPago = await prisma.document.findMany({
+    where: { sourcePaymentId: { in: [paymentId, ...(linkedPayment ? [linkedPayment.id] : [])] } },
+    select: { accountId: true },
+  });
+
   await prisma.$transaction(async (tx) => {
     // Antes de borrar: la FK desvincula sola, pero el estado no vuelve solo y el cheque quedaría
     // entregado a nadie, fuera de la cartera y sin poder usarse otra vez.
@@ -1943,6 +2195,8 @@ export async function deletePayment(formData: FormData) {
       await tx.paymentAllocation.deleteMany({ where: { paymentId: linkedPayment.id } });
       await tx.payment.delete({ where: { id: linkedPayment.id } });
     }
+
+    await asegurarSinNegativos(tx, { cuentas: cajasDelPago.map((d) => d.accountId) });
 
     await logAudit(tx, {
       userId: user.id,
@@ -2040,6 +2294,19 @@ export async function updatePayment(formData: FormData) {
         include: { account: { include: { entity: true } } },
       })
     : null;
+
+  // Editar un pago borra su movimiento de caja y lo vuelve a crear: se simula eso entero, con la caja
+  // vieja y la nueva, antes de tocar nada.
+  await verificarCajaDelPago({
+    destino,
+    isCobro,
+    date,
+    enPesos: pesosDelPago({ amount, exchangeRate, amountArs }, account.entity.moneda),
+    movimientosAnteriores: await prisma.document.findMany({
+      where: { sourcePaymentId: paymentId },
+      select: { id: true, accountId: true },
+    }),
+  });
 
   await prisma.$transaction(async (tx) => {
     // Editar un pago rehace todo lo que colgaba de él, y el cheque entra en eso: vuelve a la

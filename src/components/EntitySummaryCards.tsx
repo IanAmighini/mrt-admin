@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { formatMoney } from "@/lib/money";
-import type { Currency, Prisma } from "@prisma/client";
+import type { Circuit, Currency, Prisma } from "@prisma/client";
 
 function Card({ children }: { children: React.ReactNode }) {
   return <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">{children}</div>;
@@ -15,6 +15,7 @@ export function EntitySummaryCards({
   card3Value,
   card4Label,
   card4Value,
+  soloCircuito,
 }: {
   entitySlug: string;
   blancoSaldo: Prisma.Decimal;
@@ -26,22 +27,29 @@ export function EntitySummaryCards({
   card3Value?: string;
   card4Label?: string;
   card4Value?: string;
+  /** Una caja tiene una sola cuenta —el banco Blanco, las cajas Negro—: se muestra sólo ésa. */
+  soloCircuito?: Circuit;
 }) {
   const hayExtras = card3Label !== undefined && card4Label !== undefined;
+  const ver = (c: Circuit) => !soloCircuito || soloCircuito === c;
   return (
     <div className={`grid gap-4 ${hayExtras ? "sm:grid-cols-4" : "sm:grid-cols-2"}`}>
-      <Link href={`/cuentas-corrientes/${entitySlug}/blanco`}>
-        <Card>
-          <p className="text-sm text-foreground/60">Cuenta 1 (c/factura)</p>
-          <p className="text-2xl font-semibold">{formatMoney(blancoSaldo, moneda)}</p>
-        </Card>
-      </Link>
-      <Link href={`/cuentas-corrientes/${entitySlug}/negro`}>
-        <Card>
-          <p className="text-sm text-foreground/60">Cuenta 2 (s/factura)</p>
-          <p className="text-2xl font-semibold">{formatMoney(negroSaldo, moneda)}</p>
-        </Card>
-      </Link>
+      {ver("BLANCO") && (
+        <Link href={`/cuentas-corrientes/${entitySlug}/blanco`}>
+          <Card>
+            <p className="text-sm text-foreground/60">{soloCircuito ? "Saldo" : "Cuenta 1 (c/factura)"}</p>
+            <p className="text-2xl font-semibold">{formatMoney(blancoSaldo, moneda)}</p>
+          </Card>
+        </Link>
+      )}
+      {ver("NEGRO") && (
+        <Link href={`/cuentas-corrientes/${entitySlug}/negro`}>
+          <Card>
+            <p className="text-sm text-foreground/60">{soloCircuito ? "Saldo" : "Cuenta 2 (s/factura)"}</p>
+            <p className="text-2xl font-semibold">{formatMoney(negroSaldo, moneda)}</p>
+          </Card>
+        </Link>
+      )}
       {hayExtras && (
         <>
           <Card>
