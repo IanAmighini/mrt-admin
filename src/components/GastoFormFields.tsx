@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { Currency } from "@prisma/client";
+import { MonedaEscritaFields } from "./MonedaEscritaFields";
 import { ViajeFields, type ViajeOption } from "./ViajeFields";
 import { EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_ORDER } from "@/lib/labels";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
@@ -38,12 +40,15 @@ export function GastoFormFields({
   defaultValues,
   viajes,
   rotuloSubcuenta,
+  monedaCuenta = "ARS",
 }: {
   /** Si viene, el proveedor queda fijo (se abre desde su ficha). */
   entityId?: string;
+  /** La moneda de la cuenta del proveedor fijo. Con selector, sale del proveedor elegido. */
+  monedaCuenta?: Currency;
   /** Si no hay proveedor fijo, la lista para elegirlo — se abre desde Compras. Cada uno trae su
    * rubro, para precargarlo al elegirlo. */
-  proveedores?: { id: string; name: string; expenseCategory: string | null }[];
+  proveedores?: { id: string; name: string; expenseCategory: string | null; moneda?: Currency }[];
   /** Si viene, el formulario edita ese gasto en vez de crear uno nuevo. */
   editingDocumentId?: string;
   defaultValues?: GastoDefaults;
@@ -53,7 +58,14 @@ export function GastoFormFields({
   rotuloSubcuenta?: string;
 }) {
   const [circuit, setCircuit] = useState<"BLANCO" | "NEGRO">(defaultValues?.circuit ?? "BLANCO");
-  const [currency, setCurrency] = useState(defaultValues?.currency ?? "ARS");
+  // La moneda de la cuenta: la del proveedor fijo, o la del que se elija en el selector.
+  const [monedaDeLaCuenta, setMonedaDeLaCuenta] = useState<Currency>(
+    proveedores?.find((p) => p.id === defaultValues?.entityId)?.moneda ?? monedaCuenta
+  );
+  // En qué se escriben los montos: arranca en la de la cuenta (al editar, en la del gasto, que es ésa).
+  const [currency, setCurrency] = useState<Currency>(
+    (defaultValues?.currency as Currency | undefined) ?? monedaDeLaCuenta
+  );
   const [montos, setMontos] = useState<Record<string, string>>(defaultValues?.tributos ?? {});
   const [montoNegro, setMontoNegro] = useState(defaultValues?.amount ?? "");
   // El rubro arranca con el del proveedor: a Edenor se le cargan servicios, al transportista flete.
@@ -84,8 +96,11 @@ export function GastoFormFields({
             required
             defaultValue={defaultValues?.entityId ?? ""}
             onChange={(e) => {
-              if (rubroTocado) return;
               const elegido = (proveedores ?? []).find((p) => p.id === e.target.value);
+              // Cambiar de proveedor cambia la moneda de la cuenta; los montos se vuelven a escribir en ésa.
+              setMonedaDeLaCuenta(elegido?.moneda ?? "ARS");
+              setCurrency(elegido?.moneda ?? "ARS");
+              if (rubroTocado) return;
               setRubro(elegido?.expenseCategory ?? "");
             }}
             className={inputClass}
@@ -202,35 +217,13 @@ export function GastoFormFields({
             className={inputClass}
           />
         </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="currency">
-            Moneda
-          </label>
-          <select
-            id="currency"
-            name="currency"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            className={inputClass}
-          >
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </div>
-        {currency === "USD" && (
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="exchangeRate">
-              Cotización
-            </label>
-            <input
-              id="exchangeRate"
-              name="exchangeRate"
-              inputMode="decimal"
-              defaultValue={defaultValues?.exchangeRate ?? ""}
-              className={inputClass}
-            />
-          </div>
-        )}
+        <MonedaEscritaFields
+          monedaCuenta={monedaDeLaCuenta}
+          value={currency}
+          onChange={setCurrency}
+          defaultCotizacion={defaultValues?.exchangeRate}
+          className={inputClass}
+        />
         {circuit === "NEGRO" && (
           <div className="space-y-1">
             <label className="text-sm" htmlFor="amount">
@@ -261,7 +254,7 @@ export function GastoFormFields({
       <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
         <span className="text-sm">Total</span>
         <span className="text-lg font-semibold tabular-nums">
-          {formatMoney(totalVivo, currency as "ARS" | "USD")}
+          {formatMoney(totalVivo, currency)}
         </span>
       </div>
 

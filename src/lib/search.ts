@@ -185,7 +185,7 @@ export async function searchAll(rawTerm: string, role: UserRole): Promise<Search
   for (const entity of Array.from(entidadesUnicas.values()).slice(0, TAKE_POR_TIPO)) {
     const contexto =
       entity.type === "TESORERIA"
-        ? `${ENTITY_TYPE_LABELS.TESORERIA} · Cuenta Blanco`
+        ? ENTITY_TYPE_LABELS.TESORERIA
         : entity.taxId
           ? `${ENTITY_TYPE_LABELS[entity.type]} · ${entity.taxId}`
           : rubroLabel(entity)

@@ -48,10 +48,18 @@ export function RemitoLinesFields({
   const [cotizacion, setCotizacion] = useState(defaultCotizacion ?? "");
   const cuentaEnDolares = moneda === "USD";
   const cotizacionNum = parseNumeroSuave(cotizacion)?.toNumber() ?? 0;
+  // Con cotización, el precio se escribe en la otra moneda que la de la cuenta.
   const enDolares = !cuentaEnDolares && cotizacionNum > 0;
+  const enPesos = cuentaEnDolares && cotizacionNum > 0;
   // Con `parseNumeroSuave` y no `Number()`: `Number("1350,50")` es NaN, y el precio se iba en cero.
   const num = (raw: string) => parseNumeroSuave(raw)?.toNumber() ?? 0;
-  const pesosPorBotella = (row: Row) => (enDolares ? num(row.pricePerBottle) * cotizacionNum : num(row.pricePerBottle));
+  // El precio por botella en la moneda de la cuenta, que es en la que se guarda.
+  const pesosPorBotella = (row: Row) =>
+    enDolares
+      ? num(row.pricePerBottle) * cotizacionNum
+      : enPesos
+        ? num(row.pricePerBottle) / cotizacionNum
+        : num(row.pricePerBottle);
   const [rows, setRows] = useState<Row[]>(
     defaultRows && defaultRows.length > 0
       ? defaultRows.map((r, i) => ({ key: i, ...r }))
@@ -103,21 +111,19 @@ export function RemitoLinesFields({
 
   return (
     <div className="space-y-3">
-      {cuentaEnDolares ? (
-        <p className="text-xs text-foreground/50">La cuenta se lleva en dólares: los precios van en U$S.</p>
-      ) : (
-        <div className="max-w-xs space-y-1">
-          <label className="text-sm">Cotización del dólar (si el precio es en U$S)</label>
-          <input
-            name="exchangeRate"
-            value={cotizacion}
-            onChange={(e) => setCotizacion(e.target.value)}
-            inputMode="decimal"
-            placeholder="1.523"
-            className={inputClass}
-          />
-        </div>
-      )}
+      <div className="max-w-xs space-y-1">
+        <label className="text-sm">
+          {cuentaEnDolares ? "Cotización del dólar (si el precio es en pesos)" : "Cotización del dólar (si el precio es en U$S)"}
+        </label>
+        <input
+          name="exchangeRate"
+          value={cotizacion}
+          onChange={(e) => setCotizacion(e.target.value)}
+          inputMode="decimal"
+          placeholder="1.523"
+          className={inputClass}
+        />
+      </div>
       <p className="text-sm font-medium">Líneas del remito</p>
       {rows.map((row) => {
         const product = products.find((p) => p.id === row.productId);
@@ -159,7 +165,7 @@ export function RemitoLinesFields({
             </div>
             <div className="col-span-2 min-w-0">
               <label className="text-xs text-foreground/60">
-                {enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
+                {enPesos ? "$/bot." : enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
               </label>
               <input
                 value={row.pricePerBottle}
@@ -167,10 +173,10 @@ export function RemitoLinesFields({
                 inputMode="decimal"
                 className={inputClass}
               />
-              {enDolares && num(row.pricePerBottle) > 0 && (
+              {(enDolares || enPesos) && num(row.pricePerBottle) > 0 && (
                 <p className="text-xs text-foreground/40 tabular-nums">
-                  = {formatMoney(pesosPorBotella(row))}/bot.
-                  {perPallet > 0 && ` · ${formatMoney(pesosPorBotella(row) * perPallet)}/pallet`}
+                  = {formatMoney(pesosPorBotella(row), moneda)}/bot.
+                  {perPallet > 0 && ` · ${formatMoney(pesosPorBotella(row) * perPallet, moneda)}/pallet`}
                 </p>
               )}
             </div>

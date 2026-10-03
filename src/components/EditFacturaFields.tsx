@@ -1,3 +1,5 @@
+import type { Currency } from "@prisma/client";
+import { MonedaEscritaFields } from "./MonedaEscritaFields";
 import { DEFAULT_IVA_RATE } from "@/lib/money";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -7,8 +9,11 @@ const submitClass =
 export function EditFacturaFields({
   documentId,
   defaultValues,
+  monedaCuenta = "ARS",
 }: {
   documentId: string;
+  /** La moneda de la cuenta: todo se guarda en ésa. */
+  monedaCuenta?: Currency;
   defaultValues: {
     number: string;
     date: string;
@@ -47,21 +52,12 @@ export function EditFacturaFields({
           </label>
           <input id="dueDate" type="date" name="dueDate" defaultValue={defaultValues.dueDate} className={inputClass} />
         </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="currency">
-            Moneda
-          </label>
-          <select id="currency" name="currency" defaultValue={defaultValues.currency} className={inputClass}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="exchangeRate">
-            Cotización (si es USD)
-          </label>
-          <input id="exchangeRate" name="exchangeRate" defaultValue={defaultValues.exchangeRate} className={inputClass} />
-        </div>
+        <MonedaEscritaFields
+          monedaCuenta={monedaCuenta}
+          defaultValue={defaultValues.currency as Currency}
+          defaultCotizacion={defaultValues.exchangeRate}
+          className={inputClass}
+        />
         <div className="space-y-1">
           <label className="text-sm" htmlFor="netAmount">
             Neto

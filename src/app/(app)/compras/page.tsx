@@ -57,7 +57,7 @@ export default async function ComprasPage({
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     prisma.entity.findMany({
       where: { type: { in: ["PROVEEDOR", "AMBOS"] } },
-      select: { id: true, name: true, expenseCategory: true },
+      select: { id: true, name: true, expenseCategory: true, moneda: true },
       orderBy: { name: "asc" },
     }),
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
@@ -199,6 +199,7 @@ export default async function ComprasPage({
                             maxWidthClass="max-w-xl"
                           >
                             <GastoFormFields
+                              monedaCuenta={doc.account.entity.moneda}
                               entityId={doc.account.entityId}
                               editingDocumentId={doc.id}
                               defaultValues={{

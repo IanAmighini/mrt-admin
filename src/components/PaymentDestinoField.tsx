@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { Circuit, Entity } from "@prisma/client";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
-import { motivoTesoreriaInvalida } from "@/lib/pagos";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -43,8 +42,8 @@ export function PaymentDestinoField({
   const [cotizacion, setCotizacion] = useState("");
   const showProveedores = isCobro && destino === PROVEEDOR_DIRECTO_VALUE && proveedores && proveedores.length > 0;
 
-  // Lo que entra o sale del banco queda registrado, así que en negro la única tesorería es la caja.
-  const disponibles = treasuries.filter((t) => !motivoTesoreriaInvalida(circuit, t.name));
+  // Todas las cajas, con cualquier cuenta: se paga en Negro desde el Galicia y en Blanco desde Bufano.
+  const disponibles = treasuries;
 
   // Cambiar de cuenta puede dejar elegido un destino que ya no existe en la lista. Se corrige en el
   // render (el patrón de React para estado que depende de una prop) y no con un efecto, que

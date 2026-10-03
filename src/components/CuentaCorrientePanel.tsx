@@ -126,6 +126,7 @@ export function CuentaCorrientePanel({
                 peso="secundario"
               >
                 <DocumentFormFields
+                  monedaCuenta={moneda}
                   fixedEntityId={entityId}
                   isTreasury={isTreasury}
                   viajes={viajes}
@@ -159,6 +160,7 @@ export function CuentaCorrientePanel({
                 peso="secundario"
               >
                 <FacturaFormFields
+                  monedaCuenta={moneda}
                   accountId={factura.blancoAccountId}
                   isWithholdingAgent={factura.isWithholdingAgent}
                   comprobantes={factura.comprobantes}

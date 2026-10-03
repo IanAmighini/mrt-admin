@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { Currency } from "@prisma/client";
+import { MonedaEscritaFields } from "./MonedaEscritaFields";
 import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
 import { DEFAULT_IVA_RATE, formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib/money";
 
@@ -29,9 +31,12 @@ export function FacturaFormFields({
   sustantivo = "Remito",
   viajes,
   destinatarios,
+  monedaCuenta = "ARS",
 }: {
   accountId: string;
   isWithholdingAgent: boolean;
+  /** La moneda de la cuenta: todo se guarda en ésa. */
+  monedaCuenta?: Currency;
   comprobantes: ComprobanteFacturable[];
   sustantivo?: string;
   /** Sólo hacen falta para la factura que no sale de un remito: la que sí lo hace hereda el
@@ -99,21 +104,7 @@ export function FacturaFormFields({
           </label>
           <input id="dueDate" type="date" name="dueDate" className={inputClass} />
         </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="currency">
-            Moneda
-          </label>
-          <select id="currency" name="currency" defaultValue="ARS" className={inputClass}>
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="exchangeRate">
-            Cotización (si es USD)
-          </label>
-          <input id="exchangeRate" name="exchangeRate" inputMode="decimal" className={inputClass} />
-        </div>
+        <MonedaEscritaFields monedaCuenta={monedaCuenta} className={inputClass} />
         <div className="space-y-1">
           <label className="text-sm" htmlFor="netAmount">
             Neto

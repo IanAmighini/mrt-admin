@@ -125,7 +125,10 @@ export function NuevaCompraFields({
   const [cotizacion, setCotizacion] = useState(defaultValues?.exchangeRate ?? "");
   const [impuestos, setImpuestos] = useState<ImpuestosValores>(() => impuestosIniciales(impuestosDefaults));
   const cotizacionNum = parseNumeroSuave(cotizacion);
-  const enDolares = !cuentaEnDolares && cotizacionNum !== null && cotizacionNum.greaterThan(0);
+  const hayCotizacion = cotizacionNum !== null && cotizacionNum.greaterThan(0);
+  // Con cotización, los precios se escriben en la otra moneda que la de la cuenta.
+  const enDolares = !cuentaEnDolares && hayCotizacion;
+  const enPesos = cuentaEnDolares && hayCotizacion;
   const plata = (n: number) => formatMoney(n, moneda);
 
   const itemsPorCategoria = useMemo(() => {
@@ -216,7 +219,9 @@ export function NuevaCompraFields({
 
     const cantidad = parseNumeroSuave(row.quantity);
     const usd = parseNumeroSuave(row.unitPriceUsd);
-    const precio = enDolares && usd ? usd.times(cotizacionNum!) : parseNumeroSuave(row.unitPrice);
+    const escrito = parseNumeroSuave(row.unitPrice);
+    const precio =
+      enDolares && usd ? usd.times(cotizacionNum!) : enPesos && escrito ? escrito.dividedBy(cotizacionNum!) : escrito;
     const subtotal = cantidad && precio ? cantidad.times(precio).toNumber() : 0;
     return { row, item, esAceite, litros: null, precio, subtotal, faltaCotizacion: false };
   });
@@ -341,7 +346,9 @@ export function NuevaCompraFields({
             />
             <p className="text-xs text-foreground/50">
               {cuentaEnDolares
-                ? "Los precios ya van en dólares: la cotización queda sólo como referencia."
+                ? enPesos
+                  ? "Los precios van en pesos y se pasan a dólares con esta cotización. El aceite sigue en U$S por tonelada."
+                  : "Vacía, los precios van en dólares. Cargala si algún precio está en pesos."
                 : enDolares
                   ? "Las líneas piden el precio en U$S y el peso se calcula con esta cotización."
                   : "Cargala si el precio está pactado en dólares, como el soplado de los envases o el aceite."}
@@ -468,7 +475,9 @@ export function NuevaCompraFields({
                 </div>
               )}
               <div className="min-w-0 flex-1 basis-[120px]">
-                <label className="text-xs text-foreground/60">{cuentaEnDolares ? "Precio U$S" : "Precio unit."}</label>
+                <label className="text-xs text-foreground/60">
+                  {enPesos ? "Precio $" : cuentaEnDolares ? "Precio U$S" : "Precio unit."}
+                </label>
                 {enDolares && row.unitPriceUsd.trim() ? (
                   // Con precio en dólares el de pesos es derivado: mostrarlo editable invitaría a
                   // cambiarlo, y el servidor lo recalcula igual.
@@ -480,6 +489,9 @@ export function NuevaCompraFields({
                     inputMode="decimal"
                     className={inputClass}
                   />
+                )}
+                {enPesos && precio && (
+                  <p className="text-xs text-foreground/50 tabular-nums">= {plata(precio.toNumber())}</p>
                 )}
               </div>
                 </>

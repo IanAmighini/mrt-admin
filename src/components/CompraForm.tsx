@@ -48,7 +48,11 @@ export function CompraFormFields({
           precioSopladoUsd: i.precioSopladoUsd ? i.precioSopladoUsd.toString() : null,
         }))}
         editingDocumentId={editingDocumentId}
-        defaultValues={defaultValues}
+        // En una cuenta en dólares, la cotización cargada haría leer como pesos los precios guardados,
+        // que son dólares: se abre sin ella, con los precios tal como están.
+        defaultValues={
+          entidad.moneda === "USD" ? { ...defaultValues, exchangeRate: undefined } : defaultValues
+        }
         defaultRows={defaultRows}
         impuestosDefaults={impuestos}
         factura={factura}

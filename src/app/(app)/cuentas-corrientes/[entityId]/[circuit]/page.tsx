@@ -247,6 +247,7 @@ export default async function AccountLedgerPage({
         <div className="flex items-center gap-2">
           <FormModal triggerLabel="Editar" iconName="edit" title="Editar factura" action={updateFactura}>
             <EditFacturaFields
+              monedaCuenta={monedaCuenta}
               documentId={doc.id}
               defaultValues={{
                 ...headerDefaults,
@@ -279,6 +280,7 @@ export default async function AccountLedgerPage({
             maxWidthClass="max-w-xl"
           >
             <GastoFormFields
+              monedaCuenta={monedaCuenta}
               entityId={entityId}
               editingDocumentId={doc.id}
               defaultValues={{
@@ -311,7 +313,7 @@ export default async function AccountLedgerPage({
           action={updateDocument}
           maxWidthClass="max-w-xl"
         >
-          <DocumentFormFields
+          <DocumentFormFields monedaCuenta={monedaCuenta}
             editingDocumentId={doc.id}
             circuitoFijo={circuit}
             isTreasury={isTreasuryEntity}
@@ -350,13 +352,13 @@ export default async function AccountLedgerPage({
             ← Volver a {isTreasuryEntity ? "Tesorería" : entity.name}
           </Link>
           <h1 className="text-xl font-semibold mt-2">
-            {entity.name} — Cuenta {CIRCUIT_LABELS[circuit]}
+            {isTreasuryEntity ? entity.name : `${entity.name} — Cuenta ${CIRCUIT_LABELS[circuit]}`}
           </h1>
         </div>
         <div className="flex items-center gap-2">
           {isTreasuryEntity && canEdit && (
             <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
-              <DocumentFormFields fixedEntityId={entityId} isTreasury />
+              <DocumentFormFields monedaCuenta={monedaCuenta} fixedEntityId={entityId} isTreasury />
             </FormModal>
           )}
           <a

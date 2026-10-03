@@ -4,7 +4,6 @@ import { getAccountBalance, getTreasuries } from "@/lib/ledger";
 import { Wallet } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatMoney, sumDecimals } from "@/lib/money";
-import { CIRCUIT_LABELS } from "@/lib/labels";
 import { CAJA_CHICA_SLUG } from "@/lib/caja";
 import { circuitoDeTesoreria } from "@/lib/pagos";
 
@@ -28,8 +27,8 @@ export default async function TesoreriaPage() {
     };
   };
 
-  // Cada tesorería tiene una sola cuenta —el banco Blanco, las cajas Negro—, así que su saldo es
-  // ése y nada más. Ver `circuitoDeTesoreria`.
+  // Cada tesorería es una sola cuenta, sin Blanco ni Negro: su saldo es ése. Ver
+  // `circuitoDeTesoreria`, que sólo dice en qué fila de la base está guardada.
   const cards = await Promise.all(
     treasuries.map(async (treasury) => {
       const circuito = circuitoDeTesoreria(treasury.name);
@@ -59,9 +58,9 @@ export default async function TesoreriaPage() {
             >
               <div>
                 <h2 className="text-sm font-semibold">{treasury.name}</h2>
-                <p className="text-xs text-foreground/50">
-                  {treasury.slug === CAJA_CHICA_SLUG ? "Efectivo del cajón" : CIRCUIT_LABELS[circuito]}
-                </p>
+                {treasury.slug === CAJA_CHICA_SLUG && (
+                  <p className="text-xs text-foreground/50">Efectivo del cajón</p>
+                )}
               </div>
               {/* En rojo si está en negativo: una caja no puede tener menos que nada, así que eso
                   siempre es algo sin cargar o mal cargado, y tiene que saltar a la vista. */}

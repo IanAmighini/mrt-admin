@@ -15,13 +15,17 @@ export function esCaja(nombreTesoreria: string) {
 }
 
 /**
- * La única cuenta que tiene cada tesorería: el banco es Blanco, las cajas son Negro.
+ * En qué fila de la base vive la cuenta única de cada tesorería.
  *
- * Antes las tres tenían las dos cuentas y la plata caía en la que coincidía con el pago. Pagarle en
- * efectivo una factura en Blanco a un proveedor mandaba la salida a "Caja Bufano Blanco", que no
- * tiene un peso porque el efectivo está todo del otro lado, y la caja quedaba en negativo aunque la
- * plata estuviera. El circuito del pago dice contra qué cuenta del proveedor se imputa; de dónde sale
- * la plata lo dice la caja, y la caja es una sola.
+ * **No es un circuito: una caja no es ni Blanco ni Negro.** Se puede pagar en Blanco desde Caja
+ * Bufano y en Negro desde el Galicia; el circuito del pago dice contra qué cuenta del proveedor o del
+ * cliente se imputa, y la caja es una sola. Pero el modelo guarda los movimientos en una `Account`,
+ * y las cuentas tienen circuito, así que cada caja tiene su plata en una sola de sus dos: el banco
+ * en la "BLANCO" y las cajas en la "NEGRO", que es donde ya estaba todo cuando se unificó. La otra
+ * queda vacía y no se usa. Nada que se muestre puede leer este valor como Blanco o Negro.
+ *
+ * Antes la plata caía en la que coincidía con el pago, y un pago en Blanco hecho en efectivo dejaba
+ * "Caja Bufano Blanco" en negativo con la plata del otro lado.
  */
 export function circuitoDeTesoreria(nombreTesoreria: string): Circuit {
   return esCaja(nombreTesoreria) ? "NEGRO" : "BLANCO";
@@ -61,12 +65,4 @@ export function metodosDePago(circuit: Circuit, opciones?: { conRetencion?: bool
   return METODOS.filter(
     (m) => (conRetencion || m !== "RETENCION") && metodoValidoEn(circuit, m)
   );
-}
-
-/** Por qué esta tesorería no puede recibir un pago de esta cuenta, o null si puede. */
-export function motivoTesoreriaInvalida(circuit: Circuit, nombreTesoreria: string): string | null {
-  if (circuit === "NEGRO" && !esCaja(nombreTesoreria)) {
-    return `Un pago en negro no puede pasar por ${nombreTesoreria}: lo que entra o sale del banco queda registrado. Va por la caja.`;
-  }
-  return null;
 }

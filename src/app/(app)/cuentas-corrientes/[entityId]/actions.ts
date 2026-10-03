@@ -27,11 +27,12 @@ import {
   RETENTION_KIND_LABELS,
 } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
-import { circuitoDeTesoreria, motivoMetodoInvalido, motivoTesoreriaInvalida } from "@/lib/pagos";
+import { circuitoDeTesoreria, motivoMetodoInvalido } from "@/lib/pagos";
 import { crearChequeRecibido, devolverChequesALaCartera, entregarCheque, esMetodoCheque } from "@/lib/cheques";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarCajaAlcanza, asegurarSinNegativos } from "@/lib/sin-negativos";
 import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
+import { aLaMonedaDeLaCuenta, convertirMontos, leerCotizacion, monedaEscrita } from "@/lib/moneda";
 import type { AuditAction } from "@prisma/client";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
@@ -200,9 +201,6 @@ export async function updateDocument(formData: FormData) {
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
-  const currency = String(formData.get("currency") || "ARS") as Currency;
-  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
 
   const reason = String(formData.get("reason") || "").trim() || null;
 
@@ -230,9 +228,16 @@ export async function updateDocument(formData: FormData) {
     destinatario: document.destinatario?.nombre ?? null,
   });
   const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, account.entityId);
-  const { taxRows, totals } = esNota(type)
-    ? impuestosDeNota(formData, account.circuit)
-    : montoDeAjuste(formData);
+  // Los montos se guardan en la moneda de la cuenta; si se escribieron en la otra, se convierten.
+  const currency: Currency = account.entity.moneda;
+  const { convertir, exchangeRate } = aLaMonedaDeLaCuenta(
+    monedaEscrita(formData.get("currency"), currency),
+    currency,
+    leerCotizacion(formData.get("exchangeRate"))
+  );
+  const escritos = esNota(type) ? impuestosDeNota(formData, account.circuit) : montoDeAjuste(formData);
+  const taxRows = escritos.taxRows.map((r) => convertirMontos(r, convertir));
+  const totals = convertirMontos(escritos.totals, convertir);
 
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory"));
   const expenseCategory = parseRubroDeCaja(formData.get("expenseCategory"), treasuryCategory);
@@ -392,9 +397,6 @@ export async function createDocumentForEntity(formData: FormData) {
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
-  const currency = String(formData.get("currency") || "ARS") as Currency;
-  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
 
   const reason = String(formData.get("reason") || "").trim() || null;
 
@@ -402,11 +404,18 @@ export async function createDocumentForEntity(formData: FormData) {
     throw new UserError("El ajuste manual requiere un motivo.");
   }
 
+  // Los montos se guardan en la moneda de la cuenta; si se escribieron en la otra, se convierten.
+  const currency: Currency = account.entity.moneda;
+  const { convertir, exchangeRate } = aLaMonedaDeLaCuenta(
+    monedaEscrita(formData.get("currency"), currency),
+    currency,
+    leerCotizacion(formData.get("exchangeRate"))
+  );
   // Una nota es un comprobante y en Blanco lleva IVA discriminado; un ajuste es una corrección de
   // saldo y va por monto, con el signo que elija quien lo carga.
-  const { taxRows, totals } = esNota(type)
-    ? impuestosDeNota(formData, circuit)
-    : montoDeAjuste(formData);
+  const escritos = esNota(type) ? impuestosDeNota(formData, circuit) : montoDeAjuste(formData);
+  const taxRows = escritos.taxRows.map((r) => convertirMontos(r, convertir));
+  const totals = convertirMontos(escritos.totals, convertir);
 
   const treasuryCategory = parseManualTreasuryCategory(formData.get("treasuryCategory")) || null;
   const expenseCategory = parseRubroDeCaja(formData.get("expenseCategory"), treasuryCategory);
@@ -808,12 +817,15 @@ async function createRemitoCore(
         };
       }
 
+      // En una cuenta en dólares, con la cotización cargada el precio se escribió en pesos.
+      const escrito = parseNumeroEscrito(botellaRaw, "precio por botella");
+      const porBotella = currency === "USD" && exchangeRate ? escrito.dividedBy(exchangeRate) : escrito;
       return {
         productId,
         quantity,
         circuit,
         precioBotellaUsd: null,
-        unitPrice: parseNumeroEscrito(botellaRaw, "precio por botella").times(porPallet).toDecimalPlaces(2),
+        unitPrice: porBotella.times(porPallet).toDecimalPlaces(2),
       };
     })
     // Sin exigir precio > 0: una línea sin cargo es legítima (una muestra) y descartarla en
@@ -1184,14 +1196,16 @@ async function createCompraCore(
       const usdRaw = (unitPricesUsd[i] ?? "").trim();
       const usd = usdRaw ? parseNumeroEscrito(usdRaw, "precio en U$S") : null;
       const quantity = parseNumeroOpcional(quantities[i] ?? "", "cantidad");
-      // En una cuenta en dólares el precio YA es en dólares: venga del casillero que venga, entra tal
-      // cual. En una en pesos, el de dólares se pasa a pesos acá y no en el navegador, porque es el
-      // que termina en la cuenta corriente.
+      // **Con cotización, el precio se escribe en la otra moneda que la de la cuenta**, y se convierte
+      // acá y no en el navegador, porque es el que termina en la cuenta corriente: en una cuenta en
+      // pesos se escribe en dólares (el soplado de los envases) y en una en dólares, en pesos. Sin
+      // cotización, el precio ya está en la moneda de la cuenta y entra tal cual.
+      const escrito = parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario");
       const unitPrice = enCuentaEnDolares
-        ? (usd ?? parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario"))
+        ? (usd ?? (exchangeRate ? escrito.dividedBy(exchangeRate).toDecimalPlaces(4) : escrito))
         : usd && exchangeRate
           ? usd.times(exchangeRate)
-          : parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario");
+          : escrito;
       return {
         itemId,
         quantity,
@@ -1506,14 +1520,19 @@ export async function createFactura(formData: FormData) {
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, "BLANCO");
-  const currency = String(formData.get("currency") || "ARS") as Currency;
-  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+  // En la moneda de la cuenta; si se escribió en la otra, se convierte. El IVA y el total se calculan
+  // después, sobre lo convertido, para que cierren exacto.
+  const currency: Currency = account.entity.moneda;
+  const { convertir, exchangeRate } = aLaMonedaDeLaCuenta(
+    monedaEscrita(formData.get("currency"), currency),
+    currency,
+    leerCotizacion(formData.get("exchangeRate"))
+  );
 
-  const netAmount = parseAmount(formData.get("netAmount"), "neto");
+  const netAmount = convertir(parseAmount(formData.get("netAmount"), "neto"));
   const ivaRate = parseNumeroEscrito(String(formData.get("ivaRate") || DEFAULT_IVA_RATE), "IVA");
-  const retentionAmount = parseNumeroOpcional(String(formData.get("retentionAmount") || ""), "retención");
-  const perceptionAmount = parseNumeroOpcional(String(formData.get("perceptionAmount") || ""), "percepción");
+  const retentionAmount = convertir(parseNumeroOpcional(String(formData.get("retentionAmount") || ""), "retención"));
+  const perceptionAmount = convertir(parseNumeroOpcional(String(formData.get("perceptionAmount") || ""), "percepción"));
 
   const ivaAmount = netAmount.times(ivaRate).dividedBy(100);
   const totalAmount = netAmount.plus(ivaAmount).plus(perceptionAmount).minus(retentionAmount);
@@ -1630,14 +1649,19 @@ export async function updateFactura(formData: FormData) {
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, "BLANCO");
-  const currency = String(formData.get("currency") || "ARS") as Currency;
-  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate = currency === "USD" && exchangeRateRaw ? new Prisma.Decimal(exchangeRateRaw) : null;
+  // En la moneda de la cuenta; si se escribió en la otra, se convierte. El IVA y el total se calculan
+  // después, sobre lo convertido, para que cierren exacto.
+  const currency: Currency = factura.account.entity.moneda;
+  const { convertir, exchangeRate } = aLaMonedaDeLaCuenta(
+    monedaEscrita(formData.get("currency"), currency),
+    currency,
+    leerCotizacion(formData.get("exchangeRate"))
+  );
 
-  const netAmount = parseAmount(formData.get("netAmount"), "neto");
+  const netAmount = convertir(parseAmount(formData.get("netAmount"), "neto"));
   const ivaRate = parseNumeroEscrito(String(formData.get("ivaRate") || DEFAULT_IVA_RATE), "IVA");
-  const retentionAmount = parseNumeroOpcional(String(formData.get("retentionAmount") || ""), "retención");
-  const perceptionAmount = parseNumeroOpcional(String(formData.get("perceptionAmount") || ""), "percepción");
+  const retentionAmount = convertir(parseNumeroOpcional(String(formData.get("retentionAmount") || ""), "retención"));
+  const perceptionAmount = convertir(parseNumeroOpcional(String(formData.get("perceptionAmount") || ""), "percepción"));
 
   const ivaAmount = netAmount.times(ivaRate).dividedBy(100);
   const totalAmount = netAmount.plus(ivaAmount).plus(perceptionAmount).minus(retentionAmount);
@@ -1830,10 +1854,10 @@ async function validarDestino(params: {
     return;
   }
 
+  // Cualquier caja, con pagos de cualquier cuenta: se puede pagar en Blanco desde Caja Bufano y en
+  // Negro desde el Galicia.
   const tesoreria = await prisma.entity.findUnique({ where: { id: params.destino } });
   if (!tesoreria || tesoreria.type !== "TESORERIA") throw new UserError("Destino inválido.");
-  const motivo = motivoTesoreriaInvalida(params.circuit, tesoreria.name);
-  if (motivo) throw new UserError(motivo);
 }
 
 /**
@@ -1941,10 +1965,7 @@ async function applyPaymentDestino(params: {
   if (!tesoreriaDestino || tesoreriaDestino.type !== "TESORERIA") {
     throw new UserError("Destino inválido.");
   }
-  const motivo = motivoTesoreriaInvalida(payment.circuit, tesoreriaDestino.name);
-  if (motivo) throw new UserError(motivo);
-  // La cuenta de la caja, no la que coincide con el pago: un pago en Blanco hecho en efectivo sale
-  // de la caja igual, y la caja se lleva en Negro. Ver `circuitoDeTesoreria`.
+  // La cuenta única de la caja, sea cual sea el circuito del pago. Ver `circuitoDeTesoreria`.
   const treasuryAccount = await prisma.account.findUnique({
     where: {
       entityId_circuit: { entityId: destino, circuit: circuitoDeTesoreria(tesoreriaDestino.name) },
@@ -2519,7 +2540,24 @@ async function parseGasto(formData: FormData) {
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate")) ?? defaultDueDate(date, gasto.circuit);
 
-  return { account, date, dueDate, ...gasto };
+  // En la moneda de la cuenta del proveedor; si se escribió en la otra, se convierte todo el desglose.
+  const currency: Currency = account.entity.moneda;
+  const { convertir, exchangeRate } = aLaMonedaDeLaCuenta(
+    monedaEscrita(formData.get("currency"), currency),
+    currency,
+    leerCotizacion(formData.get("exchangeRate"))
+  );
+
+  return {
+    account,
+    date,
+    dueDate,
+    ...gasto,
+    currency,
+    exchangeRate,
+    taxRows: gasto.taxRows.map((r) => convertirMontos(r, convertir)),
+    totals: convertirMontos(gasto.totals, convertir),
+  };
 }
 
 export async function createGasto(formData: FormData) {

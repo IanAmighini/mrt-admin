@@ -1,5 +1,8 @@
 "use client";
 
+import type { Currency } from "@prisma/client";
+import { MonedaEscritaFields } from "./MonedaEscritaFields";
+
 import { useState } from "react";
 import {
   EXPENSE_CATEGORY_LABELS,
@@ -58,9 +61,12 @@ export function DocumentFormFields({
   viajes,
   destinatarios,
   rotuloSubcuenta,
+  monedaCuenta = "ARS",
 }: {
   fixedEntityId?: string;
   isTreasury?: boolean;
+  /** La moneda en que se lleva la cuenta: todo se guarda en ésa. */
+  monedaCuenta?: Currency;
   /** Para que la nota de crédito cuelgue del viaje —el descuento del 5% baja el saldo de ESE
    * camión, no el general— y para poder decir a nombre de quién salió. */
   viajes?: ViajeOption[];
@@ -75,7 +81,10 @@ export function DocumentFormFields({
   const esEdicion = Boolean(editingDocumentId);
   const [type, setType] = useState<TipoMovimiento>(defaultValues?.type ?? "NOTA_CREDITO");
   const [circuit, setCircuit] = useState<CircuitoMovimiento>(circuitoFijo ?? "BLANCO");
-  const [currency, setCurrency] = useState(defaultValues?.currency ?? "ARS");
+  // Al editar abre en la del comprobante, que ya es la de la cuenta; al cargar, en la de la cuenta.
+  const [currency, setCurrency] = useState<Currency>(
+    (defaultValues?.currency as Currency | undefined) ?? monedaCuenta
+  );
   const [treasuryCategory, setTreasuryCategory] = useState(defaultValues?.treasuryCategory ?? "");
   const [monto, setMonto] = useState(defaultValues?.amount ?? "");
   const [impuestos, setImpuestos] = useState<ImpuestosValores>(() => impuestosIniciales(defaultValues?.impuestos));
@@ -162,35 +171,13 @@ export function DocumentFormFields({
           </label>
           <input id="dueDate" type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />
         </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="currency">
-            Moneda
-          </label>
-          <select
-            id="currency"
-            name="currency"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-            className={inputClass}
-          >
-            <option value="ARS">ARS</option>
-            <option value="USD">USD</option>
-          </select>
-        </div>
-        {currency === "USD" && (
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="exchangeRate">
-              Cotización
-            </label>
-            <input
-              id="exchangeRate"
-              name="exchangeRate"
-              inputMode="decimal"
-              defaultValue={defaultValues?.exchangeRate}
-              className={inputClass}
-            />
-          </div>
-        )}
+        <MonedaEscritaFields
+          monedaCuenta={monedaCuenta}
+          value={currency}
+          onChange={setCurrency}
+          defaultCotizacion={defaultValues?.exchangeRate}
+          className={inputClass}
+        />
         {/* En Blanco el neto lo carga la grilla de abajo, abierto por alícuota. Acá sólo queda el
             monto de los casos que no llevan desglose: las notas en Negro y los ajustes. */}
         {!conIva && (
@@ -282,7 +269,7 @@ export function DocumentFormFields({
           <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
             <span className="text-sm">Total</span>
             <span className="text-lg font-semibold tabular-nums">
-              {formatMoney(total, currency as "ARS" | "USD")}
+              {formatMoney(total, currency)}
             </span>
           </div>
         </>

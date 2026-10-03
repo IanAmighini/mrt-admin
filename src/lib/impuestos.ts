@@ -1,4 +1,4 @@
-import { Prisma, type Circuit, type Currency, type ExpenseCategory, type TaxKind } from "@prisma/client";
+import { Prisma, type Circuit, type ExpenseCategory, type TaxKind } from "@prisma/client";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import {
   DEFAULT_IVA_RATE,
@@ -137,10 +137,8 @@ export function leerGastoDelForm(formData: FormData) {
   if (!(expenseCategoryRaw in EXPENSE_CATEGORY_LABELS)) throw new UserError("Elegí de qué es el gasto.");
   const expenseCategory = expenseCategoryRaw as ExpenseCategory;
 
-  const currency = String(formData.get("currency") || "ARS") as Currency;
-  const exchangeRateRaw = String(formData.get("exchangeRate") || "").trim();
-  const exchangeRate =
-    currency === "USD" && exchangeRateRaw ? parseNumeroEscrito(exchangeRateRaw, "cotización") : null;
+  // La moneda y la cotización no se leen acá: dependen de la cuenta del proveedor, y las resuelve la
+  // acción con `aLaMonedaDeLaCuenta`.
   const reason = String(formData.get("reason") || "").trim() || null;
 
   const numberRaw = String(formData.get("number") || "").trim();
@@ -171,7 +169,7 @@ export function leerGastoDelForm(formData: FormData) {
     }
   }
 
-  return { circuit, expenseCategory, number, currency, exchangeRate, reason, taxRows, totals };
+  return { circuit, expenseCategory, number, reason, taxRows, totals };
 }
 
 /**

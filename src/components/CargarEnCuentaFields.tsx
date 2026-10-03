@@ -105,6 +105,7 @@ export function CargarEnCuentaFields({
         <div className="mx-auto max-w-xl space-y-3">
           {vista === "GASTO" ? (
             <GastoFormFields
+              monedaCuenta={moneda}
               entityId={entityId}
               defaultValues={{ expenseCategory: rubroGasto ?? undefined }}
               viajes={viajes}
@@ -112,6 +113,7 @@ export function CargarEnCuentaFields({
             />
           ) : (
             <DocumentFormFields
+              monedaCuenta={moneda}
               fixedEntityId={entityId}
               isTreasury={isTreasury}
               viajes={viajes}

@@ -88,7 +88,9 @@ export function RemitoFormFields({
         priceMapByCircuit={priceMapByCircuit}
         defaultRows={defaultLines}
         moneda={moneda}
-        defaultCotizacion={defaultValues?.exchangeRate}
+        // En una cuenta en dólares los precios guardados son dólares; con la cotización precargada se
+        // leerían como pesos, así que se abre sin ella.
+        defaultCotizacion={moneda === "USD" ? undefined : defaultValues?.exchangeRate}
       />
       {!editingDocumentId && <PedidoLinkChecklist pedidosPendientes={pedidosPendientes ?? []} />}
       <Field label="Notas (opcional)">

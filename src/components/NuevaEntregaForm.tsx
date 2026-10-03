@@ -79,7 +79,11 @@ export function NuevaEntregaForm({
   const cliente = fixedEntity ?? clientes.find((c) => c.id === entityId);
   const cuentaEnDolares = cliente?.moneda === "USD";
   const cotizacionNum = parseNumeroSuave(cotizacion);
-  const enDolares = !cuentaEnDolares && Boolean(cotizacionNum?.greaterThan(0));
+  const hayCotizacion = Boolean(cotizacionNum?.greaterThan(0));
+  // Con cotización, el precio se escribe en la otra moneda que la de la cuenta: dólares en una en
+  // pesos (La Campechana), pesos en una en dólares.
+  const enDolares = !cuentaEnDolares && hayCotizacion;
+  const enPesos = cuentaEnDolares && hayCotizacion;
   const monedaCuenta: Currency = cuentaEnDolares ? "USD" : "ARS";
 
   // El error de la acción —por ejemplo, que no haya stock para entregar— se muestra acá, arriba del
@@ -164,7 +168,9 @@ export function NuevaEntregaForm({
     const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
     const botellas = pallets * perPallet;
     const escrito = parseNumeroSuave(row.pricePerBottle)?.toNumber() ?? 0;
-    const pricePerBottle = enDolares ? escrito * (cotizacionNum?.toNumber() ?? 0) : escrito;
+    const cot = cotizacionNum?.toNumber() ?? 0;
+    // En la moneda de la cuenta, que es en la que se guarda.
+    const pricePerBottle = enDolares ? escrito * cot : enPesos ? escrito / cot : escrito;
     const subtotal = botellas * pricePerBottle;
     const iva = row.facturado ? subtotal * (IVA_RATE / 100) : 0;
     return { row, product, pallets, botellas, subtotal, iva, pricePerBottle, perPallet };
@@ -231,32 +237,29 @@ export function NuevaEntregaForm({
             </label>
             <input id="date" type="date" name="date" required className={inputClass} />
           </div>
-          {cuentaEnDolares ? (
-            <div className="space-y-1">
-              <p className="text-sm">Moneda</p>
-              <p className={`${inputClass} bg-foreground/5`}>Dólares — la cuenta se lleva en U$S</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="exchangeRate">
-                Cotización del dólar (si el precio es en U$S)
-              </label>
-              <input
-                id="exchangeRate"
-                name="exchangeRate"
-                inputMode="decimal"
-                placeholder="1.523"
-                value={cotizacion}
-                onChange={(e) => setCotizacion(e.target.value)}
-                className={inputClass}
-              />
-              <p className="text-xs text-foreground/50">
-                {enDolares
-                  ? "El precio por botella va en U$S; los pesos se calculan con esta cotización."
-                  : "Vacía, los precios van en pesos."}
-              </p>
-            </div>
-          )}
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="exchangeRate">
+              {cuentaEnDolares ? "Cotización del dólar (si el precio es en pesos)" : "Cotización del dólar (si el precio es en U$S)"}
+            </label>
+            <input
+              id="exchangeRate"
+              name="exchangeRate"
+              inputMode="decimal"
+              placeholder="1.523"
+              value={cotizacion}
+              onChange={(e) => setCotizacion(e.target.value)}
+              className={inputClass}
+            />
+            <p className="text-xs text-foreground/50">
+              {enDolares
+                ? "El precio por botella va en U$S; los pesos se calculan con esta cotización."
+                : enPesos
+                  ? "El precio por botella va en pesos; se pasa a dólares con esta cotización."
+                  : cuentaEnDolares
+                    ? "La cuenta se lleva en dólares: vacía, los precios van en U$S."
+                    : "Vacía, los precios van en pesos."}
+            </p>
+          </div>
           {viajes.length > 0 && (
             <div className="space-y-1">
               <label className="text-sm" htmlFor="entregaId">
@@ -350,7 +353,7 @@ export function NuevaEntregaForm({
                 </div>
                 <div className="col-span-2 min-w-0">
                   <label className="text-xs text-foreground/60">
-                    {enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
+                    {enPesos ? "$/bot." : enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
                   </label>
                   <input
                     value={row.pricePerBottle}
@@ -358,10 +361,10 @@ export function NuevaEntregaForm({
                     inputMode="decimal"
                     className={inputClass}
                   />
-                  {enDolares && pricePerBottle > 0 && (
+                  {(enDolares || enPesos) && pricePerBottle > 0 && (
                     <p className="text-xs text-foreground/50 tabular-nums">
-                      = {formatMoney(pricePerBottle)}/bot.
-                      {perPallet > 0 && ` · ${formatMoney(pricePerBottle * perPallet)}/pallet`}
+                      = {formatMoney(pricePerBottle, monedaCuenta)}/bot.
+                      {perPallet > 0 && ` · ${formatMoney(pricePerBottle * perPallet, monedaCuenta)}/pallet`}
                     </p>
                   )}
                 </div>

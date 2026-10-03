@@ -27,7 +27,7 @@ export function EntitySummaryCards({
   card3Value?: string;
   card4Label?: string;
   card4Value?: string;
-  /** Una caja tiene una sola cuenta —el banco Blanco, las cajas Negro—: se muestra sólo ésa. */
+  /** Una caja es una sola cuenta: se muestra sólo la fila donde está guardada, rotulada "Saldo". */
   soloCircuito?: Circuit;
 }) {
   const hayExtras = card3Label !== undefined && card4Label !== undefined;
