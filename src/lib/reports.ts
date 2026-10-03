@@ -305,8 +305,10 @@ export type VentasReport = {
 };
 
 /**
- * Entregas a clientes del período, abiertas por cliente, marca y producto. Se miran solo los
- * REMITOs (las facturas duplicarían lo mismo, porque facturan remitos ya contados acá).
+ * Entregas a clientes del período, abiertas por cliente, marca y producto. Se miran los REMITOs
+ * (las facturas duplicarían lo mismo, porque facturan remitos ya contados acá) **menos las
+ * devoluciones**: lo que el cliente devolvió se entregó pero no lo compró, así que resta. Una
+ * devolución es una nota de crédito con líneas de producto.
  */
 export async function getVentasReport(
   period: Period,
@@ -314,7 +316,7 @@ export async function getVentasReport(
 ): Promise<VentasReport> {
   const documents = await prisma.document.findMany({
     where: {
-      type: "REMITO",
+      type: { in: ["REMITO", "NOTA_CREDITO"] },
       lines: { some: {} },
       date: { gte: period.from, lt: period.to },
       account: {
@@ -344,9 +346,11 @@ export async function getVentasReport(
 
   for (const doc of documents) {
     const { entity, circuit } = doc.account;
-    for (const line of doc.lines) {
-      const pallets = toDecimal(line.quantity);
-      const litros = litrosDeLinea(line);
+    const signo = doc.type === "NOTA_CREDITO" ? -1 : 1;
+    for (const rawLine of doc.lines) {
+      const line = { ...rawLine, subtotal: rawLine.subtotal.times(signo) };
+      const pallets = toDecimal(line.quantity).times(signo);
+      const litros = litrosDeLinea(line).times(signo);
       const marca = formatProductBrandLabel(line.product);
 
       const cliente = porCliente.get(entity.slug) ?? { ...emptyAgg(), entityName: entity.name, entitySlug: entity.slug };
@@ -369,7 +373,7 @@ export async function getVentasReport(
       accumulate(totales, pallets, litros, doc.currency, line.subtotal);
 
       detalle.push({
-        number: doc.number,
+        number: signo < 0 ? `${doc.number} (devolución)` : doc.number,
         date: doc.date,
         entityName: entity.name,
         circuit,
@@ -1012,10 +1016,11 @@ export async function getStockReport(period: Period): Promise<StockReport> {
       boxesPerPallet: prod.boxesPerPallet,
       categoria: "PRODUCTO",
       inicial,
-      // Lo que entró: lo producido, lo devuelto y el armado neto (armar suma pallets, desarmar
-      // resta). Así la fila cierra sola contra el final.
-      ingresos: suma(["PRODUCCION", "DEVOLUCION", "ARMADO", "DESARMADO"]),
-      consumo: suma(["ENTREGA", "CONSUMO_ARMADO_CAJA"]).negated(),
+      // Lo que entró: lo producido y el armado neto (armar suma pallets, desarmar resta). Lo
+      // devuelto resta de lo entregado: se entregó, pero el cliente no lo compró. Así la fila
+      // cierra sola contra el final.
+      ingresos: suma(["PRODUCCION", "ARMADO", "DESARMADO"]),
+      consumo: suma(["ENTREGA", "DEVOLUCION", "CONSUMO_ARMADO_CAJA"]).negated(),
       mermas: suma(["MERMA"]),
       ajustes: suma(["AJUSTE"]),
       ventas: ZERO,
@@ -1038,8 +1043,8 @@ export async function getStockReport(period: Period): Promise<StockReport> {
       boxesPerPallet: null,
       categoria: "CAJA",
       inicial,
-      ingresos: suma(["PRODUCCION", "DEVOLUCION", "ARMADO", "DESARMADO"]),
-      consumo: suma(["ENTREGA"]).negated(),
+      ingresos: suma(["PRODUCCION", "ARMADO", "DESARMADO"]),
+      consumo: suma(["ENTREGA", "DEVOLUCION"]).negated(),
       mermas: suma(["MERMA"]),
       ajustes: suma(["AJUSTE"]),
       ventas: ZERO,

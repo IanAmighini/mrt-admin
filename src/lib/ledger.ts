@@ -332,9 +332,10 @@ export function litrosDeLinea(line: LineWithRecipe): Prisma.Decimal {
   return toDecimal(line.quantity).times(oilRecipe.quantityPerUnit);
 }
 
+/** Lo entregado menos lo devuelto: una devolución es una nota de crédito con líneas de producto. */
 export async function getLitrosEntregados(entityId: string): Promise<Prisma.Decimal> {
   const documents = await prisma.document.findMany({
-    where: { type: "REMITO", account: { entityId }, lines: { some: {} } },
+    where: { type: { in: ["REMITO", "NOTA_CREDITO"] }, account: { entityId }, lines: { some: {} } },
     include: {
       lines: {
         include: {
@@ -344,7 +345,11 @@ export async function getLitrosEntregados(entityId: string): Promise<Prisma.Deci
     },
   });
 
-  return sumDecimals(documents.flatMap((doc) => doc.lines.map(litrosDeLinea)));
+  return sumDecimals(
+    documents.flatMap((doc) =>
+      doc.lines.map((l) => (doc.type === "NOTA_CREDITO" ? litrosDeLinea(l).negated() : litrosDeLinea(l)))
+    )
+  );
 }
 
 /** Cantidad de remitos (entregas) distintos de una entidad — una compra/entrega mixta

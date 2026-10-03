@@ -279,9 +279,11 @@ export async function getRentabilidad(period: Period = monthPeriod()) {
  * el historial de precios para no tener dos fuentes de verdad sobre lo efectivamente cobrado).
  */
 export async function getProductoEntregadoValorizado(period: Period = monthPeriod()) {
+  // Los remitos menos las devoluciones (notas de crédito con producto): lo devuelto se entregó pero
+  // no se vendió.
   const documents = await prisma.document.findMany({
     where: {
-      type: "REMITO",
+      OR: [{ type: "REMITO" }, { type: "NOTA_CREDITO", lines: { some: {} } }],
       date: { gte: period.from, lt: period.to },
       account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
     },
@@ -312,9 +314,10 @@ export async function getProductoEntregadoValorizado(period: Period = monthPerio
   }
 
   for (const doc of documents) {
+    const signo = doc.type === "NOTA_CREDITO" ? -1 : 1;
     if (doc.lines.length > 0) {
       for (const line of doc.lines) {
-        addLine(line.productId, line.product, line.quantity, doc.currency, line.subtotal);
+        addLine(line.productId, line.product, line.quantity.times(signo), doc.currency, line.subtotal.times(signo));
       }
     } else if (doc.product && doc.quantity) {
       addLine(doc.productId!, doc.product, doc.quantity, doc.currency, doc.totalAmount);
