@@ -1,6 +1,5 @@
 import type { Circuit, Currency, Prisma, Product } from "@prisma/client";
 import { formatNumeroExacto } from "@/lib/money";
-import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import type { PedidoPendiente } from "@/lib/pedidos";
 import { RemitoLinesFields } from "./RemitoLinesFields";
 import { PedidoLinkChecklist } from "./PedidoLinkChecklist";
@@ -100,36 +99,6 @@ export function RemitoFormFields({
         {editingDocumentId ? "Guardar cambios" : "Crear remito"}
       </button>
     </>
-  );
-}
-
-export function RemitoForm({
-  entityId,
-  products,
-  priceMapByCircuit,
-  pedidosPendientes,
-  viajes,
-  destinatarios,
-}: {
-  entityId: string;
-  products: Product[];
-  priceMapByCircuit: PriceMap;
-  pedidosPendientes?: PedidoPendiente[];
-  viajes?: ViajeOption[];
-  destinatarios?: DestinatarioOption[];
-}) {
-  return (
-    <form action={createRemito} className="space-y-4 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-      <h2 className="text-sm font-semibold">Nuevo remito</h2>
-      <RemitoFormFields
-        entityId={entityId}
-        products={products}
-        priceMapByCircuit={priceMapByCircuit}
-        pedidosPendientes={pedidosPendientes}
-        viajes={viajes}
-        destinatarios={destinatarios}
-      />
-    </form>
   );
 }
 

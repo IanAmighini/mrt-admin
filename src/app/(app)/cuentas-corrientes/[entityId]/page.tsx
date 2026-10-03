@@ -31,6 +31,7 @@ import { deleteEntity, updateEntity } from "@/app/(app)/clientes/actions";
 import { FormModal } from "@/components/Modal";
 import { EntityFormFields } from "@/components/EntityFormFields";
 import { DeleteButton } from "@/components/DeleteButton";
+import { FormConError } from "@/components/FormConError";
 import { EntitySummaryCards } from "@/components/EntitySummaryCards";
 import { EntregasPanel } from "@/components/EntregasPanel";
 import { ComprasPanel } from "@/components/ComprasPanel";
@@ -462,7 +463,12 @@ function PricesSection({
           </Table>
 
           {canEdit && (
-            <form action={createPrice} className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
+            <FormConError
+              action={createPrice}
+              submitLabel="Guardar precio"
+              pendingLabel="Guardando…"
+              className="space-y-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
+            >
               <h4 className="text-sm font-semibold">Cargar precio</h4>
               <input type="hidden" name="entityId" value={entityId} />
               <input type="hidden" name="circuit" value={circuit} />
@@ -490,10 +496,7 @@ function PricesSection({
                   <input type="date" name="validFrom" required className={inputClass} />
                 </Field>
               </div>
-              <button type="submit" className={submitClass}>
-                Guardar precio
-              </button>
-            </form>
+            </FormConError>
           )}
 
           <details>
@@ -539,5 +542,3 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const selectClass = inputClass;
-const submitClass =
-  "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";

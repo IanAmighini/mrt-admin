@@ -2,6 +2,7 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { BotonConError } from "@/components/BotonConError";
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/nav";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
@@ -208,13 +209,13 @@ export default async function UsuariosPage({
                         </DeleteButton>
                       )
                     ) : (
-                      <form action={toggleUserActive}>
-                        <input type="hidden" name="id" value={u.id} />
-                        <input type="hidden" name="active" value="false" />
-                        <button type="submit" className="text-xs underline underline-offset-2">
-                          Reactivar
-                        </button>
-                      </form>
+                      <BotonConError
+                        action={toggleUserActive}
+                        hidden={{ id: u.id, active: "false" }}
+                        className="text-xs underline underline-offset-2"
+                      >
+                        Reactivar
+                      </BotonConError>
                     )}
                   </div>
                 </td>

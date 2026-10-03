@@ -145,8 +145,10 @@ export default async function ItemDetailPage({
       </div>
 
       {canEdit && (
-        <form
+        <FormConError
           action={updateItemAjustes}
+          submitLabel="Guardar"
+          pendingLabel="Guardando…"
           className="flex flex-wrap items-end gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <input type="hidden" name="itemId" value={item.id} />
@@ -228,18 +230,12 @@ export default async function ItemDetailPage({
             <input type="checkbox" name="llevaStock" defaultChecked={item.llevaStock} />
             Lleva stock
           </label>
-          <button
-            type="submit"
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Guardar
-          </button>
           <p className="w-full text-xs text-foreground/50">
             Dejá el mínimo vacío para que este insumo no aparezca en el control de faltantes.
             {item.category === "ENVASES" &&
               " Las unidades por pallet son las del pallet descartable con el que llega, y sirven para cargar el remito; ese pallet no entra a stock."}
           </p>
-        </form>
+        </FormConError>
       )}
 
       {canEdit && (

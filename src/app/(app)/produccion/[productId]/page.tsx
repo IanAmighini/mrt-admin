@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { FormConError } from "@/components/FormConError";
+import { BotonConError } from "@/components/BotonConError";
 import { notFound, redirect } from "next/navigation";
 import type { SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -135,8 +137,9 @@ export default async function ProductDetailPage({
       </div>
 
       {canEdit && (
-        <form
+        <FormConError
           action={updateProduct}
+          submitLabel="Guardar cambios"
           className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Editar producto</h2>
@@ -215,18 +218,13 @@ export default async function ProductDetailPage({
               />
             </div>
           </div>
-          <button
-            type="submit"
-            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Guardar cambios
-          </button>
-        </form>
+        </FormConError>
       )}
 
       {canEdit && product.boxesPerPallet && product.unitsPerBox && (
-        <form
+        <FormConError
           action={generateRecipeFromPresentation}
+          submitLabel="Generar receta"
           className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Generar receta desde presentación</h2>
@@ -298,18 +296,13 @@ export default async function ProductDetailPage({
               </select>
             </Field>
           </div>
-          <button
-            type="submit"
-            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Generar receta
-          </button>
-        </form>
+        </FormConError>
       )}
 
       {canEdit && (
-        <form
+        <FormConError
           action={upsertRecipeLine}
+          submitLabel="Guardar"
           className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Agregar / actualizar insumo de la receta</h2>
@@ -349,13 +342,7 @@ export default async function ProductDetailPage({
             &quot;Unidad de producto&quot; acá es 1 pallet armado (así se carga la producción
             diaria de este producto).
           </p>
-          <button
-            type="submit"
-            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Guardar
-          </button>
-        </form>
+        </FormConError>
       )}
 
       <div>
@@ -378,13 +365,13 @@ export default async function ProductDetailPage({
                   </td>
                   {canEdit && (
                     <td className="py-2 pr-4">
-                      <form action={deleteRecipeLine}>
-                        <input type="hidden" name="recipeItemId" value={line.id} />
-                        <input type="hidden" name="productId" value={product.id} />
-                        <button type="submit" className="text-xs underline underline-offset-2">
-                          Quitar
-                        </button>
-                      </form>
+                      <BotonConError
+                        action={deleteRecipeLine}
+                        hidden={{ recipeItemId: line.id, productId: product.id }}
+                        className="text-xs underline underline-offset-2"
+                      >
+                        Quitar
+                      </BotonConError>
                     </td>
                   )}
                 </tr>
@@ -402,8 +389,9 @@ export default async function ProductDetailPage({
       </div>
 
       {canAdjust && (
-        <form
+        <FormConError
           action={createProductMovement}
+          submitLabel="Registrar movimiento"
           className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
         >
           <h2 className="text-sm font-semibold">Ajustar el stock</h2>
@@ -453,13 +441,7 @@ export default async function ProductDetailPage({
               className={selectClass}
             />
           </Field>
-          <button
-            type="submit"
-            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-          >
-            Registrar movimiento
-          </button>
-        </form>
+        </FormConError>
       )}
 
       <div>

@@ -51,7 +51,8 @@ export function FormConError({
     <form action={formAction} className={className}>
       {children}
       {error && (
-        <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+        // `basis-full`: en un formulario en fila (flex-wrap) el aviso ocupa su propio renglón.
+        <p className="w-full basis-full rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
           {error}
         </p>
       )}

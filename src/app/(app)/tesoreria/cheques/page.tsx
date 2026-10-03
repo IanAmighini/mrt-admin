@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BotonConError } from "@/components/BotonConError";
 import { formatFecha } from "@/lib/period";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
@@ -270,12 +271,8 @@ function EstadoButton({
   label: string;
 }) {
   return (
-    <form action={actualizarEstadoCheque}>
-      <input type="hidden" name="chequeId" value={chequeId} />
-      <input type="hidden" name="estado" value={estado} />
-      <button type="submit" className={botonClass}>
-        {label}
-      </button>
-    </form>
+    <BotonConError action={actualizarEstadoCheque} hidden={{ chequeId, estado }} className={botonClass}>
+      {label}
+    </BotonConError>
   );
 }

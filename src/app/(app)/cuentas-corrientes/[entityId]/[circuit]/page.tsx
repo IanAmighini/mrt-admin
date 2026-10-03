@@ -32,6 +32,7 @@ import {
 } from "../actions";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
+import { BotonConError } from "@/components/BotonConError";
 import { RemitoFormFields, lineaDeRemito } from "@/components/RemitoForm";
 import { CompraFormFields, filaDeCompra } from "@/components/CompraForm";
 import { EditFacturaFields } from "@/components/EditFacturaFields";
@@ -179,12 +180,13 @@ export default async function AccountLedgerPage({
 
     const moveToBlanco =
       circuit === "NEGRO" && doc.remitoLinks.length === 0 ? (
-        <form action={moveRemitoToBlanco}>
-          <input type="hidden" name="documentId" value={doc.id} />
-          <button type="submit" className="text-xs underline underline-offset-2">
-            Mover a Blanco
-          </button>
-        </form>
+        <BotonConError
+          action={moveRemitoToBlanco}
+          hidden={{ documentId: doc.id }}
+          className="text-xs underline underline-offset-2"
+        >
+          Mover a Blanco
+        </BotonConError>
       ) : null;
 
     // Una devolución: nota de crédito con la mercadería que volvió. No se edita —el importe y el
