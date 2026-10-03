@@ -127,7 +127,9 @@ export default async function OrdenPagoPage({
               <tr key={p.id} className="border-b border-neutral-200">
                 <td className="px-3 py-2">{i + 1}</td>
                 {/* El comprobante del pago: el número del cheque si lo hubo, o la referencia. */}
-                <td className="px-3 py-2">{p.chequeEntregado?.numero ?? p.reference ?? "—"}</td>
+                <td className="px-3 py-2">{p.chequesEntregados.length > 0
+                    ? p.chequesEntregados.map((c) => `#${c.numero}`).join(", ")
+                    : (p.reference ?? "—")}</td>
                 <td className="px-3 py-2">{fecha(p.date)}</td>
                 <td className="px-3 py-2">{PAYMENT_METHOD_LABELS[p.method]}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatMoney(p.amount)}</td>

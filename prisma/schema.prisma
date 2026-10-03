@@ -457,9 +457,11 @@ model Payment {
    */
   treasuryId      String?
   treasury        Entity?    @relation(fields: [treasuryId], references: [id])
-  /// El cheque que entró con este cobro, o el que salió con este pago.
-  chequeRecibido  Cheque?    @relation("ChequeRecibido")
-  chequeEntregado Cheque?    @relation("ChequeEntregado")
+  /// El cheque que entró con este cobro.
+  chequeRecibido    Cheque?    @relation("ChequeRecibido")
+  /// Los cheques que salieron con este pago. Pueden ser varios: a un proveedor se le pagan $2.000.000
+  /// con tres echeqs de la cartera, y se carga como un solo pago.
+  chequesEntregados Cheque[]   @relation("ChequeEntregado")
   /// La orden de pago que documenta este pago, si se generó.
   ordenPagoId     String?
   ordenPago       OrdenPago? @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
@@ -496,7 +498,7 @@ model Cheque {
   id         String       @id @default(cuid())
   numero     String
   banco      String?
-  /// Un echeq es bancario y va siempre en blanco; uno físico, generalmente en negro.
+  /// Si es un echeq o un cheque de papel. Los dos se pueden entregar en cualquier cuenta.
   esEcheq    Boolean      @default(false)
   amount     Decimal      @db.Decimal(14, 2)
   /// Desde cuándo se puede cobrar. En uno al día, la fecha en que se recibió.
@@ -506,8 +508,9 @@ model Cheque {
   /// El cobro con el que entró. Si ese cobro se borra, el cheque no existió: se va con él.
   recibidoEnId  String?  @unique
   recibidoEn    Payment? @relation("ChequeRecibido", fields: [recibidoEnId], references: [id], onDelete: Cascade)
-  /// El pago con el que salió. Borrar ese pago lo devuelve a la cartera en vez de borrarlo.
-  entregadoEnId String?  @unique
+  /// El pago con el que salió. Borrar ese pago lo devuelve a la cartera en vez de borrarlo. No es
+  /// único: un mismo pago puede llevarse varios cheques.
+  entregadoEnId String?
   entregadoEn   Payment? @relation("ChequeEntregado", fields: [entregadoEnId], references: [id], onDelete: SetNull)
 
   /**
@@ -529,6 +532,7 @@ model Cheque {
 
   @@index([estado])
   @@index([cambioEnId])
+  @@index([entregadoEnId])
 }
 
 /**

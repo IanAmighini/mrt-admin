@@ -5,7 +5,7 @@ import type { Circuit, Currency, Entity, PaymentMethod } from "@prisma/client";
 import { PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS, RETENTION_KIND_ORDER } from "@/lib/labels";
 import { metodosDePago } from "@/lib/pagos";
 import { ViajeFields, type ViajeOption } from "./ViajeFields";
-import { formatMoney, parseNumeroSuave } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 
 /** Lo mínimo de un cheque para poder elegirlo; ya serializado, porque esto corre en el navegador. */
@@ -63,7 +63,8 @@ export function PaymentFormFields({
   const [monto, setMonto] = useState("");
   const [circuit, setCircuit] = useState<Circuit>("BLANCO");
   const [method, setMethod] = useState<PaymentMethod>("EFECTIVO");
-  const [chequeId, setChequeId] = useState("");
+  // Los cheques de la cartera que se entregan con este pago: pueden ser varios.
+  const [chequeIds, setChequeIds] = useState<string[]>([]);
   // En negro no hay echeq ni retención, así que la fila de métodos es más corta. Una retención la
   // practica el cliente al pagarnos: no existe cuando el que paga sos vos.
   const metodos = metodosDePago(circuit, { conRetencion: isCobro });
@@ -80,11 +81,20 @@ export function PaymentFormFields({
   // Al cobrar, el cheque entra y hay que describirlo. Al pagar, sale de la cartera: se elige uno de
   // los que ya están, y así el mismo papel queda con su origen y su destino.
   const eligeDeCartera = esCheque && !isCobro;
-  // Entregar un echeq para cancelar una deuda en negro es la misma contradicción que cargarlo como
-  // método: queda registrado en el banco. Se saca de la lista en vez de dejar elegirlo y fallar.
-  const chequesQueSePuedenEntregar = (cartera ?? []).filter(
-    (c) => circuit === "BLANCO" || !c.esEcheq
-  );
+  // Los de la cartera que corresponden al método: echeqs si se paga con echeq, de papel si con cheque.
+  const chequesQueSePuedenEntregar = (cartera ?? []).filter((c) => c.esEcheq === (method === "ECHEQ"));
+  const elegidos = chequesQueSePuedenEntregar.filter((c) => chequeIds.includes(c.id));
+  const sumaElegidos = elegidos.reduce((acc, c) => acc.plus(parseNumeroSuave(c.amount) ?? ZERO), ZERO);
+
+  /** Tildar o destildar un cheque recalcula el monto: el pago es lo que suman, se entregan enteros. */
+  function alternarCheque(id: string) {
+    const siguientes = chequeIds.includes(id) ? chequeIds.filter((x) => x !== id) : [...chequeIds, id];
+    setChequeIds(siguientes);
+    const suma = chequesQueSePuedenEntregar
+      .filter((c) => siguientes.includes(c.id))
+      .reduce((acc, c) => acc.plus(parseNumeroSuave(c.amount) ?? ZERO), ZERO);
+    setMonto(siguientes.length > 0 ? formatNumeroEditable(suma) : "");
+  }
   const [cotizacion, setCotizacion] = useState("");
   const monedaCuenta: Currency =
     moneda ?? entities?.find((e) => e.id === entityId)?.moneda ?? "ARS";
@@ -139,8 +149,8 @@ export function PaymentFormFields({
                 checked={circuit === c}
                 onChange={() => {
                   setCircuit(c);
-                  // Lo elegido puede no existir en la otra cuenta: se vuelve al método de siempre
-                  // en vez de mandar un echeq en negro con la fila ya escondida.
+                  // Lo elegido puede no existir en la otra cuenta (una retención en negro): se
+                  // vuelve al método de siempre en vez de mandarlo con la fila ya escondida.
                   if (!metodosDePago(c, { conRetencion: isCobro }).includes(method)) {
                     setMethod("EFECTIVO");
                   }
@@ -163,7 +173,15 @@ export function PaymentFormFields({
                 name="method"
                 value={m}
                 checked={method === m}
-                onChange={() => setMethod(m)}
+                onChange={() => {
+                  setMethod(m);
+                  // Los cheques elegidos son de un tipo: al cambiar de método se descartan, y con
+                  // ellos el monto que habían completado.
+                  if (chequeIds.length > 0) {
+                    setChequeIds([]);
+                    setMonto("");
+                  }
+                }}
                 className="sr-only"
               />
               {PAYMENT_METHOD_LABELS[m]}
@@ -191,8 +209,12 @@ export function PaymentFormFields({
             placeholder="0.00"
             value={monto}
             onChange={(e) => setMonto(e.target.value)}
-            className={inputClass}
+            readOnly={eligeDeCartera && elegidos.length > 0}
+            className={`${inputClass} read-only:bg-foreground/5`}
           />
+          {eligeDeCartera && elegidos.length > 0 && (
+            <p className="text-xs text-foreground/50">Es lo que suman los cheques elegidos.</p>
+          )}
         </div>
       </div>
 
@@ -226,35 +248,54 @@ export function PaymentFormFields({
         <div className="space-y-2 rounded-lg border border-foreground/10 p-3">
           {eligeDeCartera ? (
             <>
-              <p className="text-sm">
-                Cheque a entregar
-                <span className="block text-xs text-foreground/50">
-                  El monto del pago tiene que ser el del cheque: se entrega entero.
-                </span>
-              </p>
-              <select
-                name="chequeId"
-                value={chequeId}
-                onChange={(e) => {
-                  setChequeId(e.target.value);
-                  const elegido = cartera?.find((c) => c.id === e.target.value);
-                  if (elegido) setMonto(elegido.amount);
-                }}
-                className={inputClass}
-              >
-                <option value="">— Es un cheque que no está en cartera —</option>
-                {chequesQueSePuedenEntregar.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    #{c.numero}
-                    {c.banco ? ` · ${c.banco}` : ""} · {c.montoLabel}
-                    {c.deQuien ? ` · de ${c.deQuien}` : ""}
-                    {c.fechaCobro ? ` · cobrable ${c.fechaCobro}` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-sm">
+                  {method === "ECHEQ" ? "Echeqs a entregar" : "Cheques a entregar"}
+                  <span className="block text-xs text-foreground/50">
+                    Tildá uno o varios de la cartera. Se entregan enteros: el pago es lo que suman.
+                  </span>
+                </p>
+                {elegidos.length > 0 && (
+                  <p className="shrink-0 text-sm font-medium tabular-nums">
+                    {elegidos.length} · {formatMoney(sumaElegidos)}
+                  </p>
+                )}
+              </div>
+              {chequesQueSePuedenEntregar.length === 0 ? (
+                <p className="text-xs text-foreground/50">
+                  No hay {method === "ECHEQ" ? "echeqs" : "cheques"} en cartera. Si es uno que no pasó
+                  por la cartera, cargalo abajo.
+                </p>
+              ) : (
+                <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-foreground/10 p-1">
+                  {chequesQueSePuedenEntregar.map((c) => (
+                    <label
+                      key={c.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-foreground/5 has-[:checked]:bg-primary/10"
+                    >
+                      <input
+                        type="checkbox"
+                        name="chequeId"
+                        value={c.id}
+                        checked={chequeIds.includes(c.id)}
+                        onChange={() => alternarCheque(c.id)}
+                      />
+                      <span className="min-w-0 flex-1 truncate">
+                        #{c.numero}
+                        {c.banco ? ` · ${c.banco}` : ""}
+                        <span className="text-foreground/50">
+                          {c.deQuien ? ` · de ${c.deQuien}` : ""}
+                          {c.fechaCobro ? ` · cobrable ${c.fechaCobro}` : ""}
+                        </span>
+                      </span>
+                      <span className="shrink-0 tabular-nums">{c.montoLabel}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
               {/* No todo cheque entró por un cobro: los hay propios y los que se consiguen
                   cambiándolos. Obligar a elegir de la cartera dejaba esos pagos sin poder cargarse. */}
-              {!chequeId && (
+              {elegidos.length === 0 && (
                 <div className="grid grid-cols-3 gap-2 pt-1">
                   <div className="space-y-1">
                     <label className="text-xs text-foreground/70" htmlFor="chequeNumero">

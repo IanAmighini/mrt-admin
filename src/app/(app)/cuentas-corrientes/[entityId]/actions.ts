@@ -28,7 +28,7 @@ import {
 } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { circuitoDeTesoreria, motivoMetodoInvalido } from "@/lib/pagos";
-import { crearChequeRecibido, devolverChequesALaCartera, entregarCheque, esMetodoCheque } from "@/lib/cheques";
+import { crearChequeRecibido, devolverChequesALaCartera, entregarCheques, esMetodoCheque } from "@/lib/cheques";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarCajaAlcanza, asegurarSinNegativos } from "@/lib/sin-negativos";
 import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
@@ -1761,14 +1761,14 @@ async function aplicarCheque(
 ) {
   if (!esMetodoCheque(params.method)) return;
 
-  const chequeId = String(params.formData.get("chequeId") || "").trim();
-  if (chequeId) {
-    await entregarCheque(tx, {
-      paymentId: params.paymentId,
-      chequeId,
-      amount: params.amount,
-      circuit: params.circuit,
-    });
+  // Uno o varios cheques de la cartera: se entregan todos con este pago.
+  const chequeIds = params.formData
+    .getAll("chequeId")
+    .map((v) => String(v).trim())
+    .filter(Boolean);
+  if (chequeIds.length > 0) {
+    if (!params.esPago) throw new UserError("Los cheques de la cartera se entregan al pagar, no al cobrar.");
+    await entregarCheques(tx, { paymentId: params.paymentId, chequeIds, amount: params.amount });
     return;
   }
 
@@ -2129,7 +2129,8 @@ export async function createPaymentForEntity(formData: FormData) {
       formData,
       paymentId: payment.id,
       method,
-      amount,
+      // Los cheques son en pesos: en una cuenta en dólares se comparan contra los pesos escritos.
+      amount: amountArs ?? amount,
       circuit,
       userId: user.id,
       esPago: !isCobro,
@@ -2329,10 +2330,19 @@ export async function updatePayment(formData: FormData) {
     }),
   });
 
+  // **Los cheques del pago quedan como están, salvo que el formulario traiga otros.** El de editar
+  // no tiene campos de cheque, y antes rehacía igual el cheque desde el formulario: tiraba "falta el
+  // número del cheque" y no dejaba editar ningún pago hecho con cheques, ni para cambiarle la fecha.
+  // Para cambiar los cheques se borra el pago y se carga de nuevo.
+  const traeCheques = formData.getAll("chequeId").some(Boolean) || Boolean(formData.get("chequeNumero"));
+  const conservaCheques = esMetodoCheque(method) && esMetodoCheque(payment.method) && !traeCheques;
+
   await prisma.$transaction(async (tx) => {
-    // Editar un pago rehace todo lo que colgaba de él, y el cheque entra en eso: vuelve a la
-    // cartera y se lo reasigna abajo con lo que venga del formulario.
-    await devolverChequesALaCartera(tx, paymentId);
+    if (!conservaCheques) {
+      // Editar un pago rehace todo lo que colgaba de él, y el cheque entra en eso: vuelve a la
+      // cartera y se lo reasigna abajo con lo que venga del formulario.
+      await devolverChequesALaCartera(tx, paymentId);
+    }
     await tx.paymentAllocation.deleteMany({ where: { paymentId } });
     await tx.document.deleteMany({ where: { sourcePaymentId: paymentId } });
     // Solo el lado "cobro" (con el selector de Proveedor) puede rearmar el vínculo desde cero —
@@ -2362,6 +2372,28 @@ export async function updatePayment(formData: FormData) {
       },
     });
 
+    if (conservaCheques) {
+      // Se quedan los mismos cheques, así que el monto tiene que seguir siendo lo que valen: un
+      // cheque no cambia de importe porque se edite el pago.
+      const enPesos = amountArs ?? amount;
+      const entregados = await tx.cheque.findMany({ where: { entregadoEnId: paymentId } });
+      const recibido = await tx.cheque.findUnique({ where: { recibidoEnId: paymentId } });
+      const valen = entregados.length > 0
+        ? entregados.reduce((acc, c) => acc.plus(c.amount), toDecimal(0))
+        : recibido?.amount;
+      if (valen && !valen.equals(enPesos)) {
+        if (recibido && entregados.length === 0 && recibido.estado === "EN_CARTERA") {
+          // El de un cobro que todavía está en cartera se corrige junto con el cobro: es el mismo papel.
+          await tx.cheque.update({ where: { id: recibido.id }, data: { amount: enPesos } });
+        } else {
+          throw new UserError(
+            `Los cheques de este pago valen ${formatMoney(valen)} y el monto quedaría en ${formatMoney(enPesos)}. Para cambiar los cheques, borrá el pago y cargalo de nuevo.`
+          );
+        }
+      }
+      return;
+    }
+
     // El cheque que ya existía se borró con `devolverChequesALaCartera` sólo si había salido; el que
     // entró con este cobro sigue vivo, así que se actualiza en vez de duplicarlo.
     const yaTiene = await tx.cheque.findUnique({ where: { recibidoEnId: paymentId } });
@@ -2370,7 +2402,8 @@ export async function updatePayment(formData: FormData) {
       formData,
       paymentId,
       method,
-      amount,
+      // Los cheques son en pesos: en una cuenta en dólares se comparan contra los pesos escritos.
+      amount: amountArs ?? amount,
       circuit,
       userId: user.id,
       esPago: formData.get("isCobro") !== "1",

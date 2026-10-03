@@ -46,9 +46,9 @@ const METODOS: PaymentMethod[] = [
  */
 export function motivoMetodoInvalido(circuit: Circuit, method: PaymentMethod): string | null {
   if (circuit !== "NEGRO") return null;
-  if (method === "ECHEQ") {
-    return "Un echeq es bancario y queda registrado: no puede ir en la cuenta en negro. Cargalo como cheque, efectivo o transferencia.";
-  }
+  // Un echeq sí puede ir en negro: igual que se paga en negro desde el banco, se le puede entregar a
+  // un proveedor un echeq de la cartera por una deuda en negro. Antes se prohibía, y como la cartera
+  // es casi toda de echeqs, en negro no quedaba nada para elegir.
   if (method === "RETENCION") {
     return "Una retención la practica el cliente sobre una factura, así que no existe en la cuenta en negro.";
   }

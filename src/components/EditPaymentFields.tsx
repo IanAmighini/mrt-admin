@@ -51,7 +51,7 @@ export function EditPaymentFields({
 }) {
   const isCobro = proveedores !== undefined;
 
-  // Las mismas reglas que al cargar: en negro no hay echeq ni retención, y el banco no es destino.
+  // Las mismas reglas que al cargar: en negro no hay retención.
   const [circuit, setCircuit] = useState<Circuit>(defaultValues.circuit);
   const [method, setMethod] = useState<PaymentMethod>(defaultValues.method);
   const metodos = metodosDePago(circuit, { conRetencion: isCobro });
@@ -115,6 +115,13 @@ export function EditPaymentFields({
             </label>
           ))}
         </div>
+        {(method === "CHEQUE" || method === "ECHEQ") && (
+          <p className="text-xs text-foreground/50">
+            {defaultValues.method === "CHEQUE" || defaultValues.method === "ECHEQ"
+              ? "Los cheques de este pago quedan como están. Para cambiarlos, borrá el pago y cargalo de nuevo."
+              : "Para pagar con cheques, borrá este pago y cargá uno nuevo: ahí se eligen de la cartera."}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">

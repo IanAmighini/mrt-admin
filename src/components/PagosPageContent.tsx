@@ -8,6 +8,7 @@ import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
 import { DeleteButton } from "./DeleteButton";
 import { PaymentFormFields } from "./PaymentFormFields";
+import { getCarteraParaFormulario } from "@/lib/cheques";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { EditPaymentFields } from "./EditPaymentFields";
 import {
@@ -30,13 +31,16 @@ export async function PagosPageContent({
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
   const isCobro = entityNoun === "Cliente";
 
-  const [entities, pagos, treasuries, proveedores] = await Promise.all([
+  const [entities, pagos, treasuries, proveedores, cartera] = await Promise.all([
     prisma.entity.findMany({ where: { type: { in: typeFilter } }, orderBy: { name: "asc" } }),
     getRecentPayments(typeFilter, 30),
     getTreasuries(),
     isCobro
       ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
       : Promise.resolve([]),
+    // Para pagarle a un proveedor con cheques de la cartera. Antes sólo estaba en la ficha del
+    // proveedor, y desde acá no había forma de elegir uno: se cargaba como cheque nuevo.
+    isCobro ? Promise.resolve([]) : getCarteraParaFormulario(),
   ]);
 
   const linkedPaymentIds = pagos.map((p) => p.linkedPaymentId).filter((id): id is string => !!id);
@@ -67,6 +71,7 @@ export async function PagosPageContent({
               entities={entities}
               entityNoun={entityNoun}
               treasuries={treasuries}
+              cartera={isCobro ? undefined : cartera}
               proveedores={isCobro ? proveedores : undefined}
             />
           </FormModal>

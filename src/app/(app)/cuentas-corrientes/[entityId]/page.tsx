@@ -334,7 +334,10 @@ export default async function EntityLedgerPage({
                   metodo: PAYMENT_METHOD_LABELS[p.method],
                   amount: formatNumeroEditable(p.amount),
                   montoLabel: formatMoney(p.amount, p.currency),
-                  comprobante: p.chequeEntregado?.numero ?? p.reference ?? null,
+                  comprobante:
+                    p.chequesEntregados.length > 0
+                      ? p.chequesEntregados.map((c) => `#${c.numero}`).join(", ")
+                      : (p.reference ?? null),
                   imputadoA:
                     p.allocations.length > 0
                       ? `imputado a ${p.allocations.map((a) => `#${a.document.number}`).join(", ")}`

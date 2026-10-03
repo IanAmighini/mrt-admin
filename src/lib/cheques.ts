@@ -1,9 +1,9 @@
 import "server-only";
 import { formatFecha, parseFecha } from "@/lib/period";
-import { Prisma, type ChequeEstado, type Circuit } from "@prisma/client";
+import { Prisma, type ChequeEstado } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
-import { formatMoney, formatNumeroEditable, parseNumeroEscrito } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, parseNumeroEscrito, sumDecimals } from "@/lib/money";
 
 const CHEQUE_METHODS = ["CHEQUE", "ECHEQ"] as const;
 export const esMetodoCheque = (method: string) =>
@@ -62,30 +62,28 @@ export async function crearChequeRecibido(
  * Marca como entregado el cheque que se usó para pagarle a un proveedor. El monto del pago tiene
  * que ser el del cheque: un cheque se entrega entero, no en partes.
  */
-export async function entregarCheque(
+export async function entregarCheques(
   tx: Prisma.TransactionClient,
-  params: { paymentId: string; chequeId: string; amount: Prisma.Decimal; circuit: Circuit }
+  params: { paymentId: string; chequeIds: string[]; amount: Prisma.Decimal }
 ) {
-  const cheque = await tx.cheque.findUnique({ where: { id: params.chequeId } });
-  if (!cheque) throw new UserError("El cheque ya no existe.");
-  // Un echeq queda registrado en el banco, así que no puede ser lo que cancela una deuda en negro
-  // —la misma razón por la que no se ofrece como método de pago de esa cuenta.
-  if (params.circuit === "NEGRO" && cheque.esEcheq) {
+  const ids = Array.from(new Set(params.chequeIds));
+  const cheques = await tx.cheque.findMany({ where: { id: { in: ids } } });
+  if (cheques.length !== ids.length) throw new UserError("Alguno de los cheques elegidos ya no existe.");
+
+  const fuera = cheques.find((c) => c.estado !== "EN_CARTERA");
+  if (fuera) throw new UserError(`El cheque #${fuera.numero} ya no está en cartera.`);
+
+  // Los cheques se entregan enteros, así que el pago es exactamente lo que suman. Si no coincide,
+  // es que se eligió uno de más o de menos —o el monto se tocó a mano—, y conviene que se vea.
+  const total = sumDecimals(cheques.map((c) => c.amount));
+  if (!total.equals(params.amount)) {
     throw new UserError(
-      `El #${cheque.numero} es un echeq: queda registrado en el banco, así que no puede entregarse por una deuda en negro.`
-    );
-  }
-  if (cheque.estado !== "EN_CARTERA") {
-    throw new UserError(`El cheque #${cheque.numero} ya no está en cartera.`);
-  }
-  if (!cheque.amount.equals(params.amount)) {
-    throw new UserError(
-      `El cheque #${cheque.numero} es por ${cheque.amount.toFixed(2)} y el pago es por ${params.amount.toFixed(2)} — un cheque se entrega entero.`
+      `Los cheques elegidos suman ${formatMoney(total)} y el pago es por ${formatMoney(params.amount)}: un cheque se entrega entero, así que el pago tiene que ser lo que suman.`
     );
   }
 
-  await tx.cheque.update({
-    where: { id: params.chequeId },
+  await tx.cheque.updateMany({
+    where: { id: { in: ids } },
     data: { estado: "ENTREGADO", entregadoEnId: params.paymentId },
   });
 }

@@ -34,7 +34,7 @@ export async function getPagosSinOrden(entityId: string) {
       ordenPagoId: null,
       account: { entityId, circuit: "BLANCO" },
     },
-    include: { allocations: { include: { document: true } }, chequeEntregado: true },
+    include: { allocations: { include: { document: true } }, chequesEntregados: true },
     orderBy: { date: "desc" },
   });
 }
@@ -54,7 +54,7 @@ export async function getOrdenPago(numero: number) {
       payments: {
         include: {
           account: true,
-          chequeEntregado: true,
+          chequesEntregados: true,
           allocations: {
             include: {
               document: {
