@@ -12,6 +12,7 @@ import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { getSetting } from "@/lib/settings";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
+import { cajaDelProducto, enteroNoNegativo } from "@/lib/cajas";
 import { litrosPorPallet } from "@/lib/recipe-template";
 
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
@@ -320,6 +321,9 @@ export async function createProductMovement(formData: FormData) {
 
   let quantity = parseNumeroEscrito(String(formData.get("quantity") || ""), "cantidad");
   if (quantity.isZero()) throw new UserError("La cantidad no puede ser cero.");
+  // Pallets o cajas sueltas, siempre enteros: no existe medio pallet ni media caja.
+  const enCajas = formData.get("unidad") === "CAJAS";
+  enteroNoNegativo(quantity.abs(), enCajas ? "Cajas sueltas" : "Pallets");
   // Una merma siempre resta; un ajuste lo decide el formulario.
   if (type === "MERMA" || String(formData.get("effect") || "") === "RESTA") {
     quantity = quantity.abs().negated();
@@ -328,11 +332,20 @@ export async function createProductMovement(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
-    await tx.productMovement.create({
-      data: { productId, date, quantity, type, reason, createdById: user.id },
-    });
-    // Una merma o un ajuste que resta no pueden sacar pallets que no hay.
-    await asegurarSinNegativos(tx, { productos: [productId] });
+    if (enCajas) {
+      // Las cajas sueltas son de la caja, que comparten todos los formatos de la misma botella.
+      const cajaId = await cajaDelProducto(tx, product);
+      await tx.cajaMovement.create({
+        data: { cajaId, date, quantity: quantity.toNumber(), type, reason, createdById: user.id },
+      });
+      await asegurarSinNegativos(tx, { cajas: [cajaId] });
+    } else {
+      await tx.productMovement.create({
+        data: { productId, date, quantity, type, reason, createdById: user.id },
+      });
+      // Una merma o un ajuste que resta no pueden sacar pallets que no hay.
+      await asegurarSinNegativos(tx, { productos: [productId] });
+    }
   });
 
   await logAudit(prisma, {
@@ -340,7 +353,7 @@ export async function createProductMovement(formData: FormData) {
     action: "CREATE",
     entityType: "Movimiento de producto",
     entityId: productId,
-    summary: `${PRODUCT_MOVEMENT_TYPE_LABELS[type]} — ${formatProductBrandLabel(product)} ${product.presentation} — ${quantity.greaterThan(0) ? "+" : ""}${formatQuantity(quantity)}`,
+    summary: `${PRODUCT_MOVEMENT_TYPE_LABELS[type]} — ${formatProductBrandLabel(product)} ${product.presentation} — ${quantity.greaterThan(0) ? "+" : ""}${formatQuantity(quantity)} ${enCajas ? "cajas sueltas" : "pallets"}`,
     cambios: diffDeCampos(
       null,
       {

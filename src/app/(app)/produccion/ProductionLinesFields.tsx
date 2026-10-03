@@ -12,6 +12,8 @@ type Row = {
   marcaId: string;
   formatoId: string;
   pallets: string;
+  /** Las cajas que se hicieron sueltas, sin pallet. Obligatorio, aunque sea 0. */
+  cajas: string;
   /** Vacío = la que dice la receta. Se completa solo cuando se usó otra. */
   tapaUsadaItemId: string;
   cajaUsadaItemId: string;
@@ -25,6 +27,7 @@ const filaVacia = (key: number): Row => ({
   marcaId: "",
   formatoId: "",
   pallets: "",
+  cajas: "",
   tapaUsadaItemId: "",
   cajaUsadaItemId: "",
   etiquetaUsadaItemId: "",
@@ -105,33 +108,50 @@ export function ProductionLinesFields({
               </select>
             </div>
             <div>
-              <label className="text-xs text-foreground/60">Pallets *</label>
+              <label className="text-xs text-foreground/60">Formato *</label>
+              <select
+                name="formatoId"
+                value={row.formatoId}
+                onChange={(e) => updateRow(row.key, { formatoId: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">— Seleccionar… —</option>
+                {formatos.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.presentation}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {/* Las dos obligatorias, aunque sea 0: producción informaba sólo los pallets terminados y
+              se perdían las cajas que se hacían para completar un pallet o para quien retira cajas.
+              Lo exige el servidor y no el navegador: un `required` acá no dejaría guardar una carga
+              que sea sólo de armado, porque el primer ítem está siempre. */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs text-foreground/60">Pallets terminados *</label>
               <input
                 name="quantity"
                 value={row.pallets}
                 onChange={(e) => updateRow(row.key, { pallets: e.target.value })}
                 placeholder="0"
-                inputMode="decimal"
+                inputMode="numeric"
                 className={inputClass}
               />
-              <p className="mt-0.5 text-xs text-foreground/40">Negativo = reformateo (desarma este formato)</p>
             </div>
-          </div>
-          <div>
-            <label className="text-xs text-foreground/60">Formato *</label>
-            <select
-              name="formatoId"
-              value={row.formatoId}
-              onChange={(e) => updateRow(row.key, { formatoId: e.target.value })}
-              className={inputClass}
-            >
-              <option value="">— Seleccionar… —</option>
-              {formatos.map((f) => (
-                <option key={f.id} value={f.id}>
-                  {f.presentation}
-                </option>
-              ))}
-            </select>
+            <div>
+              <label className="text-xs text-foreground/60">Cajas sueltas *</label>
+              <input
+                name="cajasSueltas"
+                value={row.cajas}
+                onChange={(e) => updateRow(row.key, { cajas: e.target.value })}
+                placeholder="0"
+                inputMode="numeric"
+                className={inputClass}
+              />
+              <p className="mt-0.5 text-xs text-foreground/40">Sin pallet. 0 si no se hicieron.</p>
+            </div>
           </div>
           {/* Se completan solo si se usó algo distinto a la receta: las tres tapas de 29mm son
               intercambiables, cuando se acaba la caja de la marca se usa la Lisa, y a veces se

@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getProductMovements, getProductStock } from "@/lib/stock";
 import { formatNumeroExacto, formatQuantity } from "@/lib/money";
-import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
+import { CAJA_MOVEMENT_TYPE_LABELS, PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { formatPallets } from "@/lib/product-label";
 import { formatFecha, hoyEnInput } from "@/lib/period";
 import {
@@ -44,12 +44,47 @@ export default async function ProductDetailPage({
   if (!product) notFound();
   if (productId !== product.slug) redirect(`/produccion/${product.slug}`);
 
-  const [stock, movements, items] = await Promise.all([
+  const [stock, movements, items, caja] = await Promise.all([
     getProductStock(product.id),
     getProductMovements(product.id),
     prisma.item.findMany({ orderBy: { name: "asc" } }),
+    product.cajaId
+      ? prisma.caja.findUnique({
+          where: { id: product.cajaId },
+          include: {
+            movimientos: { include: { createdBy: { select: { name: true } } } },
+            products: { select: { presentation: true } },
+          },
+        })
+      : null,
   ]);
-  const movementsDesc = movements.slice().reverse();
+  const sueltas = caja ? caja.movimientos.reduce((a, m) => a + m.quantity, 0) : 0;
+
+  // El kardex junta los pallets de este formato y las cajas sueltas de su caja: son el mismo
+  // producto, y un desarmado se ve como las dos mitades de lo mismo, en el mismo día.
+  type Renglon = { id: string; date: Date; createdAt: Date; tipo: string; cantidad: string; negativo: boolean; motivo: string; usuario: string };
+  const kardex: Renglon[] = [
+    ...movements.map((m) => ({
+      id: m.id,
+      date: m.date,
+      createdAt: m.createdAt,
+      tipo: PRODUCT_MOVEMENT_TYPE_LABELS[m.type],
+      cantidad: `${m.quantity.greaterThan(0) ? "+" : ""}${formatPallets(m.quantity, product.boxesPerPallet)}`,
+      negativo: m.quantity.isNegative(),
+      motivo: m.reason,
+      usuario: m.createdBy.name,
+    })),
+    ...(caja?.movimientos ?? []).map((m) => ({
+      id: m.id,
+      date: m.date,
+      createdAt: m.createdAt,
+      tipo: `${CAJA_MOVEMENT_TYPE_LABELS[m.type]} · cajas sueltas`,
+      cantidad: `${m.quantity > 0 ? "+" : ""}${formatQuantity(m.quantity)} ${Math.abs(m.quantity) === 1 ? "caja" : "cajas"}`,
+      negativo: m.quantity < 0,
+      motivo: m.reason,
+      usuario: m.createdBy.name,
+    })),
+  ].sort((a, b) => b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime());
 
   /** Cada rol del generador es una categoría de insumo. Filtrar no es cosmético: la sustitución al
    * producir y la limpieza de la receta deciden por categoría, así que una caja archivada bajo
@@ -80,7 +115,22 @@ export default async function ProductDetailPage({
               )}
             </p>
           </div>
-          <p className="text-lg font-semibold">{formatPallets(stock, product.boxesPerPallet)}</p>
+          <div className="text-right">
+            <p className="text-lg font-semibold">{formatPallets(stock, product.boxesPerPallet)}</p>
+            {/* Las cajas sueltas son de la caja, no de este formato: las comparten todos los
+                pallets de la misma marca y botella, y se dice cuáles para que no se lean dos veces. */}
+            {caja && (
+              <p className="text-sm text-foreground/60">
+                + {formatQuantity(sueltas)} {sueltas === 1 ? "caja suelta" : "cajas sueltas"}
+                {caja.products.length > 1 && (
+                  <span className="block text-xs text-foreground/40">
+                    de la caja {caja.unitsPerBox}x{formatQuantity(caja.bottleCapacityMl)}, compartidas con{" "}
+                    {caja.products.map((p) => p.presentation).filter((x) => x !== product.presentation).join(", ")}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -359,8 +409,8 @@ export default async function ProductDetailPage({
           <h2 className="text-sm font-semibold">Ajustar el stock</h2>
           <p className="text-xs text-foreground/50">
             Mueve sólo el producto terminado: no descuenta insumos. Es para el saldo inicial, las
-            roturas y lo que aparece o falta después de un conteo. Lo que se envasa —y también el
-            reformateo, con pallets negativos— va por Producción, que sí mueve los insumos.
+            roturas y lo que aparece o falta después de un conteo. Lo que se envasa va por
+            Producción, y armar o desarmar pallets también.
           </p>
           <input type="hidden" name="productId" value={product.id} />
           <div className="grid grid-cols-2 gap-3">
@@ -379,8 +429,14 @@ export default async function ProductDetailPage({
                 className={selectClass}
               />
             </Field>
-            <Field label="Cantidad (pallets)">
-              <input name="quantity" required inputMode="decimal" className={selectClass} />
+            <Field label="Cantidad">
+              <div className="flex gap-2">
+                <input name="quantity" required inputMode="numeric" className={selectClass} />
+                <select name="unidad" defaultValue="PALLETS" className={`${selectClass} w-auto`}>
+                  <option value="PALLETS">pallets</option>
+                  <option value="CAJAS">cajas sueltas</option>
+                </select>
+              </div>
             </Field>
             <Field label="Efecto (sólo el ajuste)">
               <select name="effect" defaultValue="SUMA" className={selectClass}>
@@ -420,23 +476,18 @@ export default async function ProductDetailPage({
               </tr>
             </thead>
             <tbody>
-              {movementsDesc.map((m) => (
+              {kardex.map((m) => (
                 <tr key={m.id} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{formatFecha(m.date)}</td>
-                  <td className="py-2 pr-4">{PRODUCT_MOVEMENT_TYPE_LABELS[m.type]}</td>
-                  <td
-                    className={`py-2 pr-4 tabular-nums ${
-                      m.quantity.isNegative() ? "text-red-600 dark:text-red-400" : ""
-                    }`}
-                  >
-                    {m.quantity.greaterThan(0) ? "+" : ""}
-                    {formatPallets(m.quantity, product.boxesPerPallet)}
+                  <td className="py-2 pr-4">{m.tipo}</td>
+                  <td className={`py-2 pr-4 tabular-nums ${m.negativo ? "text-red-600 dark:text-red-400" : ""}`}>
+                    {m.cantidad}
                   </td>
-                  <td className="py-2 pr-4">{m.reason}</td>
-                  <td className="py-2 pr-4">{m.createdBy.name}</td>
+                  <td className="py-2 pr-4">{m.motivo}</td>
+                  <td className="py-2 pr-4">{m.usuario}</td>
                 </tr>
               ))}
-              {movementsDesc.length === 0 && (
+              {kardex.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-4 text-center text-foreground/40">
                     Sin movimientos todavía.

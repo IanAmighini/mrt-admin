@@ -32,6 +32,7 @@ import { crearChequeRecibido, devolverChequesALaCartera, entregarCheques, esMeto
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarCajaAlcanza, asegurarSinNegativos } from "@/lib/sin-negativos";
 import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
+import { cajaDelProducto, enteroNoNegativo } from "@/lib/cajas";
 import { aLaMonedaDeLaCuenta, convertirMontos, leerCotizacion, monedaEscrita } from "@/lib/moneda";
 import type { AuditAction } from "@prisma/client";
 
@@ -179,11 +180,19 @@ export async function updateDocument(formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { entrega: { select: { nombre: true } }, destinatario: { select: { nombre: true } } },
+    include: {
+      entrega: { select: { nombre: true } },
+      destinatario: { select: { nombre: true } },
+      _count: { select: { lines: true } },
+    },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
   if (!NON_FACTURA_TYPES.includes(document.type)) {
     throw new UserError("Este comprobante no es una nota ni un ajuste.");
+  }
+  // Una devolución trae mercadería: editar sólo el importe dejaría el stock diciendo otra cosa.
+  if (document._count.lines > 0) {
+    throw new UserError("Es una devolución: mueve stock. Borrala y cargala de nuevo con lo correcto.");
   }
   // Un pase tiene una pata en cada caja. Editar una sola dejaría a las dos cajas diciendo cosas
   // distintas sobre la misma plata, así que se borra y se vuelve a cargar.
@@ -324,6 +333,8 @@ export async function deleteDocument(formData: FormData) {
       contraparteDe: { select: { id: true } },
       entrega: { select: { nombre: true } },
       destinatario: { select: { nombre: true } },
+      // Si es una devolución: lo que volvió al stock, que se va con ella.
+      lines: { select: { productId: true, cajaMovements: { select: { cajaId: true } } } },
     },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
@@ -347,7 +358,11 @@ export async function deleteDocument(formData: FormData) {
     const cuentaDeLaOtraPata = otraPata
       ? (await prisma.document.findUnique({ where: { id: otraPata }, select: { accountId: true } }))?.accountId
       : null;
-    await asegurarSinNegativos(tx, { cuentas: [document.accountId, cuentaDeLaOtraPata ?? null] });
+    await asegurarSinNegativos(tx, {
+      cuentas: [document.accountId, cuentaDeLaOtraPata ?? null],
+      productos: document.lines.map((l) => l.productId),
+      cajas: document.lines.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
+    });
 
     await logAudit(tx, {
       userId: user.id,
@@ -716,6 +731,312 @@ const CAMPOS_CON_RENGLONES = {
   renglones: "L\u00edneas",
 } as const;
 
+/**
+ * Las líneas de un remito o de una devolución: producto, pallets, cajas sueltas y precio.
+ *
+ * El precio por botella llega tal como se escribió y la cuenta del pallet se hace acá: el navegador
+ * la hacía con `Number()`, que no entiende la coma, y un "1350,50" llegaba como cero. Con la
+ * cotización cargada, el precio está en la otra moneda que la de la cuenta.
+ *
+ * `quantity` es el equivalente en pallets (2 pallets + 42 cajas de 84 = 2,5), que es con lo que se
+ * suman los reportes. El stock se mueve con `pallets` y `cajas`, que son lo que se entregó de verdad.
+ * Un formulario viejo, sin el campo de cajas, sigue mandando pallets con decimales: ahí `pallets` y
+ * `cajas` quedan vacíos y se mueve `quantity`, como antes.
+ */
+async function leerLineasDeProducto(formData: FormData, currency: Currency, exchangeRate: Prisma.Decimal | null) {
+  const productIds = formData.getAll("lineProductId").map(String);
+  const quantities = formData.getAll("lineQuantity").map(String);
+  const cajasPorLinea = formData.getAll("lineCajas").map(String);
+  const unitPrices = formData.getAll("lineUnitPrice").map(String);
+  const circuits = formData.getAll("lineCircuit").map(String);
+  const preciosBotella = formData.getAll("linePrecioBotella").map(String);
+  const preciosBotellaUsd = formData.getAll("linePrecioBotellaUsd").map(String);
+  for (const [nombre, arr] of [
+    ["precio por botella", preciosBotella],
+    ["precio por botella en U$S", preciosBotellaUsd],
+    ["cajas sueltas", cajasPorLinea],
+  ] as const) {
+    if (arr.length > 0 && arr.length !== productIds.length) {
+      throw new UserError(`El formulario llegó incompleto (${nombre}) — recargá la página y volvé a cargarlo.`);
+    }
+  }
+  const conCajas = cajasPorLinea.length > 0;
+
+  const productos = new Map(
+    (await prisma.product.findMany({ where: { id: { in: productIds.filter(Boolean) } } })).map((p) => [p.id, p])
+  );
+
+  const lines = productIds.map((productId, i) => {
+    const circuit = circuits[i] as "BLANCO" | "NEGRO";
+    const p = productos.get(productId);
+    const nombre = p ? `${p.name} ${p.oilType} ${p.presentation}` : "Uno de los productos";
+    const bpp = p?.boxesPerPallet ?? null;
+    const upb = p?.unitsPerBox ?? null;
+
+    // ---- cantidades
+    let pallets: number | null = null;
+    let cajas: number | null = null;
+    let quantity: Prisma.Decimal;
+    if (conCajas) {
+      // Opcionales: la fila vacía que queda al tocar "+ Agregar línea" se descarta abajo. Un número
+      // mal escrito sigue dando error, y medio pallet o media caja no existen.
+      const p0 = enteroNoNegativo(parseNumeroOpcional(quantities[i] ?? "", "pallets"), `${nombre}, pallets`);
+      const c0 = enteroNoNegativo(parseNumeroOpcional(cajasPorLinea[i] ?? "", "cajas"), `${nombre}, cajas`);
+      if (c0 > 0 && !bpp) {
+        throw new UserError(`${nombre} no tiene cargadas las cajas por pallet, así que no se pueden entregar cajas sueltas.`);
+      }
+      pallets = p0;
+      cajas = c0;
+      quantity = toDecimal(p0).plus(c0 > 0 ? toDecimal(c0).dividedBy(bpp!) : 0).toDecimalPlaces(3);
+    } else {
+      quantity = parseNumeroOpcional(quantities[i] ?? "", "cantidad");
+    }
+
+    // ---- precio
+    const usdRaw = (preciosBotellaUsd[i] ?? "").trim();
+    const botellaRaw = (preciosBotella[i] ?? "").trim();
+    let porBotella: Prisma.Decimal | null = null;
+    let precioBotellaUsd: Prisma.Decimal | null = null;
+    if (usdRaw) {
+      const usd = parseNumeroEscrito(usdRaw, "precio por botella en U$S");
+      // En una cuenta en dólares no hay nada que convertir.
+      if (currency !== "USD" && !exchangeRate) {
+        throw new UserError("El precio está en dólares: cargá la cotización para pasarlo a pesos.");
+      }
+      porBotella = currency === "USD" ? usd : usd.times(exchangeRate!);
+      precioBotellaUsd = usd;
+    } else if (botellaRaw) {
+      // En una cuenta en dólares, con la cotización cargada el precio se escribió en pesos.
+      const escrito = parseNumeroEscrito(botellaRaw, "precio por botella");
+      porBotella = currency === "USD" && exchangeRate ? escrito.dividedBy(exchangeRate) : escrito;
+    }
+
+    if (!porBotella) {
+      // Un formulario viejo, que todavía manda el precio del pallet ya calculado.
+      const unitPrice = parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario");
+      return { productId, circuit, pallets, cajas, quantity, unitPrice, precioBotellaUsd, subtotal: quantity.times(unitPrice).toDecimalPlaces(2) };
+    }
+    if (!bpp || !upb) {
+      throw new UserError(
+        `${nombre} no tiene cargadas cajas por pallet y botellas por caja, así que no se puede pasar el precio por botella a precio del pallet.`
+      );
+    }
+    const unitPrice = porBotella.times(bpp * upb).toDecimalPlaces(2);
+    // El subtotal sale de las botellas, no de `quantity` × precio: el equivalente en pallets de unas
+    // cajas sueltas (48 de 105 = 0,457…) se redondea, y correría el importe.
+    const botellas = conCajas ? (pallets! * bpp + cajas!) * upb : quantity.times(bpp * upb);
+    return {
+      productId,
+      circuit,
+      pallets,
+      cajas,
+      quantity,
+      unitPrice,
+      precioBotellaUsd,
+      subtotal: porBotella.times(botellas).toDecimalPlaces(2),
+    };
+  })
+    // Sin exigir precio > 0: una línea sin cargo es legítima (una muestra) y descartarla en
+    // silencio es peor que cobrarla mal. Lo que distingue una línea cargada de una vacía es la
+    // cantidad.
+    .filter((l) => l.productId && l.quantity.greaterThan(0));
+
+  if (lines.some((l) => l.circuit !== "BLANCO" && l.circuit !== "NEGRO")) {
+    throw new UserError("Circuito inválido en alguna línea.");
+  }
+  return lines;
+}
+
+/**
+ * Lo que una línea de remito (o de devolución) le hace al stock, colgado de su línea: si se borra o
+ * se edita el remito, se va con ella.
+ *
+ * **Las cajas sueltas que falten se sacan de desarmar pallets de ese formato.** Es lo que pasa en el
+ * depósito: para entregar 48 cajas se desarma un pallet de 84, se cargan 48 y quedan 36 sueltas. El
+ * desarmado no puede ser un trámite aparte —no se cargaría nunca—, así que lo hace la entrega sola,
+ * y el formulario avisa antes de guardar cuántos pallets va a desarmar.
+ */
+async function moverStockDeLinea(
+  tx: Prisma.TransactionClient,
+  params: {
+    line: { productId: string; pallets: number | null; cajas: number | null; quantity: Prisma.Decimal };
+    documentLineId: string;
+    date: Date;
+    motivo: string;
+    /** Una entrega saca del stock; una devolución lo vuelve a poner. */
+    tipo: "ENTREGA" | "DEVOLUCION";
+    userId: string;
+  }
+): Promise<string | null> {
+  const { line, documentLineId, date, motivo, tipo, userId } = params;
+  const signo = tipo === "ENTREGA" ? -1 : 1;
+  const base = { date, documentLineId, createdById: userId };
+
+  // Una línea de antes de las cajas sueltas: pallets con decimales, como se movía siempre.
+  if (line.pallets === null || line.cajas === null) {
+    await tx.productMovement.create({
+      data: { ...base, productId: line.productId, quantity: line.quantity.times(signo), type: tipo, reason: motivo },
+    });
+    return null;
+  }
+
+  if (line.pallets > 0) {
+    await tx.productMovement.create({
+      data: { ...base, productId: line.productId, quantity: signo * line.pallets, type: tipo, reason: motivo },
+    });
+  }
+  if (line.cajas === 0) return null;
+
+  const product = await tx.product.findUniqueOrThrow({ where: { id: line.productId } });
+  const cajaId = await cajaDelProducto(tx, product);
+
+  if (tipo === "ENTREGA") {
+    const sueltas = (await tx.cajaMovement.aggregate({ where: { cajaId }, _sum: { quantity: true } }))._sum.quantity ?? 0;
+    const faltan = line.cajas - Math.max(sueltas, 0);
+    if (faltan > 0) {
+      const bpp = product.boxesPerPallet!;
+      const aDesarmar = Math.ceil(faltan / bpp);
+      const motivoDesarmado = `Desarmado para ${motivo.charAt(0).toLowerCase()}${motivo.slice(1)}`;
+      await tx.productMovement.create({
+        data: { ...base, productId: product.id, quantity: -aDesarmar, type: "DESARMADO", reason: motivoDesarmado },
+      });
+      await tx.cajaMovement.create({
+        data: { ...base, cajaId, quantity: aDesarmar * bpp, type: "DESARMADO", reason: motivoDesarmado },
+      });
+    }
+  }
+
+  await tx.cajaMovement.create({
+    data: { ...base, cajaId, quantity: signo * line.cajas, type: tipo, reason: motivo },
+  });
+  return cajaId;
+}
+
+/**
+ * Un cliente devuelve mercadería: vuelve al stock y se le hace una nota de crédito por lo que vale.
+ *
+ * Es el remito al revés, con las mismas líneas: producto, pallets, cajas sueltas y precio por
+ * botella. Las líneas cuelgan de la nota de crédito, así que borrarla saca la mercadería del stock
+ * otra vez. Si lo devuelto tiene líneas en Blanco y en Negro, sale una nota por cada cuenta, igual
+ * que un remito se parte en dos.
+ */
+export async function crearDevolucion(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const entityId = String(formData.get("entityId") || "");
+  const entity = await prisma.entity.findUnique({ where: { id: entityId } });
+  if (!entity) throw new UserError("El cliente ya no existe.");
+
+  const number = String(formData.get("number") || "").trim();
+  if (!number) throw new UserError("Falta el número de la nota de crédito.");
+  const date = parseFormDate(formData.get("date"));
+  const reason = String(formData.get("reason") || "").trim();
+  if (!reason) throw new UserError("Escribí por qué se devolvió: es lo que va a explicar la nota de crédito.");
+
+  const currency: Currency = entity.moneda;
+  const exchangeRate = leerCotizacion(formData.get("exchangeRate"));
+  const lines = await leerLineasDeProducto(formData, currency, exchangeRate);
+  if (lines.length === 0) throw new UserError("Cargá al menos una línea con lo que se devolvió.");
+
+  const accounts = await prisma.account.findMany({ where: { entityId } });
+  const porCircuito = new Map<"BLANCO" | "NEGRO", typeof lines>();
+  for (const l of lines) porCircuito.set(l.circuit, [...(porCircuito.get(l.circuit) ?? []), l]);
+
+  let total = toDecimal(0);
+  await prisma.$transaction(async (tx) => {
+    const cajasTocadas: string[] = [];
+    for (const [circuit, circuitLines] of porCircuito) {
+      const account = accounts.find((a) => a.circuit === circuit);
+      if (!account) throw new UserError(`No se encontró la cuenta ${CIRCUIT_LABELS[circuit]} de este cliente.`);
+
+      const netAmount = circuitLines.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
+      // Lo mismo que el remito: en Blanco lleva IVA, en Negro no.
+      const ivaRate = circuit === "BLANCO" ? toDecimal(DEFAULT_IVA_RATE) : null;
+      const ivaAmount = ivaRate ? netAmount.times(ivaRate).dividedBy(100).toDecimalPlaces(2) : null;
+      const totalAmount = ivaAmount ? netAmount.plus(ivaAmount) : netAmount;
+      total = total.plus(totalAmount);
+
+      const nota = await tx.document.create({
+        data: {
+          accountId: account.id,
+          type: "NOTA_CREDITO",
+          number,
+          date,
+          currency,
+          exchangeRate,
+          netAmount,
+          ivaRate,
+          ivaAmount,
+          totalAmount,
+          reason: `Devolución — ${reason}`,
+          createdById: user.id,
+        },
+      });
+      if (ivaAmount) {
+        await tx.documentTax.create({
+          data: { documentId: nota.id, kind: "IVA", base: netAmount, rate: ivaRate, amount: ivaAmount },
+        });
+      }
+
+      for (const l of circuitLines) {
+        const documentLine = await tx.documentLine.create({
+          data: {
+            documentId: nota.id,
+            productId: l.productId,
+            quantity: l.quantity,
+            pallets: l.pallets,
+            cajas: l.cajas,
+            unitPrice: l.unitPrice,
+            precioBotellaUsd: l.precioBotellaUsd,
+            subtotal: l.subtotal,
+          },
+        });
+        const cajaId = await moverStockDeLinea(tx, {
+          line: l,
+          documentLineId: documentLine.id,
+          date,
+          motivo: `Devolución NC ${number}`,
+          tipo: "DEVOLUCION",
+          userId: user.id,
+        });
+        if (cajaId) cajasTocadas.push(cajaId);
+      }
+    }
+
+    const nombres = new Map(
+      (await tx.product.findMany({ where: { id: { in: lines.map((l) => l.productId) } }, select: { id: true, name: true, presentation: true } }))
+        .map((p) => [p.id, `${p.name} ${p.presentation}`])
+    );
+    await logAudit(tx, {
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Devolución",
+      entityId,
+      summary: `NC ${number} — ${entity.name} — ${formatMoney(total, currency)}`,
+      cambios: [
+        { campo: "Motivo", antes: null, despues: reason },
+        {
+          campo: "Lo devuelto",
+          antes: null,
+          despues: lines
+            .map((l) => {
+              const nombre = nombres.get(l.productId) ?? "?";
+              if (l.pallets === null) return `${nombre} × ${formatNumeroExacto(l.quantity)} pallets`;
+              const partes = [l.pallets > 0 ? `${l.pallets} pallets` : null, l.cajas ? `${l.cajas} cajas` : null].filter(Boolean);
+              return `${nombre} × ${partes.join(" + ")}`;
+            })
+            .join("\n"),
+        },
+        { campo: "Nota de crédito", antes: null, despues: formatMoney(total, currency) },
+      ],
+    });
+  });
+
+  revalidatePath(`/cuentas-corrientes/${entity.slug}`);
+  revalidatePath("/stock");
+  revalidatePath("/produccion");
+}
+
 async function createRemitoCore(
   user: { id: string },
   formData: FormData,
@@ -727,7 +1048,7 @@ async function createRemitoCore(
    * producción: si el alta falla, la original sigue estando, y la verificación de stock compara
    * contra cómo estaba de verdad antes de editar.
    */
-  reemplaza?: { documentId: string; productIds: string[] }
+  reemplaza?: { documentId: string; productIds: string[]; cajaIds: string[] }
 ) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
@@ -752,86 +1073,7 @@ async function createRemitoCore(
   const reason = String(formData.get("reason") || "").trim() || null;
   const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, entityId);
 
-  const productIds = formData.getAll("lineProductId").map(String);
-  const quantities = formData.getAll("lineQuantity").map(String);
-  const unitPrices = formData.getAll("lineUnitPrice").map(String);
-  const circuits = formData.getAll("lineCircuit").map(String);
-  // El precio por botella tal cual se escribió, en la moneda de la cuenta o en dólares. Se manda así
-  // y la cuenta del pallet se hace acá: el navegador la hacía con `Number()`, que no entiende la coma,
-  // y un "1350,50" llegaba como cero.
-  const preciosBotella = formData.getAll("linePrecioBotella").map(String);
-  const preciosBotellaUsd = formData.getAll("linePrecioBotellaUsd").map(String);
-  for (const [nombre, arr] of [
-    ["precio por botella", preciosBotella],
-    ["precio por botella en U$S", preciosBotellaUsd],
-  ] as const) {
-    if (arr.length > 0 && arr.length !== productIds.length) {
-      throw new UserError(`El formulario llegó incompleto (${nombre}) — recargá la página y volvé a cargarlo.`);
-    }
-  }
-  const botellasPorPallet = new Map(
-    (
-      await prisma.product.findMany({
-        where: { id: { in: productIds.filter(Boolean) } },
-        select: { id: true, boxesPerPallet: true, unitsPerBox: true, name: true, presentation: true },
-      })
-    ).map((p) => [p.id, p])
-  );
-
-  const lines = productIds
-    .map((productId, i) => {
-      // Opcional y no obligatorio: la fila vacía que queda al tocar "+ Agregar línea" y no
-      // completarla se descarta con el filter de abajo, no tiene que cortar la carga. Un número
-      // mal escrito sigue dando error.
-      const quantity = parseNumeroOpcional(quantities[i] ?? "", "cantidad");
-      const circuit = circuits[i] as "BLANCO" | "NEGRO";
-      const usdRaw = (preciosBotellaUsd[i] ?? "").trim();
-      const botellaRaw = (preciosBotella[i] ?? "").trim();
-
-      if (!usdRaw && !botellaRaw) {
-        // Un formulario viejo, que todavía manda el precio del pallet ya calculado.
-        return { productId, quantity, circuit, precioBotellaUsd: null, unitPrice: parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario") };
-      }
-
-      const p = botellasPorPallet.get(productId);
-      const porPallet = p?.boxesPerPallet && p?.unitsPerBox ? p.boxesPerPallet * p.unitsPerBox : null;
-      if (!porPallet) {
-        throw new UserError(
-          `${p ? `${p.name} ${p.presentation}` : "Uno de los productos"} no tiene cargadas cajas por pallet y botellas por caja, así que no se puede pasar el precio por botella a precio del pallet.`
-        );
-      }
-
-      if (usdRaw) {
-        const usd = parseNumeroEscrito(usdRaw, "precio por botella en U$S");
-        // En una cuenta en dólares no hay nada que convertir.
-        if (currency !== "USD" && !exchangeRate) {
-          throw new UserError("El precio está en dólares: cargá la cotización para pasarlo a pesos.");
-        }
-        const porBotella = currency === "USD" ? usd : usd.times(exchangeRate!);
-        return {
-          productId,
-          quantity,
-          circuit,
-          precioBotellaUsd: usd,
-          unitPrice: porBotella.times(porPallet).toDecimalPlaces(2),
-        };
-      }
-
-      // En una cuenta en dólares, con la cotización cargada el precio se escribió en pesos.
-      const escrito = parseNumeroEscrito(botellaRaw, "precio por botella");
-      const porBotella = currency === "USD" && exchangeRate ? escrito.dividedBy(exchangeRate) : escrito;
-      return {
-        productId,
-        quantity,
-        circuit,
-        precioBotellaUsd: null,
-        unitPrice: porBotella.times(porPallet).toDecimalPlaces(2),
-      };
-    })
-    // Sin exigir precio > 0: una línea sin cargo es legítima (una muestra) y descartarla en
-    // silencio es peor que cobrarla mal. Lo que distingue una línea cargada de una vacía es la
-    // cantidad.
-    .filter((l) => l.productId && l.quantity.greaterThan(0));
+  const lines = await leerLineasDeProducto(formData, currency, exchangeRate);
 
   if (lines.length === 0) {
     throw new UserError("Cargá al menos una línea con producto, cantidad y precio.");
@@ -859,6 +1101,7 @@ async function createRemitoCore(
       await tx.paymentAllocation.deleteMany({ where: { documentId: reemplaza.documentId } });
       await tx.document.delete({ where: { id: reemplaza.documentId } });
     }
+    const cajasTocadas: string[] = [...(reemplaza?.cajaIds ?? [])];
 
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
@@ -867,9 +1110,11 @@ async function createRemitoCore(
       const lineData = circuitLines.map((l) => ({
         productId: l.productId,
         quantity: l.quantity,
+        pallets: l.pallets,
+        cajas: l.cajas,
         unitPrice: l.unitPrice,
         precioBotellaUsd: l.precioBotellaUsd,
-        subtotal: l.quantity.times(l.unitPrice).toDecimalPlaces(2),
+        subtotal: l.subtotal,
       }));
       const netAmount = lineData.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
       // Blanco = facturado, así que ya lleva IVA; Negro no factura, sin IVA.
@@ -902,18 +1147,15 @@ async function createRemitoCore(
         const documentLine = await tx.documentLine.create({
           data: { ...l, documentId: document.id },
         });
-
-        await tx.productMovement.create({
-          data: {
-            productId: l.productId,
-            date,
-            quantity: l.quantity.negated(),
-            type: "ENTREGA",
-            reason: `Entrega remito ${number}`,
-            documentLineId: documentLine.id,
-            createdById: user.id,
-          },
+        const cajaId = await moverStockDeLinea(tx, {
+          line: l,
+          documentLineId: documentLine.id,
+          date,
+          motivo: `Entrega remito ${number}`,
+          tipo: "ENTREGA",
+          userId: user.id,
         });
+        if (cajaId) cajasTocadas.push(cajaId);
       }
     }
 
@@ -927,6 +1169,7 @@ async function createRemitoCore(
     // No se puede entregar lo que no está: cada producto, desde la fecha del remito en adelante.
     await asegurarSinNegativos(tx, {
       productos: [...lines.map((l) => l.productId), ...(reemplaza?.productIds ?? [])],
+      cajas: cajasTocadas,
     });
 
     const nombres = new Map(
@@ -988,7 +1231,7 @@ async function getRemitoOrThrow(documentId: string) {
     where: { id: documentId },
     include: {
       remitoLinks: true,
-      lines: { include: { product: { select: { name: true } } } },
+      lines: { include: { product: { select: { name: true } }, cajaMovements: { select: { cajaId: true } } } },
       account: { include: { entity: true } },
       entrega: { select: { nombre: true } },
       destinatario: { select: { nombre: true } },
@@ -1013,6 +1256,12 @@ export async function deleteRemito(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
+    // Si la entrega desarmó un pallet, borrarla se lleva también las cajas que sobraron. Si ya se
+    // usaron en otra entrega, quedarían en negativo.
+    await asegurarSinNegativos(tx, {
+      productos: document.lines.map((l) => l.productId),
+      cajas: document.lines.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
+    });
 
     await logAudit(tx, {
       userId: user.id,
@@ -1044,6 +1293,7 @@ export async function updateRemito(formData: FormData) {
   await createRemitoCore(user, formData, "UPDATE", fotoDeComprobanteConLineas(original), {
     documentId,
     productIds: original.lines.map((l) => l.productId),
+    cajaIds: original.lines.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
   });
 }
 

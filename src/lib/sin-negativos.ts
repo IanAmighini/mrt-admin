@@ -105,6 +105,14 @@ const filasDeProducto = async (db: Cliente, productId: string): Promise<Fila[]> 
     })
   ).map((m) => ({ id: m.id, inicial: false, date: m.date, createdAt: m.createdAt, monto: m.quantity }));
 
+const filasDeCaja = async (db: Cliente, cajaId: string): Promise<Fila[]> =>
+  (
+    await db.cajaMovement.findMany({
+      where: { cajaId },
+      select: { id: true, date: true, createdAt: true, quantity: true },
+    })
+  ).map((m) => ({ id: m.id, inicial: false, date: m.date, createdAt: m.createdAt, monto: new Prisma.Decimal(m.quantity) }));
+
 const unicos = (ids: (string | null | undefined)[] | undefined) =>
   Array.from(new Set((ids ?? []).filter((x): x is string => Boolean(x))));
 
@@ -122,11 +130,18 @@ const unicos = (ids: (string | null | undefined)[] | undefined) =>
  */
 export async function asegurarSinNegativos(
   tx: Prisma.TransactionClient,
-  que: { cuentas?: (string | null)[]; insumos?: (string | null)[]; productos?: (string | null)[] }
+  que: {
+    cuentas?: (string | null)[];
+    insumos?: (string | null)[];
+    productos?: (string | null)[];
+    /** Cajas sueltas, por caja. */
+    cajas?: (string | null)[];
+  }
 ) {
   const cuentas = unicos(que.cuentas);
   const insumos = unicos(que.insumos);
   const productos = unicos(que.productos);
+  const cajas = unicos(que.cajas);
 
   if (cuentas.length > 0) {
     const cajas = await tx.account.findMany({
@@ -168,6 +183,19 @@ export async function asegurarSinNegativos(
       if (rojo) {
         throw new UserError(
           `No hay suficiente ${p.name} ${p.oilType} ${p.presentation}: el ${formatFecha(rojo.date)} quedaría en ${formatQuantity(rojo.saldo)} pallets. Revisá que esté cargada la producción.`
+        );
+      }
+    }
+  }
+
+  if (cajas.length > 0) {
+    const filas = await tx.caja.findMany({ where: { id: { in: cajas } } });
+    for (const c of filas) {
+      const [antes, despues] = await Promise.all([filasDeCaja(prisma, c.id), filasDeCaja(tx, c.id)]);
+      const rojo = primerRojo(antes, despues, TOLERANCIA_STOCK);
+      if (rojo) {
+        throw new UserError(
+          `No hay suficientes cajas sueltas de ${c.name} ${c.oilType} ${c.unitsPerBox}x${formatQuantity(c.bottleCapacityMl)}: el ${formatFecha(rojo.date)} quedarían ${formatQuantity(rojo.saldo)}. Revisá que estén cargadas las cajas que hizo producción o el desarmado del pallet.`
         );
       }
     }

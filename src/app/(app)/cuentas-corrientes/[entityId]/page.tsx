@@ -312,6 +312,21 @@ export default async function EntityLedgerPage({
           )}
         </div>
         <CuentaCorrientePanel
+          devolucion={
+            isCliente
+              ? {
+                  products,
+                  priceMapByCircuit: {
+                    BLANCO: Object.fromEntries(
+                      Array.from(blancoPrices, ([id, pr]) => [id, { amount: pr.amount.toNumber(), currency: pr.currency }])
+                    ),
+                    NEGRO: Object.fromEntries(
+                      Array.from(negroPrices, ([id, pr]) => [id, { amount: pr.amount.toNumber(), currency: pr.currency }])
+                    ),
+                  },
+                }
+              : undefined
+          }
           viajes={viajesParaElegir}
           destinatarios={destinatarios}
           rotuloSubcuenta={entity.rotuloSubcuenta ?? "Viaje"}

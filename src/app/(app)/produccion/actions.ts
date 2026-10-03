@@ -6,12 +6,13 @@ import { revalidatePath } from "next/cache";
 import { Prisma, type AuditAction, type SupplierCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { parseNumeroEscrito, parseNumeroOpcional, toDecimal } from "@/lib/money";
+import { parseNumeroEscrito, toDecimal } from "@/lib/money";
 import { getSetting, setSetting } from "@/lib/settings";
 import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
+import { cajaDelProducto, enteroNoNegativo, recetaPorCaja } from "@/lib/cajas";
 import { formatNumeroExacto } from "@/lib/money";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
@@ -39,11 +40,12 @@ async function fotoDeLaProduccion(tx: Prisma.TransactionClient, runId: string) {
     include: { lines: { include: { product: { select: { name: true, presentation: true } } } } },
   });
   if (!run) return null;
+  const QUE: Record<string, string> = { PALLETS: "pallets", CAJAS: "cajas sueltas", ARMADO: "pallets armados", DESARMADO: "pallets desarmados" };
   return {
     date: run.date,
     notes: run.notes,
     renglones: run.lines
-      .map((l) => `${l.product.name} ${l.product.presentation} \u00d7 ${formatNumeroExacto(l.quantity)}`)
+      .map((l) => `${l.product.name} ${l.product.presentation} \u00d7 ${formatNumeroExacto(l.quantity)} ${QUE[l.tipo]}`)
       .join("\n"),
   };
 }
@@ -73,6 +75,45 @@ export async function updateOilEfficiency(formData: FormData) {
   revalidatePath("/produccion");
 }
 
+/**
+ * Lo que una fila de producción consume de cada insumo, aplicando los reemplazos: la receta dice
+ * CUÁNTO, el reemplazo sólo cambia DE QUÉ insumo sale (la tapa amarilla en vez de la roja).
+ */
+type FilaDeReceta = {
+  itemId: string;
+  cantidad: Prisma.Decimal;
+  item: { name: string; category: SupplierCategory };
+};
+
+async function consumirInsumos(
+  tx: Prisma.TransactionClient,
+  params: {
+    filas: FilaDeReceta[];
+    reemplazoPorCategoria: Partial<Record<SupplierCategory, string>>;
+    productionLineId: string;
+    date: Date;
+    motivo: string;
+    userId: string;
+  }
+) {
+  await tx.itemMovement.createMany({
+    data: params.filas.map((r) => {
+      const reemplazo = params.reemplazoPorCategoria[r.item.category];
+      const usado = reemplazo && reemplazo !== r.itemId ? reemplazo : null;
+      return {
+        itemId: usado ?? r.itemId,
+        date: params.date,
+        quantity: r.cantidad.negated(),
+        type: "CONSUMO_PRODUCCION" as const,
+        // Que hubo reemplazo queda en el texto, que es lo que ya se ve en el kardex.
+        reason: usado ? `${params.motivo} — en lugar de ${r.item.name}` : params.motivo,
+        productionLineId: params.productionLineId,
+        createdById: params.userId,
+      };
+    }),
+  });
+}
+
 /** Núcleo compartido por createProductionRun y updateProductionRun — así una edición queda como un
  * solo UPDATE en el log, no un DELETE + CREATE. */
 async function createProductionRunCore(
@@ -86,9 +127,13 @@ async function createProductionRunCore(
 ) {
   const date = parseFormDate(formData.get("date"));
   const notes = String(formData.get("notes") || "").trim() || null;
+  const dateLabel = formatFecha(date);
+
+  // ---------- Lo producido: pallets terminados y cajas sueltas, por marca y formato
   const marcaIds = formData.getAll("marcaId").map(String);
   const formatoIds = formData.getAll("formatoId").map(String);
-  const quantities = formData.getAll("quantity").map(String);
+  const palletsRaw = formData.getAll("quantity").map(String);
+  const cajasRaw = formData.getAll("cajasSueltas").map(String);
   const tapaUsadaIds = formData.getAll("tapaUsadaItemId").map(String);
   const cajaUsadaIds = formData.getAll("cajaUsadaItemId").map(String);
   const etiquetaUsadaIds = formData.getAll("etiquetaUsadaItemId").map(String);
@@ -97,49 +142,83 @@ async function createProductionRunCore(
   // viniera con distinto largo, los reemplazos caerían en la fila equivocada y descontarían del
   // insumo que no era, sin que nadie lo note. Mejor romper fuerte.
   if (
-    formatoIds.length !== marcaIds.length ||
-    quantities.length !== marcaIds.length ||
-    tapaUsadaIds.length !== marcaIds.length ||
-    cajaUsadaIds.length !== marcaIds.length ||
-    etiquetaUsadaIds.length !== marcaIds.length
+    [formatoIds, palletsRaw, cajasRaw, tapaUsadaIds, cajaUsadaIds, etiquetaUsadaIds].some(
+      (arr) => arr.length !== marcaIds.length
+    )
   ) {
     throw new UserError("El formulario llegó incompleto — recargá la página y volvé a cargar la producción.");
   }
 
-  const lines = marcaIds
+  const producido = marcaIds
     .map((marcaId, i) => ({
+      fila: i + 1,
       marcaId,
       formatoId: formatoIds[i] || "",
-      quantity: parseNumeroOpcional(quantities[i] ?? "", "pallets"),
+      palletsRaw: (palletsRaw[i] ?? "").trim(),
+      cajasRaw: (cajasRaw[i] ?? "").trim(),
       tapaUsadaItemId: tapaUsadaIds[i] || "",
       cajaUsadaItemId: cajaUsadaIds[i] || "",
       etiquetaUsadaItemId: etiquetaUsadaIds[i] || "",
     }))
-    .filter((l) => l.marcaId && l.formatoId && !l.quantity.isZero());
+    // La fila vacía que queda al tocar "+ Agregar" y no completarla no corta la carga.
+    .filter((l) => l.marcaId || l.formatoId || l.palletsRaw || l.cajasRaw)
+    .map((l) => {
+      if (!l.marcaId || !l.formatoId) throw new UserError(`Ítem ${l.fila}: elegí la marca y el formato.`);
+      // **Las dos son obligatorias**, aunque sea 0. Producción informa pallets terminados y se
+      // olvidaba de las cajas que armó para completar un pallet o para quien retira sólo cajas;
+      // pedirlas siempre es lo que hace que las informe.
+      if (!l.palletsRaw || !l.cajasRaw) {
+        throw new UserError(
+          `Ítem ${l.fila}: indicá los pallets terminados y las cajas sueltas que se hicieron — 0 si no hubo.`
+        );
+      }
+      return {
+        ...l,
+        pallets: enteroNoNegativo(parseNumeroEscrito(l.palletsRaw, "pallets"), `Ítem ${l.fila}, pallets terminados`),
+        cajas: enteroNoNegativo(parseNumeroEscrito(l.cajasRaw, "cajas sueltas"), `Ítem ${l.fila}, cajas sueltas`),
+      };
+    })
+    .filter((l) => l.pallets > 0 || l.cajas > 0);
 
-  if (lines.length === 0) {
-    throw new UserError(
-      "Cargá al menos un ítem con marca, formato y pallets (puede ser negativo, para reformateo)."
-    );
+  // ---------- Armado y desarmado de pallets, con cajas que ya estaban hechas
+  const armMarcaIds = formData.getAll("armadoMarcaId").map(String);
+  const armFormatoIds = formData.getAll("armadoFormatoId").map(String);
+  const armAcciones = formData.getAll("armadoAccion").map(String);
+  const armPallets = formData.getAll("armadoPallets").map(String);
+  if ([armFormatoIds, armAcciones, armPallets].some((arr) => arr.length !== armMarcaIds.length)) {
+    throw new UserError("El formulario llegó incompleto — recargá la página y volvé a cargar la producción.");
+  }
+  const armados = armMarcaIds
+    .map((marcaId, i) => ({
+      fila: i + 1,
+      marcaId,
+      formatoId: armFormatoIds[i] || "",
+      accion: armAcciones[i] === "DESARMADO" ? ("DESARMADO" as const) : ("ARMADO" as const),
+      palletsRaw: (armPallets[i] ?? "").trim(),
+    }))
+    .filter((a) => a.marcaId || a.formatoId || a.palletsRaw)
+    .map((a) => {
+      if (!a.marcaId || !a.formatoId || !a.palletsRaw) {
+        throw new UserError(`Armado ${a.fila}: elegí la marca, el formato y cuántos pallets.`);
+      }
+      return { ...a, pallets: enteroNoNegativo(parseNumeroEscrito(a.palletsRaw, "pallets"), `Armado ${a.fila}, pallets`) };
+    })
+    .filter((a) => a.pallets > 0);
+
+  if (producido.length === 0 && armados.length === 0) {
+    throw new UserError("Cargá al menos un ítem: pallets o cajas sueltas que se hicieron, o un pallet armado o desarmado.");
   }
 
   // Los reemplazos se validan contra la base y no solo con el filtro del desplegable: un POST
   // armado a mano podría, si no, descontar tapas del aceite.
   const reemplazoIds = Array.from(
-    new Set(
-      lines
-        .flatMap((l) => [l.tapaUsadaItemId, l.cajaUsadaItemId, l.etiquetaUsadaItemId])
-        .filter(Boolean)
-    )
+    new Set(producido.flatMap((l) => [l.tapaUsadaItemId, l.cajaUsadaItemId, l.etiquetaUsadaItemId]).filter(Boolean))
   );
   const reemplazos = reemplazoIds.length
-    ? await prisma.item.findMany({
-        where: { id: { in: reemplazoIds } },
-        select: { id: true, name: true, category: true },
-      })
+    ? await prisma.item.findMany({ where: { id: { in: reemplazoIds } }, select: { id: true, name: true, category: true } })
     : [];
   const reemplazoPorId = new Map(reemplazos.map((i) => [i.id, i]));
-  for (const line of lines) {
+  for (const line of producido) {
     for (const [itemId, categoria, rol] of [
       [line.tapaUsadaItemId, "TAPAS", "tapa"],
       [line.cajaUsadaItemId, "CAJAS", "caja"],
@@ -148,13 +227,9 @@ async function createProductionRunCore(
       if (!itemId) continue;
       const item = reemplazoPorId.get(itemId);
       if (!item) throw new UserError(`El insumo elegido como ${rol} usada ya no existe.`);
-      if (item.category !== categoria) {
-        throw new UserError(`"${item.name}" no es una ${rol}.`);
-      }
+      if (item.category !== categoria) throw new UserError(`"${item.name}" no es una ${rol}.`);
     }
   }
-
-  const dateLabel = formatFecha(date);
 
   // Lo necesita la receta que se arma sola al crear un producto nuevo. Se lee acá y no adentro de
   // la transacción para no gastarle una consulta a cada línea.
@@ -162,89 +237,150 @@ async function createProductionRunCore(
 
   await prisma.$transaction(async (tx) => {
     // Borrar acá adentro y no antes: si el alta falla, la corrida original tiene que seguir
-    // existiendo. Las líneas y sus movimientos de producto/insumo se van en cascada.
+    // existiendo. Las líneas y sus movimientos de producto, cajas e insumos se van en cascada.
     if (replaceRunId) await tx.productionRun.delete({ where: { id: replaceRunId } });
 
-    const run = await tx.productionRun.create({
-      data: { date, notes, createdById: user.id },
-    });
+    const run = await tx.productionRun.create({ data: { date, notes, createdById: user.id } });
+    const productosTocados: string[] = [];
+    const cajasTocadas: string[] = [];
 
-    const lineasCreadas: string[] = [];
-    for (const line of lines) {
+    for (const line of producido) {
       const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
-      lineasCreadas.push(product.id);
-
-      const productionLine = await tx.productionLine.create({
-        data: { productionRunId: run.id, productId: product.id, quantity: line.quantity },
-      });
-
-      await tx.productMovement.create({
-        data: {
-          productId: product.id,
-          date,
-          quantity: line.quantity,
-          type: "PRODUCCION",
-          reason: `Producción del ${dateLabel}`,
-          productionLineId: productionLine.id,
-          createdById: user.id,
-        },
-      });
+      productosTocados.push(product.id);
+      const nombre = `${product.name} ${product.oilType} ${product.presentation}`;
 
       // Los productos nuevos nacen con receta, pero los que se crearon antes de que eso existiera
       // pueden no tenerla. Envasar sin receta no descuenta un solo insumo y no avisa nada: el
       // faltante recién aparece cuando alguien cuenta el stock físico. Mejor no dejar cargar.
       if (product.recipe.length === 0) {
         throw new UserError(
-          `${product.name} ${product.oilType} ${product.presentation} no tiene receta cargada, así que producirlo no descontaría ningún insumo. Cargala desde la ficha del producto.`
+          `${nombre} no tiene receta cargada, así que producirlo no descontaría ningún insumo. Cargala desde la ficha del producto.`
         );
       }
 
-      // La receta dice CUÁNTO se consume; el reemplazo solo cambia DE QUÉ insumo sale.
       const reemplazoPorCategoria: Partial<Record<SupplierCategory, string>> = {
         ...(line.tapaUsadaItemId ? { TAPAS: line.tapaUsadaItemId } : {}),
         ...(line.cajaUsadaItemId ? { CAJAS: line.cajaUsadaItemId } : {}),
         ...(line.etiquetaUsadaItemId ? { ETIQUETAS: line.etiquetaUsadaItemId } : {}),
       };
-      const ROL_DE_CATEGORIA: Partial<Record<SupplierCategory, string>> = {
-        TAPAS: "tapa",
-        CAJAS: "caja",
-        ETIQUETAS: "etiqueta",
-      };
+      const ROL_DE_CATEGORIA: Partial<Record<SupplierCategory, string>> = { TAPAS: "tapa", CAJAS: "caja", ETIQUETAS: "etiqueta" };
       for (const categoria of Object.keys(reemplazoPorCategoria) as SupplierCategory[]) {
         const rol = ROL_DE_CATEGORIA[categoria] ?? "insumo";
         const enReceta = product.recipe.filter((r) => r.item.category === categoria);
         // Aceptar la instrucción y descartarla en silencio dejaría el stock mal sin que nadie se
         // entere, así que se avisa.
         if (enReceta.length === 0) {
-          throw new UserError(
-            `${product.name} ${product.presentation} no tiene ${rol} en la receta — cargala antes de indicar cuál usaste.`
-          );
+          throw new UserError(`${nombre} no tiene ${rol} en la receta — cargala antes de indicar cuál usaste.`);
         }
         if (enReceta.length > 1) {
-          throw new UserError(
-            `${product.name} ${product.presentation} tiene más de una ${rol} en la receta — corregila antes de indicar cuál usaste.`
-          );
+          throw new UserError(`${nombre} tiene más de una ${rol} en la receta — corregila antes de indicar cuál usaste.`);
         }
       }
 
-      await tx.itemMovement.createMany({
-        data: product.recipe.map((recipeItem) => {
-          const consumed = new Prisma.Decimal(recipeItem.quantityPerUnit).times(line.quantity);
-          const reemplazo = reemplazoPorCategoria[recipeItem.item.category];
-          const usado = reemplazo && reemplazo !== recipeItem.itemId ? reemplazo : null;
-          return {
-            itemId: usado ?? recipeItem.itemId,
+      if (line.pallets > 0) {
+        const productionLine = await tx.productionLine.create({
+          data: { productionRunId: run.id, productId: product.id, quantity: line.pallets, tipo: "PALLETS" },
+        });
+        await tx.productMovement.create({
+          data: {
+            productId: product.id,
             date,
-            quantity: consumed.negated(),
-            type: "CONSUMO_PRODUCCION" as const,
-            // Que hubo reemplazo queda en el texto, que es lo que ya se ve en el kardex.
-            reason: usado
-              ? `Producción del ${dateLabel} — en lugar de ${recipeItem.item.name}`
-              : `Producción del ${dateLabel}`,
+            quantity: line.pallets,
+            type: "PRODUCCION",
+            reason: `Producción del ${dateLabel}`,
             productionLineId: productionLine.id,
             createdById: user.id,
-          };
-        }),
+          },
+        });
+        await consumirInsumos(tx, {
+          filas: product.recipe.map((r) => ({
+            itemId: r.itemId,
+            item: r.item,
+            cantidad: new Prisma.Decimal(r.quantityPerUnit).times(line.pallets),
+          })),
+          reemplazoPorCategoria,
+          productionLineId: productionLine.id,
+          date,
+          motivo: `Producción del ${dateLabel}`,
+          userId: user.id,
+        });
+      }
+
+      if (line.cajas > 0) {
+        if (!product.boxesPerPallet) {
+          throw new UserError(`${nombre} no tiene cargadas las cajas por pallet, así que no se puede saber cuánto lleva una caja.`);
+        }
+        const cajaId = await cajaDelProducto(tx, product);
+        cajasTocadas.push(cajaId);
+        const productionLine = await tx.productionLine.create({
+          data: { productionRunId: run.id, productId: product.id, quantity: line.cajas, tipo: "CAJAS" },
+        });
+        await tx.cajaMovement.create({
+          data: {
+            cajaId,
+            date,
+            quantity: line.cajas,
+            type: "PRODUCCION",
+            reason: `Producción del ${dateLabel}`,
+            productionLineId: productionLine.id,
+            createdById: user.id,
+          },
+        });
+        // Una caja suelta lleva lo de la receta dividido por las cajas del pallet, sin el pallet de
+        // madera ni el stretch, que son del pallet y no de la caja.
+        await consumirInsumos(tx, {
+          filas: recetaPorCaja(product.recipe, product.boxesPerPallet).map((r) => ({
+            itemId: r.itemId,
+            item: r.item,
+            cantidad: r.porCaja.times(line.cajas),
+          })),
+          reemplazoPorCategoria,
+          productionLineId: productionLine.id,
+          date,
+          motivo: `Cajas sueltas del ${dateLabel}`,
+          userId: user.id,
+        });
+      }
+    }
+
+    // Armar y desarmar mueven pallets y cajas, y nada más: las botellas ya estaban envasadas, así
+    // que no hay aceite ni envases que descontar ni que devolver. Antes se cargaba como producción
+    // con pallets negativos, y eso devolvía al stock insumos que nunca se desenvasaron.
+    for (const a of armados) {
+      const product = await resolveOrCreateProduct(tx, a.marcaId, a.formatoId, oilFillEfficiencyPercent);
+      const nombre = `${product.name} ${product.oilType} ${product.presentation}`;
+      if (!product.boxesPerPallet) {
+        throw new UserError(`${nombre} no tiene cargadas las cajas por pallet.`);
+      }
+      const cajaId = await cajaDelProducto(tx, product);
+      productosTocados.push(product.id);
+      cajasTocadas.push(cajaId);
+      const signo = a.accion === "ARMADO" ? 1 : -1;
+      const productionLine = await tx.productionLine.create({
+        data: { productionRunId: run.id, productId: product.id, quantity: a.pallets, tipo: a.accion },
+      });
+      const motivo = `${a.accion === "ARMADO" ? "Armado" : "Desarmado"} del ${dateLabel}`;
+      await tx.productMovement.create({
+        data: {
+          productId: product.id,
+          date,
+          quantity: signo * a.pallets,
+          type: a.accion,
+          reason: motivo,
+          productionLineId: productionLine.id,
+          createdById: user.id,
+        },
+      });
+      await tx.cajaMovement.create({
+        data: {
+          cajaId,
+          date,
+          quantity: -signo * a.pallets * product.boxesPerPallet,
+          type: a.accion,
+          reason: motivo,
+          productionLineId: productionLine.id,
+          createdById: user.id,
+        },
       });
     }
 
@@ -253,31 +389,34 @@ async function createProductionRunCore(
     // Todo lo que esta carga movió, y lo que movía la que reemplaza: el cliente global todavía la ve,
     // porque la transacción no se confirmó.
     const [movidos, anteriores] = await Promise.all([
-      tx.itemMovement.findMany({
-        where: { productionLine: { productionRunId: run.id } },
-        select: { itemId: true },
-      }),
+      tx.itemMovement.findMany({ where: { productionLine: { productionRunId: run.id } }, select: { itemId: true } }),
       replaceRunId
         ? prisma.productionLine.findMany({
             where: { productionRunId: replaceRunId },
-            select: { productId: true, itemMovements: { select: { itemId: true } } },
+            select: {
+              productId: true,
+              itemMovements: { select: { itemId: true } },
+              cajaMovements: { select: { cajaId: true } },
+            },
           })
         : Promise.resolve([]),
     ]);
     await asegurarSinNegativos(tx, {
       insumos: [...movidos.map((m) => m.itemId), ...anteriores.flatMap((l) => l.itemMovements.map((m) => m.itemId))],
-      productos: [...lineasCreadas, ...anteriores.map((l) => l.productId)],
+      productos: [...productosTocados, ...anteriores.map((l) => l.productId)],
+      cajas: [...cajasTocadas, ...anteriores.flatMap((l) => l.cajaMovements.map((m) => m.cajaId))],
     });
 
+    const items = producido.length + armados.length;
     await logAudit(tx, {
       userId: user.id,
       action: auditAction,
       entityType: "Producción",
       entityId: run.id,
-      summary: `Producción del ${dateLabel} — ${lines.length} línea(s)`,
+      summary: `Producción del ${dateLabel} — ${items} ítem(s)`,
       cambios: diffDeCampos(antes ?? null, await fotoDeLaProduccion(tx, run.id), CAMPOS_DE_LA_PRODUCCION),
     });
-  }, { timeout: 20000 });
+  }, { timeout: 30000 });
 
   revalidatePath("/produccion");
   revalidatePath("/stock");
@@ -313,13 +452,16 @@ export async function deleteProductionRun(formData: FormData) {
   const antes = await fotoDeLaProduccion(prisma, runId);
   const productosDeLaCarga = await prisma.productionLine.findMany({
     where: { productionRunId: runId },
-    select: { productId: true },
+    select: { productId: true, cajaMovements: { select: { cajaId: true } } },
   });
 
   await prisma.$transaction(async (tx) => {
     await tx.productionRun.delete({ where: { id: runId } });
     // Lo producido puede haberse entregado ya: sacarlo dejaría el producto en rojo desde ese día.
-    await asegurarSinNegativos(tx, { productos: productosDeLaCarga.map((l) => l.productId) });
+    await asegurarSinNegativos(tx, {
+      productos: productosDeLaCarga.map((l) => l.productId),
+      cajas: productosDeLaCarga.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
+    });
   });
 
   await logAudit(prisma, {

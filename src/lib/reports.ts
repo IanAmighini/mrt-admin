@@ -9,7 +9,7 @@ import {
   type SupplierCategory,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
+import { formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getRetirosDelPeriodo, getVencimientos, litrosDeLinea } from "@/lib/ledger";
 import { getCostoInsumos, getRentabilidad } from "@/lib/dashboard-kpis";
 import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
@@ -755,9 +755,21 @@ export async function getProduccionReport(period: Period): Promise<ProduccionRep
   const porProducto = new Map<string, { productSlug: string; label: string; pallets: Prisma.Decimal; botellas: Prisma.Decimal }>();
   let totalPallets = ZERO;
 
+  // Lo envasado, en pallets: los pallets terminados más las cajas sueltas pasadas a pallets
+  // (48 cajas de un pallet de 105 son 0,457). Armar y desarmar no es producir —las botellas ya
+  // estaban—, así que no suma.
+  const enPallets = (line: (typeof runs)[number]["lines"][number]) => {
+    if (line.tipo === "PALLETS") return toDecimal(line.quantity);
+    if (line.tipo === "CAJAS" && line.product.boxesPerPallet) {
+      return toDecimal(line.quantity).dividedBy(line.product.boxesPerPallet);
+    }
+    return null;
+  };
+
   for (const run of runs) {
     for (const line of run.lines) {
-      const pallets = toDecimal(line.quantity);
+      const pallets = enPallets(line);
+      if (!pallets) continue;
       const porPallet = (line.product.boxesPerPallet ?? 0) * (line.product.unitsPerBox ?? 0);
       const current = porProducto.get(line.product.slug) ?? {
         productSlug: line.product.slug,
@@ -783,7 +795,10 @@ export async function getProduccionReport(period: Period): Promise<ProduccionRep
     corridas: runs.map((run) => ({
       date: run.date,
       notes: run.notes,
-      lines: run.lines.map((l) => ({ label: formatProductLabel(l.product), pallets: toDecimal(l.quantity) })),
+      lines: run.lines.flatMap((l) => {
+        const pallets = enPallets(l);
+        return pallets ? [{ label: formatProductLabel(l.product), pallets }] : [];
+      }),
     })),
     litrosEnvasados,
     costoInsumos,
@@ -949,11 +964,13 @@ export type StockReport = {
  * fecha, y de ahí sale la lista de arriba.
  */
 export async function getStockReport(period: Period): Promise<StockReport> {
-  const [items, productos, itemMovs, productMovs] = await Promise.all([
+  const [items, productos, itemMovs, productMovs, cajas, cajaMovs] = await Promise.all([
     prisma.item.findMany({ where: { llevaStock: true }, orderBy: [{ category: "asc" }, { name: "asc" }] }),
     prisma.product.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }] }),
     prisma.itemMovement.findMany({ where: { date: { lt: period.to } } }),
     prisma.productMovement.findMany({ where: { date: { lt: period.to } } }),
+    prisma.caja.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }] }),
+    prisma.cajaMovement.findMany({ where: { date: { lt: period.to } } }),
   ]);
 
   const enElPeriodo = <T extends { date: Date }>(m: T) => m.date >= period.from;
@@ -995,12 +1012,38 @@ export async function getStockReport(period: Period): Promise<StockReport> {
       boxesPerPallet: prod.boxesPerPallet,
       categoria: "PRODUCTO",
       inicial,
-      ingresos: suma(["PRODUCCION"]),
+      // Lo que entró: lo producido, lo devuelto y el armado neto (armar suma pallets, desarmar
+      // resta). Así la fila cierra sola contra el final.
+      ingresos: suma(["PRODUCCION", "DEVOLUCION", "ARMADO", "DESARMADO"]),
       consumo: suma(["ENTREGA", "CONSUMO_ARMADO_CAJA"]).negated(),
       mermas: suma(["MERMA"]),
       ajustes: suma(["AJUSTE"]),
       ventas: ZERO,
       final: inicial.plus(sumDecimals(delPeriodo.map((m) => toDecimal(m.quantity)))),
+    };
+  };
+
+  // Las cajas sueltas, por caja, con las mismas columnas que los pallets.
+  const filaDeCaja = (caja: (typeof cajas)[number]): StockReportRow => {
+    const movs = cajaMovs.filter((m) => m.cajaId === caja.id);
+    const delPeriodo = movs.filter(enElPeriodo);
+    const suma = (tipos: string[]) =>
+      toDecimal(delPeriodo.filter((m) => tipos.includes(m.type)).reduce((a, m) => a + m.quantity, 0));
+    const inicial = toDecimal(movs.filter((m) => !enElPeriodo(m)).reduce((a, m) => a + m.quantity, 0));
+    return {
+      id: caja.id,
+      slug: "",
+      nombre: `Cajas sueltas — ${caja.name} ${caja.oilType} ${caja.unitsPerBox}x${formatQuantity(caja.bottleCapacityMl)}`,
+      unidad: "cajas",
+      boxesPerPallet: null,
+      categoria: "CAJA",
+      inicial,
+      ingresos: suma(["PRODUCCION", "DEVOLUCION", "ARMADO", "DESARMADO"]),
+      consumo: suma(["ENTREGA"]).negated(),
+      mermas: suma(["MERMA"]),
+      ajustes: suma(["AJUSTE"]),
+      ventas: ZERO,
+      final: inicial.plus(toDecimal(delPeriodo.reduce((a, m) => a + m.quantity, 0))),
     };
   };
 
@@ -1022,7 +1065,7 @@ export async function getStockReport(period: Period): Promise<StockReport> {
   }
 
   const insumos = items.map(filaDeItem);
-  const productosFilas = productos.map(filaDeProducto);
+  const productosFilas = [...productos.map(filaDeProducto), ...cajas.map(filaDeCaja)];
 
   return {
     period,

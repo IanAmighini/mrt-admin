@@ -4,6 +4,7 @@ import { Archive, Droplet, HelpCircle, Layers, PackageOpen, Scissors, Tag, type 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
+import { getStockDeCajas } from "@/lib/cajas";
 import { formatQuantity } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 import { formatPallets } from "@/lib/product-label";
@@ -41,16 +42,25 @@ export default async function StockPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [items, stocks, products, productStocks] = await Promise.all([
+  const [items, stocks, products, productStocks, cajas, stockDeCajas] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getAllItemStocks(),
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
     }),
     getAllProductStocks(),
+    prisma.caja.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }] }),
+    getStockDeCajas(),
   ]);
 
   const searchTerm = q?.trim().toLowerCase();
+  const cajasRows = cajas
+    .map((caja) => ({ caja, sueltas: stockDeCajas.get(caja.id) ?? 0 }))
+    .filter(({ sueltas }) => sueltas !== 0)
+    .filter(
+      ({ caja }) =>
+        !searchTerm || caja.name.toLowerCase().includes(searchTerm) || caja.oilType.toLowerCase().includes(searchTerm)
+    );
   // "Ver" acota a una sección: con 47 insumos repartidos en siete categorías, llegar a las
   // etiquetas era bajar media pantalla. Vacío = todo, como antes.
   const soloBajoMinimo = bajo === "1";
@@ -179,6 +189,42 @@ export default async function StockPage({
               )}
             </tbody>
         </Table>
+
+        {/* Las cajas sueltas van aparte y no como una columna de cada formato: son de la caja, y
+            las de un 84 y un 105 de la misma marca y botella son las mismas cajas. Repetirlas en
+            cada formato las contaría dos veces. */}
+        {cajasRows.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-sm font-semibold">Cajas sueltas</h3>
+            <Table suelta={false}>
+              <Thead>
+                <Th className="pl-4">Marca</Th>
+                <Th secundaria>Tipo de aceite</Th>
+                <Th>Caja</Th>
+                <Th align="derecha" className="pr-4">
+                  Sueltas
+                </Th>
+              </Thead>
+              <tbody>
+                {cajasRows.map(({ caja, sueltas }) => (
+                  <Tr key={caja.id}>
+                    <Td className="pl-4">
+                      {caja.name}
+                      <span className="block text-xs text-foreground/50 md:hidden">{caja.oilType}</span>
+                    </Td>
+                    <Td secundaria>{caja.oilType}</Td>
+                    <Td>
+                      {caja.unitsPerBox}x{formatQuantity(caja.bottleCapacityMl)}
+                    </Td>
+                    <Td numero className={`pr-4 font-medium ${sueltas < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                      {formatQuantity(sueltas)} {Math.abs(sueltas) === 1 ? "caja" : "cajas"}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        )}
       </section>
       )}
 

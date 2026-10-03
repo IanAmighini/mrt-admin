@@ -39,7 +39,7 @@ export function RemitoFormFields({
     entregaId?: string | null;
     destinatarioId?: string | null;
   };
-  defaultLines?: { productId: string; quantity: string; pricePerBottle: string; circuit: "BLANCO" | "NEGRO" }[];
+  defaultLines?: { productId: string; quantity: string; cajas?: string; pricePerBottle: string; circuit: "BLANCO" | "NEGRO" }[];
   /** Pedidos pendientes (no entregados) de este cliente — al tildarlos se marcan como
    * "Entregado" automáticamente al crear el remito. No se muestra al editar un remito existente. */
   pedidosPendientes?: PedidoPendiente[];
@@ -158,15 +158,23 @@ export function lineaDeRemito(
     quantity: Prisma.Decimal;
     unitPrice: Prisma.Decimal;
     precioBotellaUsd: Prisma.Decimal | null;
+    pallets?: number | null;
+    cajas?: number | null;
     product: { boxesPerPallet: number | null; unitsPerBox: number | null };
   },
   circuit: Circuit
 ) {
-  const perPallet = (l.product.boxesPerPallet ?? 0) * (l.product.unitsPerBox ?? 0);
+  const bpp = l.product.boxesPerPallet ?? 0;
+  const perPallet = bpp * (l.product.unitsPerBox ?? 0);
   const enPesos = perPallet > 0 ? l.unitPrice.dividedBy(perPallet).toDecimalPlaces(4) : l.unitPrice;
+  // Las líneas de antes de las cajas sueltas guardaban pallets con decimales (2,5): se abren como
+  // pallets enteros más las cajas que eran esa fracción.
+  const enteros = l.pallets ?? Math.floor(l.quantity.toNumber() + 1e-9);
+  const cajas = l.cajas ?? (bpp ? Math.round((l.quantity.toNumber() - enteros) * bpp) : 0);
   return {
     productId: l.productId,
-    quantity: formatNumeroExacto(l.quantity),
+    quantity: String(enteros),
+    cajas: String(cajas),
     pricePerBottle: formatNumeroExacto(l.precioBotellaUsd ?? enPesos),
     circuit,
   };

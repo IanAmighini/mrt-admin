@@ -31,6 +31,7 @@ model User {
 
   itemMovements    ItemMovement[]
   productMovements ProductMovement[]
+  cajaMovements    CajaMovement[]
   productionRuns   ProductionRun[]
   prices           Price[]
   pedidos          Pedido[]
@@ -383,9 +384,15 @@ model DocumentLine {
   /// `unitPrice` es esto × cotización × botellas por pallet, en la moneda de la cuenta; se guarda el
   /// original porque es el número con el que se controla, y la cotización ya queda en el remito.
   precioBotellaUsd Decimal? @db.Decimal(14, 6)
+  /// Pallets enteros y cajas sueltas de la línea. `quantity` es su equivalente en pallets, que es
+  /// con lo que se suma en los reportes; estos dos son lo que se movió del stock. Vacíos en las
+  /// líneas de antes de que hubiera cajas sueltas.
+  pallets    Int?
+  cajas      Int?
   subtotal   Decimal  @db.Decimal(14, 2)
 
   productMovements ProductMovement[]
+  cajaMovements    CajaMovement[]
 
   @@index([documentId])
   @@index([productId])
@@ -644,6 +651,10 @@ model Product {
   boxesPerPallet   Int?
   unitsPerBox      Int?
   bottleCapacityMl Decimal? @db.Decimal(10, 2)
+  /// La caja que se apila en este pallet. Los formatos de una misma marca y botella (84, 98 y 105
+  /// cajas de 12x900) comparten la caja, y por eso comparten las cajas sueltas.
+  cajaId           String?
+  caja             Caja?    @relation(fields: [cajaId], references: [id])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -707,6 +718,77 @@ enum ProductMovementType {
   AJUSTE
   MERMA
   ENTREGA
+  /// Cajas sueltas que se apilan en un pallet: suma pallets, resta cajas.
+  ARMADO
+  /// Un pallet que se desarma: resta pallets, suma cajas sueltas.
+  DESARMADO
+  /// Lo que un cliente devuelve: vuelve al stock con una nota de crédito.
+  DEVOLUCION
+}
+
+/**
+ * Una caja de producto terminado: marca, aceite, ml y botellas por caja.
+ *
+ * Es la unidad de las cajas sueltas. Las de los distintos formatos de pallet de una misma marca y
+ * botella son la misma caja: las 21 que sobran de desarmar un pallet de 105 sirven para armar uno de
+ * 84. Por eso las cajas sueltas se cuentan acá y no por producto.
+ */
+model Caja {
+  id               String   @id @default(cuid())
+  name             String
+  oilType          String
+  bottleCapacityMl Decimal  @db.Decimal(10, 2)
+  unitsPerBox      Int
+  createdAt        DateTime @default(now())
+
+  products    Product[]
+  movimientos CajaMovement[]
+
+  @@unique([name, oilType, bottleCapacityMl, unitsPerBox])
+}
+
+enum CajaMovementType {
+  PRODUCCION
+  ENTREGA
+  ARMADO
+  DESARMADO
+  DEVOLUCION
+  AJUSTE
+  MERMA
+}
+
+/// Cajas sueltas que entran o salen. `quantity` son cajas enteras, con signo.
+model CajaMovement {
+  id               String           @id @default(cuid())
+  cajaId           String
+  caja             Caja             @relation(fields: [cajaId], references: [id])
+  date             DateTime
+  quantity         Int
+  type             CajaMovementType
+  reason           String
+  productionLineId String?
+  productionLine   ProductionLine?  @relation(fields: [productionLineId], references: [id], onDelete: Cascade)
+  documentLineId   String?
+  documentLine     DocumentLine?    @relation(fields: [documentLineId], references: [id], onDelete: Cascade)
+  createdById      String
+  createdBy        User             @relation(fields: [createdById], references: [id])
+  createdAt        DateTime         @default(now())
+
+  @@index([cajaId])
+  @@index([productionLineId])
+  @@index([documentLineId])
+}
+
+/// Qué se hizo en una línea de producción.
+enum ProductionLineTipo {
+  /// Pallets terminados: consume la receta entera.
+  PALLETS
+  /// Cajas sueltas: consume la receta por caja, sin pallet de madera ni stretch.
+  CAJAS
+  /// Cajas sueltas apiladas en pallets. No mueve insumos.
+  ARMADO
+  /// Pallets desarmados en cajas sueltas. No mueve insumos.
+  DESARMADO
 }
 
 model ProductMovement {
@@ -747,10 +829,13 @@ model ProductionLine {
   productionRun   ProductionRun @relation(fields: [productionRunId], references: [id], onDelete: Cascade)
   productId       String
   product         Product       @relation(fields: [productId], references: [id])
+  /// Pallets, salvo en una línea de cajas sueltas, donde son cajas.
   quantity        Decimal       @db.Decimal(14, 3)
+  tipo            ProductionLineTipo @default(PALLETS)
 
   itemMovements    ItemMovement[]
   productMovements ProductMovement[]
+  cajaMovements    CajaMovement[]
 
   @@index([productionRunId])
   @@index([productId])

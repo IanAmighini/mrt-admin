@@ -7,6 +7,7 @@ import { getAllPedidosPendientes } from "@/lib/pedidos";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { NuevaEntregaForm } from "@/components/NuevaEntregaForm";
+import { getStockParaFormulario } from "@/lib/cajas";
 
 export default async function NuevaEntregaPage({
   searchParams,
@@ -17,7 +18,7 @@ export default async function NuevaEntregaPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [clientes, products, allPrices, allPedidos, todosLosViajes, todosLosDestinatarios] = await Promise.all([
+  const [clientes, products, allPrices, allPedidos, todosLosViajes, todosLosDestinatarios, stock] = await Promise.all([
     prisma.entity.findMany({
       where: { type: { in: ["CLIENTE", "AMBOS"] } },
       orderBy: { name: "asc" },
@@ -37,6 +38,7 @@ export default async function NuevaEntregaPage({
       orderBy: { nombre: "asc" },
       select: { id: true, nombre: true, taxId: true, entityId: true },
     }),
+    getStockParaFormulario(),
   ]);
 
   const viajesByEntity: Record<string, { id: string; nombre: string; destino: string | null }[]> = {};
@@ -83,7 +85,7 @@ export default async function NuevaEntregaPage({
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="max-w-5xl space-y-6">
       <div>
         <Link
           href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.slug}` : "/entregas"}
@@ -109,6 +111,7 @@ export default async function NuevaEntregaPage({
             unitsPerBox: p.unitsPerBox,
           }))}
           pricesByEntity={pricesByEntity}
+          stock={stock}
           pedidosByEntity={pedidosByEntity}
           viajesByEntity={viajesByEntity}
           destinatariosByEntity={destinatariosByEntity}

@@ -1,4 +1,4 @@
-import type {
+import type { CajaMovementType,
   ChequeEstado,
   Circuit,
   Currency,
@@ -151,6 +151,19 @@ export const PRODUCT_MOVEMENT_TYPE_LABELS: Record<ProductMovementType, string> =
   AJUSTE: "Ajuste",
   MERMA: "Merma",
   ENTREGA: "Entrega",
+  ARMADO: "Armado",
+  DESARMADO: "Desarmado",
+  DEVOLUCION: "Devolución",
+};
+
+export const CAJA_MOVEMENT_TYPE_LABELS: Record<CajaMovementType, string> = {
+  PRODUCCION: "Producción",
+  ENTREGA: "Entrega",
+  ARMADO: "Armado de pallet",
+  DESARMADO: "Desarmado de pallet",
+  DEVOLUCION: "Devolución",
+  AJUSTE: "Ajuste",
+  MERMA: "Merma",
 };
 
 /** Orden en que se muestran las categorías de insumo: sigue la línea de envasado (aceite, envase,

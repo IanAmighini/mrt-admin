@@ -3,8 +3,9 @@
 import { useActionState, useMemo, useState } from "react";
 import type { Currency } from "@prisma/client";
 import { formatMoney, formatQuantity, parseNumeroSuave } from "@/lib/money";
-import { formatProductBrandLabel } from "@/lib/product-label";
+import { formatPallets, formatProductBrandLabel } from "@/lib/product-label";
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
+import { desarmadosPorLinea, type StockParaPlan } from "@/lib/plan-de-entrega";
 
 const IVA_RATE = 21;
 
@@ -36,6 +37,8 @@ type Row = {
   marcaKey: string;
   productId: string;
   pallets: string;
+  /** Cajas sueltas, además de los pallets. */
+  cajas: string;
   pricePerBottle: string;
   facturado: boolean;
 };
@@ -55,6 +58,7 @@ export function NuevaEntregaForm({
   clientes,
   products,
   pricesByEntity,
+  stock,
   pedidosByEntity,
   viajesByEntity,
   destinatariosByEntity,
@@ -64,6 +68,8 @@ export function NuevaEntregaForm({
   clientes: ClienteInfo[];
   products: ProductInfo[];
   pricesByEntity: PricesByEntity;
+  /** Lo que hay de cada producto: pallets de su formato y cajas sueltas de su caja. */
+  stock: Record<string, StockParaPlan>;
   pedidosByEntity: PedidosByEntity;
   /** Los viajes y destinatarios de cada cliente. Los dos selectores aparecen sólo si el cliente
    * elegido tiene alguno cargado, así que para casi todos el formulario queda igual. */
@@ -98,7 +104,7 @@ export function NuevaEntregaForm({
     }
   }, null);
   const [rows, setRows] = useState<Row[]>([
-    { key: 0, marcaKey: "", productId: "", pallets: "", pricePerBottle: "", facturado: true },
+    { key: 0, marcaKey: "", productId: "", pallets: "", cajas: "", pricePerBottle: "", facturado: true },
   ]);
   const [nextKey, setNextKey] = useState(1);
   const [checkedPedidos, setCheckedPedidos] = useState<Set<string>>(new Set());
@@ -151,7 +157,7 @@ export function NuevaEntregaForm({
   function addRow() {
     setRows((prev) => [
       ...prev,
-      { key: nextKey, marcaKey: "", productId: "", pallets: "", pricePerBottle: "", facturado: true },
+      { key: nextKey, marcaKey: "", productId: "", pallets: "", cajas: "", pricePerBottle: "", facturado: true },
     ]);
     setNextKey((k) => k + 1);
   }
@@ -165,27 +171,34 @@ export function NuevaEntregaForm({
   const computedRows = rows.map((row) => {
     const product = productById.get(row.productId);
     const pallets = parseNumeroSuave(row.pallets)?.toNumber() ?? 0;
+    const cajas = parseNumeroSuave(row.cajas)?.toNumber() ?? 0;
     const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
-    const botellas = pallets * perPallet;
+    const botellas = pallets * perPallet + cajas * (product?.unitsPerBox ?? 0);
     const escrito = parseNumeroSuave(row.pricePerBottle)?.toNumber() ?? 0;
     const cot = cotizacionNum?.toNumber() ?? 0;
     // En la moneda de la cuenta, que es en la que se guarda.
     const pricePerBottle = enDolares ? escrito * cot : enPesos ? escrito / cot : escrito;
     const subtotal = botellas * pricePerBottle;
     const iva = row.facturado ? subtotal * (IVA_RATE / 100) : 0;
-    return { row, product, pallets, botellas, subtotal, iva, pricePerBottle, perPallet };
+    return { row, product, pallets, cajas, botellas, subtotal, iva, pricePerBottle, perPallet };
   });
+  // Cuántos pallets se van a desarmar para sacar las cajas sueltas: se avisa antes de guardar.
+  const plan = desarmadosPorLinea(
+    computedRows.map((r) => ({ productId: r.row.productId, cajas: r.cajas, boxesPerPallet: r.product?.boxesPerPallet ?? null })),
+    stock
+  );
 
   const totals = computedRows.reduce(
     (acc, r) => {
       acc.pallets += r.pallets;
+      acc.cajas += r.cajas;
       acc.botellas += r.botellas;
       if (r.row.facturado) acc.facturado += r.subtotal;
       else acc.noFacturado += r.subtotal;
       acc.iva += r.iva;
       return acc;
     },
-    { pallets: 0, botellas: 0, facturado: 0, noFacturado: 0, iva: 0 }
+    { pallets: 0, cajas: 0, botellas: 0, facturado: 0, noFacturado: 0, iva: 0 }
   );
   const total = totals.facturado + totals.iva + totals.noFacturado;
 
@@ -303,7 +316,9 @@ export function NuevaEntregaForm({
         </div>
 
         <div className="space-y-3">
-          {computedRows.map(({ row, botellas, subtotal, iva, pricePerBottle, perPallet }) => {
+          {computedRows.map(({ row, product, pallets, cajas, botellas, subtotal, iva, pricePerBottle, perPallet }, idx) => {
+            const hay = row.productId ? stock[row.productId] : undefined;
+            const { aDesarmar, sobran } = plan[idx];
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
               <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
@@ -343,13 +358,20 @@ export function NuevaEntregaForm({
                   <input
                     value={row.pallets}
                     onChange={(e) => updateRow(row.key, { pallets: e.target.value })}
-                    inputMode="decimal"
+                    inputMode="numeric"
+                    placeholder="0"
                     className={inputClass}
                   />
                 </div>
                 <div className="col-span-1 min-w-0">
-                  <label className="text-xs text-foreground/60">Botellas</label>
-                  <p className="px-2 py-2 text-sm text-foreground/60">{formatQuantity(botellas)}</p>
+                  <label className="text-xs text-foreground/60">Cajas</label>
+                  <input
+                    value={row.cajas}
+                    onChange={(e) => updateRow(row.key, { cajas: e.target.value })}
+                    inputMode="numeric"
+                    placeholder="0"
+                    className={inputClass}
+                  />
                 </div>
                 <div className="col-span-2 min-w-0">
                   <label className="text-xs text-foreground/60">
@@ -404,10 +426,28 @@ export function NuevaEntregaForm({
                   )}
                 </div>
 
+                {/* Lo que hay, y si hace falta desarmar un pallet para sacar las cajas: se ve antes de
+                    guardar, en vez de enterarse después mirando el stock. */}
+                {hay && (
+                  <p className="col-span-12 -mt-1 text-xs text-foreground/50">
+                    Hay {formatPallets(hay.pallets, product?.boxesPerPallet ?? null)} de este formato y{" "}
+                    {formatQuantity(hay.sueltas)} {hay.sueltas === 1 ? "caja suelta" : "cajas sueltas"} · {formatQuantity(botellas)} botellas
+                    {pallets > hay.pallets && (
+                      <span className="text-red-600 dark:text-red-400"> · no alcanzan los pallets</span>
+                    )}
+                    {aDesarmar > 0 && (
+                      <span className="block text-amber-700 dark:text-amber-400">
+                        Se desarma{aDesarmar === 1 ? "" : "n"} {aDesarmar} {aDesarmar === 1 ? "pallet" : "pallets"}{" "}
+                        de {product?.presentation} para sacar las {formatQuantity(cajas)} cajas: quedan {formatQuantity(sobran)} sueltas.
+                      </span>
+                    )}
+                  </p>
+                )}
                 {/* El precio va tal como se escribió y el servidor hace la cuenta del pallet. Los dos
                     campos van siempre, uno vacío: se aparean por posición. */}
                 <input type="hidden" name="lineProductId" value={row.productId} />
                 <input type="hidden" name="lineQuantity" value={row.pallets} />
+                <input type="hidden" name="lineCajas" value={row.cajas} />
                 <input type="hidden" name="linePrecioBotella" value={enDolares ? "" : row.pricePerBottle} />
                 <input type="hidden" name="linePrecioBotellaUsd" value={enDolares ? row.pricePerBottle : ""} />
                 <input type="hidden" name="lineCircuit" value={row.facturado ? "BLANCO" : "NEGRO"} />
@@ -418,8 +458,11 @@ export function NuevaEntregaForm({
 
         <div className="flex flex-wrap justify-end gap-6 border-t border-foreground/10 pt-3 text-sm">
           <div className="text-center">
-            <p className="text-xs text-foreground/50">Total pallets</p>
-            <p className="font-semibold">{formatQuantity(totals.pallets)}</p>
+            <p className="text-xs text-foreground/50">Total</p>
+            <p className="font-semibold">
+              {formatQuantity(totals.pallets)} pallets
+              {totals.cajas > 0 && ` + ${formatQuantity(totals.cajas)} cajas`}
+            </p>
           </div>
           <div className="text-center">
             <p className="text-xs text-foreground/50">Total botellas</p>

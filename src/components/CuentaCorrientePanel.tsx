@@ -1,4 +1,5 @@
-import type { Entity } from "@prisma/client";
+import type { Entity, Product } from "@prisma/client";
+import { DevolucionFields } from "./DevolucionFields";
 import { formatFecha } from "@/lib/period";
 import type { RecentMovement } from "@/lib/ledger";
 import { getDocumentEffect } from "@/lib/ledger";
@@ -8,6 +9,7 @@ import {
   cargarEnCuenta,
   createDocumentForEntity,
   createFactura,
+  crearDevolucion,
   createPaymentForEntity,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { FormModal } from "./Modal";
@@ -37,6 +39,7 @@ export function CuentaCorrientePanel({
   viajes,
   destinatarios,
   rotuloSubcuenta,
+  devolucion,
 }: {
   entityId: string;
   entityName: string;
@@ -70,6 +73,11 @@ export function CuentaCorrientePanel({
   destinatarios?: DestinatarioOption[];
   /** Cómo llama esta ficha a las partes de su cuenta: "Viaje", "Subcuenta". */
   rotuloSubcuenta?: string;
+  /** Sólo clientes: lo que hace falta para cargar una devolución. */
+  devolucion?: {
+    products: Product[];
+    priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
+  };
 }) {
   const isTreasury = entityType === "TESORERIA";
   const isCliente = entityType !== "PROVEEDOR";
@@ -132,6 +140,22 @@ export function CuentaCorrientePanel({
                   viajes={viajes}
                   destinatarios={destinatarios}
                   rotuloSubcuenta={rotuloSubcuenta}
+                />
+              </FormModal>
+            )}
+            {devolucion && !isTreasury && (
+              <FormModal
+                triggerLabel="Devolución"
+                title="Devolución de mercadería"
+                action={crearDevolucion}
+                peso="secundario"
+                maxWidthClass="max-w-3xl"
+              >
+                <DevolucionFields
+                  entityId={entityId}
+                  products={devolucion.products}
+                  priceMapByCircuit={devolucion.priceMapByCircuit}
+                  moneda={moneda}
                 />
               </FormModal>
             )}

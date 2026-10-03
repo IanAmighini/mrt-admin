@@ -72,34 +72,72 @@ export default async function ProduccionPage() {
     return usado;
   }
 
-  /** Los ítems de una corrida, con la forma que espera el formulario de edición. */
+  const marcaIdDe = (p: { name: string; oilType: string }) =>
+    marcas.find((m) => m.name === p.name && m.oilType === p.oilType)?.id ?? "";
+  const formatoIdDe = (p: { presentation: string }) => formatos.find((f) => f.presentation === p.presentation)?.id ?? "";
+
+  /**
+   * Los ítems de una corrida, con la forma que espera el formulario de edición. Los pallets y las
+   * cajas sueltas de un mismo producto se guardan en dos líneas y en el formulario son un ítem.
+   */
   function filasDe(run: (typeof runs)[number]) {
-    return run.lines.map((line) => {
+    const porProducto = new Map<string, ReturnType<typeof filaVaciaDe>>();
+    function filaVaciaDe(line: LineaDeCorrida) {
       const usado = reemplazosDe(line);
       return {
-        marcaId:
-          marcas.find((m) => m.name === line.product.name && m.oilType === line.product.oilType)?.id ?? "",
-        formatoId: formatos.find((f) => f.presentation === line.product.presentation)?.id ?? "",
-        pallets: formatNumeroExacto(line.quantity),
+        marcaId: marcaIdDe(line.product),
+        formatoId: formatoIdDe(line.product),
+        pallets: "0",
+        cajas: "0",
         tapaUsadaItemId: usado.TAPAS ?? "",
         cajaUsadaItemId: usado.CAJAS ?? "",
         etiquetaUsadaItemId: usado.ETIQUETAS ?? "",
       };
-    });
+    }
+    for (const line of run.lines) {
+      if (line.tipo !== "PALLETS" && line.tipo !== "CAJAS") continue;
+      const fila = porProducto.get(line.productId) ?? filaVaciaDe(line);
+      if (line.tipo === "PALLETS") fila.pallets = formatNumeroExacto(line.quantity);
+      else fila.cajas = formatNumeroExacto(line.quantity);
+      porProducto.set(line.productId, fila);
+    }
+    return Array.from(porProducto.values());
   }
 
+  function armadosDe(run: (typeof runs)[number]) {
+    return run.lines
+      .filter((l) => l.tipo === "ARMADO" || l.tipo === "DESARMADO")
+      .map((l) => ({
+        marcaId: marcaIdDe(l.product),
+        formatoId: formatoIdDe(l.product),
+        accion: l.tipo as "ARMADO" | "DESARMADO",
+        pallets: formatNumeroExacto(l.quantity),
+      }));
+  }
+
+  // Lo producido de verdad: pallets terminados y cajas sueltas. El armado y el desarmado no suman
+  // botellas ni aceite, sólo cambian cómo están apiladas.
   const runTotals = runs.map((run) => {
     let pallets = 0;
+    let cajasSueltas = 0;
     let litros = 0;
     let botellas = 0;
     for (const line of run.lines) {
       const qty = line.quantity.toNumber();
-      pallets += qty;
-      botellas += qty * (line.product.boxesPerPallet ?? 0) * (line.product.unitsPerBox ?? 0);
-      const oilRecipe = line.product.recipe.find((r) => r.item.unit === "L");
-      if (oilRecipe) litros += qty * oilRecipe.quantityPerUnit.toNumber();
+      const bpp = line.product.boxesPerPallet ?? 0;
+      const upb = line.product.unitsPerBox ?? 0;
+      const litrosPorPallet = line.product.recipe.find((r) => r.item.unit === "L")?.quantityPerUnit.toNumber() ?? 0;
+      if (line.tipo === "PALLETS") {
+        pallets += qty;
+        botellas += qty * bpp * upb;
+        litros += qty * litrosPorPallet;
+      } else if (line.tipo === "CAJAS") {
+        cajasSueltas += qty;
+        botellas += qty * upb;
+        if (bpp) litros += (qty * litrosPorPallet) / bpp;
+      }
     }
-    return { run, pallets, litros, botellas };
+    return { run, pallets, cajasSueltas, litros, botellas };
   });
 
   return (
@@ -121,7 +159,7 @@ export default async function ProduccionPage() {
               triggerLabel="Nueva producción"
               title="Cargar producción"
               action={createProductionRun}
-              maxWidthClass="max-w-xl"
+              maxWidthClass="max-w-2xl"
             >
               <ProductionRunFormFields
                 marcas={marcas}
@@ -144,7 +182,7 @@ export default async function ProduccionPage() {
       </div>
 
       <div className="space-y-3">
-        {runTotals.map(({ run, pallets, litros, botellas }) => (
+        {runTotals.map(({ run, pallets, cajasSueltas, litros, botellas }) => (
           <div key={run.id} className="rounded-xl border border-foreground/10 bg-background shadow-sm overflow-hidden">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-foreground/10 bg-foreground/[0.02] px-4 py-3">
               <div className="flex items-center gap-3">
@@ -158,6 +196,12 @@ export default async function ProduccionPage() {
                   <span className="font-semibold">{formatQuantity(pallets)}</span>{" "}
                   <span className="text-foreground/50">pallets</span>
                 </span>
+                {cajasSueltas > 0 && (
+                  <span>
+                    <span className="font-semibold">{formatQuantity(cajasSueltas)}</span>{" "}
+                    <span className="text-foreground/50">cajas</span>
+                  </span>
+                )}
                 <span className="text-orange-600 dark:text-orange-400">
                   <span className="font-semibold">{formatQuantity(litros)}</span> L
                 </span>
@@ -170,7 +214,7 @@ export default async function ProduccionPage() {
                       triggerLabel="Editar"
                       title="Editar carga de producción"
                       action={updateProductionRun}
-                      maxWidthClass="max-w-xl"
+                      maxWidthClass="max-w-2xl"
                       iconName="edit"
                     >
                       <ProductionRunFormFields
@@ -182,6 +226,7 @@ export default async function ProduccionPage() {
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
                         defaultRows={filasDe(run)}
+                        defaultArmados={armadosDe(run)}
                       />
                     </FormModal>
                     <DeleteButton
@@ -209,15 +254,24 @@ export default async function ProduccionPage() {
                       </Link>
                       <span className="text-foreground/50">{line.product.presentation}</span>
                     </div>
+                    {/* Qué se hizo, con palabras: "+3 pallets" no es lo mismo que "+48 cajas
+                        sueltas" ni que "desarmó 1 pallet". */}
                     <span
                       className={
-                        qty < 0
+                        qty < 0 || line.tipo === "DESARMADO"
                           ? "font-semibold text-red-600 dark:text-red-400"
-                          : "font-semibold text-green-600 dark:text-green-400"
+                          : line.tipo === "ARMADO"
+                            ? "font-semibold text-foreground/70"
+                            : "font-semibold text-green-600 dark:text-green-400"
                       }
                     >
-                      {qty > 0 ? "+" : ""}
-                      {formatQuantity(qty)}
+                      {line.tipo === "CAJAS"
+                        ? `+${formatQuantity(qty)} ${qty === 1 ? "caja suelta" : "cajas sueltas"}`
+                        : line.tipo === "ARMADO"
+                          ? `armado: ${formatQuantity(qty)} ${qty === 1 ? "pallet" : "pallets"}`
+                          : line.tipo === "DESARMADO"
+                            ? `desarmado: ${formatQuantity(qty)} ${qty === 1 ? "pallet" : "pallets"}`
+                            : `${qty > 0 ? "+" : ""}${formatQuantity(qty)} ${Math.abs(qty) === 1 ? "pallet" : "pallets"}`}
                     </span>
                   </div>
                 );

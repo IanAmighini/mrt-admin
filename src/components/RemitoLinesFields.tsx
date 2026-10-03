@@ -21,7 +21,10 @@ type PriceInfo = { amount: number; currency: string };
 type Row = {
   key: number;
   productId: string;
+  /** Pallets enteros. */
   quantity: string;
+  /** Cajas sueltas. */
+  cajas: string;
   pricePerBottle: string;
   circuit: Circuit;
 };
@@ -38,7 +41,7 @@ export function RemitoLinesFields({
 }: {
   products: ProductInfo[];
   priceMapByCircuit: Record<Circuit, Record<string, PriceInfo>>;
-  defaultRows?: { productId: string; quantity: string; pricePerBottle: string; circuit: Circuit }[];
+  defaultRows?: { productId: string; quantity: string; cajas?: string; pricePerBottle: string; circuit: Circuit }[];
   /** La moneda de la cuenta: en una en dólares, el precio ya es en dólares y no hay cotización. */
   moneda?: Currency;
   defaultCotizacion?: string;
@@ -62,8 +65,8 @@ export function RemitoLinesFields({
         : num(row.pricePerBottle);
   const [rows, setRows] = useState<Row[]>(
     defaultRows && defaultRows.length > 0
-      ? defaultRows.map((r, i) => ({ key: i, ...r }))
-      : [{ key: 0, productId: "", quantity: "", pricePerBottle: "", circuit: "BLANCO" }]
+      ? defaultRows.map((r, i) => ({ key: i, ...r, cajas: r.cajas ?? "" }))
+      : [{ key: 0, productId: "", quantity: "", cajas: "", pricePerBottle: "", circuit: "BLANCO" }]
   );
   const [nextKey, setNextKey] = useState(rows.length);
 
@@ -84,7 +87,7 @@ export function RemitoLinesFields({
   function addRow() {
     setRows((prev) => [
       ...prev,
-      { key: nextKey, productId: "", quantity: "", pricePerBottle: "", circuit: "BLANCO" },
+      { key: nextKey, productId: "", quantity: "", cajas: "", pricePerBottle: "", circuit: "BLANCO" },
     ]);
     setNextKey((k) => k + 1);
   }
@@ -96,7 +99,7 @@ export function RemitoLinesFields({
   function botellasOf(row: Row): number {
     const product = products.find((p) => p.id === row.productId);
     const perPallet = (product?.boxesPerPallet ?? 0) * (product?.unitsPerBox ?? 0);
-    return num(row.quantity) * perPallet;
+    return num(row.quantity) * perPallet + num(row.cajas) * (product?.unitsPerBox ?? 0);
   }
 
   const totals = rows.reduce(
@@ -152,13 +155,25 @@ export function RemitoLinesFields({
                 ))}
               </select>
             </div>
-            <div className="col-span-2 min-w-0">
+            <div className="col-span-1 min-w-0">
               <label className="text-xs text-foreground/60">Pallets</label>
               <input
                 name="lineQuantity"
                 value={row.quantity}
                 onChange={(e) => updateRow(row.key, { quantity: e.target.value })}
-                inputMode="decimal"
+                inputMode="numeric"
+                placeholder="0"
+                className={inputClass}
+              />
+            </div>
+            <div className="col-span-1 min-w-0">
+              <label className="text-xs text-foreground/60">Cajas</label>
+              <input
+                name="lineCajas"
+                value={row.cajas}
+                onChange={(e) => updateRow(row.key, { cajas: e.target.value })}
+                inputMode="numeric"
+                placeholder="0"
                 className={inputClass}
               />
               {botellas > 0 && <p className="text-xs text-foreground/40">{botellas} botellas</p>}

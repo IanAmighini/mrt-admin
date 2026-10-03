@@ -187,6 +187,20 @@ export default async function AccountLedgerPage({
         </form>
       ) : null;
 
+    // Una devolución: nota de crédito con la mercadería que volvió. No se edita —el importe y el
+    // stock tienen que decir lo mismo—, se borra y se carga de nuevo.
+    if (doc.type === "NOTA_CREDITO" && doc.lines.length > 0) {
+      return (
+        <DeleteButton
+          action={deleteDocument}
+          hiddenName="documentId"
+          hiddenValue={doc.id}
+          nombre={`la devolución #${doc.number}`}
+          consecuencia="La mercadería devuelta sale del stock otra vez."
+        />
+      );
+    }
+
     if (doc.lines.length > 0) {
       const defaultLines = doc.lines.map((l) => lineaDeRemito(l, circuit));
       return (

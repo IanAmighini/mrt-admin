@@ -1,4 +1,5 @@
 import { ProductionLinesFields, type FilaInicial } from "@/app/(app)/produccion/ProductionLinesFields";
+import { ArmadoLinesFields, type FilaDeArmado } from "@/app/(app)/produccion/ArmadoLinesFields";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
@@ -13,6 +14,7 @@ export function ProductionRunFormFields({
   editingRunId,
   defaultValues,
   defaultRows,
+  defaultArmados,
 }: {
   marcas: MarcaInfo[];
   formatos: FormatoInfo[];
@@ -24,6 +26,8 @@ export function ProductionRunFormFields({
   defaultValues?: { date?: string; notes?: string };
   /** Al editar: los ítems que ya tiene la carga, para no tener que volver a tipearlos. */
   defaultRows?: FilaInicial[];
+  /** Al editar: los pallets armados o desarmados de la carga. */
+  defaultArmados?: FilaDeArmado[];
 }) {
   return (
     <>
@@ -55,6 +59,7 @@ export function ProductionRunFormFields({
         etiquetas={etiquetas}
         defaultRows={defaultRows}
       />
+      <ArmadoLinesFields marcas={marcas} formatos={formatos} defaultRows={defaultArmados} />
       <div className="space-y-1">
         <label className="text-sm" htmlFor="notes">
           Notas
