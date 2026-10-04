@@ -91,6 +91,16 @@ export function getCajaChica() {
   return cajaPorSlug(CAJA_CHICA_SLUG);
 }
 
+/** Cualquier tesorería —Caja Bufano, el banco—, con la cuenta donde vive su plata. */
+export async function getCajaPorId(id: string): Promise<CajaConCuenta> {
+  const entity = await prisma.entity.findUnique({ where: { id }, include: { accounts: true } });
+  const account = entity?.accounts.find((a) => a.circuit === circuitoDeTesoreria(entity.name));
+  if (!entity || entity.type !== "TESORERIA" || !account) {
+    throw new UserError("No se encontró la caja.");
+  }
+  return { id: entity.id, name: entity.name, slug: entity.slug, accountId: account.id };
+}
+
 /** Las otras cajas, para el pase: de dónde entró la plata o a dónde se la devolvió. */
 export async function getOtrasCajas(excluirId: string): Promise<CajaConCuenta[]> {
   const entities = await prisma.entity.findMany({

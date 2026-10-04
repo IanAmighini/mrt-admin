@@ -1,6 +1,6 @@
 import type { Entity, Product } from "@prisma/client";
 import { DevolucionFields } from "./DevolucionFields";
-import { formatFecha } from "@/lib/period";
+import { formatFecha, hoyEnInput } from "@/lib/period";
 import type { RecentMovement } from "@/lib/ledger";
 import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
@@ -16,6 +16,8 @@ import { FormModal } from "./Modal";
 import { PaymentFormFields, type ChequeEnCartera } from "./PaymentFormFields";
 import { OrdenPagoFields, type PagoSinOrden } from "./OrdenPagoFields";
 import { crearOrdenPago } from "@/app/(app)/ordenes-pago/actions";
+import { crearGastoDeCaja } from "@/app/(app)/caja-chica/actions";
+import { GastoDeCajaFields } from "./CajaFormFields";
 import { DocumentFormFields } from "./DocumentFormFields";
 import { FacturaFormFields, type ComprobanteFacturable } from "./FacturaFormFields";
 import { CargarEnCuentaFields } from "./CargarEnCuentaFields";
@@ -127,21 +129,30 @@ export function CuentaCorrientePanel({
                 />
               </FormModal>
             ) : (
-              <FormModal
-                triggerLabel="Movimiento"
-                title="Nuevo movimiento"
-                action={createDocumentForEntity}
-                peso="secundario"
-              >
-                <DocumentFormFields
-                  monedaCuenta={moneda}
-                  fixedEntityId={entityId}
-                  isTreasury={isTreasury}
-                  viajes={viajes}
-                  destinatarios={destinatarios}
-                  rotuloSubcuenta={rotuloSubcuenta}
-                />
-              </FormModal>
+              <>
+                {/* Lo que más sale de una caja: un sueldo, la limpieza, el remís. Con "Movimiento"
+                    también se puede, pero hay que elegir categoría, rubro y signo. */}
+                {isTreasury && (
+                  <FormModal triggerLabel="Gasto" title={`Gasto de ${entityName}`} action={crearGastoDeCaja}>
+                    <GastoDeCajaFields hoy={hoyEnInput()} cajaId={entityId} cajaNombre={entityName} />
+                  </FormModal>
+                )}
+                <FormModal
+                  triggerLabel="Movimiento"
+                  title="Nuevo movimiento"
+                  action={createDocumentForEntity}
+                  peso="secundario"
+                >
+                  <DocumentFormFields
+                    monedaCuenta={moneda}
+                    fixedEntityId={entityId}
+                    isTreasury={isTreasury}
+                    viajes={viajes}
+                    destinatarios={destinatarios}
+                    rotuloSubcuenta={rotuloSubcuenta}
+                  />
+                </FormModal>
+              </>
             )}
             {devolucion && !isTreasury && (
               <FormModal

@@ -14,9 +14,19 @@ const toggleClass =
  * columnas de la planilla —fecha, concepto, monto— más el rubro, que va opcional porque en la
  * planilla la columna CATEGORIA está casi siempre vacía y lo que se lee es el concepto.
  */
-export function GastoDeCajaFields({ hoy }: { hoy: string }) {
+export function GastoDeCajaFields({
+  hoy,
+  cajaId,
+  cajaNombre = "Caja chica",
+}: {
+  hoy: string;
+  /** Vacío = la caja chica. */
+  cajaId?: string;
+  cajaNombre?: string;
+}) {
   return (
     <>
+      {cajaId && <input type="hidden" name="cajaId" value={cajaId} />}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-sm" htmlFor="date">
@@ -65,7 +75,7 @@ export function GastoDeCajaFields({ hoy }: { hoy: string }) {
 
       <p className="rounded-lg border border-foreground/10 bg-foreground/5 p-3 text-xs text-foreground/70">
         Si lo que pagaste es de un proveedor que está cargado —el gas, la papelera, el fumigador—
-        no lo cargues acá: registrá el pago en su cuenta con Origen = Caja chica. Así además de
+        no lo cargues acá: registrá el pago en su cuenta con Origen = {cajaNombre}. Así además de
         bajar la caja le baja la deuda.
       </p>
 

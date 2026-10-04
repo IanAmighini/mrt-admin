@@ -11,13 +11,26 @@ import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { formatMoney, parseNumeroEscrito } from "@/lib/money";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import { circuitoDeTesoreria } from "@/lib/pagos";
-import { getCajaChica, proximoNumeroDeCaja, type CajaConCuenta } from "@/lib/caja";
+import { getCajaChica, getCajaPorId, proximoNumeroDeCaja, type CajaConCuenta } from "@/lib/caja";
+import { puedeVerRuta } from "@/lib/nav";
 
 /** Todas las pantallas de caja escriben en la caja chica; la grande se maneja desde su ficha. */
 async function cajaYUsuario() {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   const caja = await getCajaChica();
   return { user, caja };
+}
+
+/**
+ * La caja que se eligió, si no es la chica. Las otras —la grande, el banco— se manejan desde su
+ * ficha, que pide los mismos permisos que Tesorería: lo que saca de ahí un socio no lo tiene que
+ * ver la secretaría.
+ */
+async function cajaElegidaYUsuario(cajaId: string) {
+  const { user, caja: chica } = await cajaYUsuario();
+  if (!cajaId || cajaId === chica.id) return { user, caja: chica };
+  if (!puedeVerRuta(user.role, "/tesoreria")) throw new UserError("No tenés permisos para cargar gastos en esa caja.");
+  return { user, caja: await getCajaPorId(cajaId) };
 }
 
 function leerFecha(raw: FormDataEntryValue | null) {
@@ -55,11 +68,14 @@ const CAMPOS_DEL_MOVIMIENTO = {
  * monotributo. Baja el saldo de la caja y —por llevar rubro— cuenta como gasto del mes, que es lo
  * que antes no pasaba: esa plata salía sin dejar rastro en ningún lado.
  *
- * Lo que sí es de un proveedor con cuenta se carga como pago con Origen = Caja chica, no acá: así
+ * Por defecto es la caja chica; desde la ficha de otra caja (un sueldo pagado desde Caja Bufano)
+ * llega su `cajaId`.
+ *
+ * Lo que sí es de un proveedor con cuenta se carga como pago con Origen = la caja, no acá: así
  * además de bajar la caja le baja la deuda.
  */
 export async function crearGastoDeCaja(formData: FormData) {
-  const { user, caja } = await cajaYUsuario();
+  const { user, caja } = await cajaElegidaYUsuario(String(formData.get("cajaId") || ""));
 
   const date = leerFecha(formData.get("date"));
   const amount = parseNumeroEscrito(String(formData.get("amount") || ""), "monto");
@@ -95,7 +111,7 @@ export async function crearGastoDeCaja(formData: FormData) {
     userId: user.id,
     action: "CREATE",
     entityType: "Movimiento de caja",
-    summary: `Gasto de caja ${numero} — ${concepto} — ${formatMoney(amount)}`,
+    summary: `Gasto de ${caja.name} ${numero} — ${concepto} — ${formatMoney(amount)}`,
     cambios: diffDeCampos(
       null,
       {
