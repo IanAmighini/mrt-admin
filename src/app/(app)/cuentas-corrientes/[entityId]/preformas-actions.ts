@@ -7,6 +7,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { parseNumeroEscrito, formatQuantity } from "@/lib/money";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { UserError } from "@/lib/user-error";
+import { getPreformasOrdenadas } from "@/lib/preformas";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -120,7 +121,7 @@ export async function guardarSaldosInicialesPreforma(formData: FormData) {
   });
   if (!entity) throw new UserError("El proveedor ya no existe.");
 
-  const preformas = await prisma.preforma.findMany({ orderBy: { name: "asc" } });
+  const preformas = await getPreformasOrdenadas();
   const cargados: string[] = [];
   const previos = new Map(
     (await prisma.preformaSaldoInicial.findMany({ where: { entityId } })).map((s) => [

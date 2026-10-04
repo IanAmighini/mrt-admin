@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getItemMovements, getItemStock } from "@/lib/stock";
 import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
+import { DENSIDAD_ACEITE } from "@/lib/aceite";
+import { getPreformasOrdenadas } from "@/lib/preformas";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { borrarMovimientoDeInsumo, createItemMovement, venderInsumo } from "./actions";
 import { DeleteButton } from "@/components/DeleteButton";
@@ -36,7 +38,7 @@ export default async function ItemDetailPage({
     getItemMovements(item.id),
     // Sólo se usa en el formulario de envases, pero pedirla siempre evita una consulta condicional
     // por tres filas.
-    prisma.preforma.findMany({ orderBy: { name: "asc" } }),
+    getPreformasOrdenadas(),
     prisma.entity.findMany({
       // "Ambos" queda afuera a propósito: en ese caso no se puede deducir si la venta se cobra o
       // se descuenta, y hoy no existe ninguna. La acción tira un error claro si llegara a pasar.
@@ -350,7 +352,7 @@ export default async function ItemDetailPage({
                     {m.sourceKg && (
                       <span className="text-foreground/40">
                         {" "}
-                        ({formatQuantity(m.sourceKg, "kg")} ÷ 0,91)
+                        ({formatQuantity(m.sourceKg, "kg")} ÷ {formatNumeroExacto(m.conversionFactor ?? DENSIDAD_ACEITE)})
                       </span>
                     )}
                   </td>

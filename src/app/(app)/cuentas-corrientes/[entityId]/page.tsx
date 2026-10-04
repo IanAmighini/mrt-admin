@@ -40,7 +40,7 @@ import { PreformasPanel } from "@/components/PreformasPanel";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { ViajesPanel } from "@/components/ViajesPanel";
 import { getDestinatarios, getEntregasDeEntidad, getEntregasParaElegir } from "@/lib/entregas";
-import { getDeudaPreformas } from "@/lib/preformas";
+import { getDeudaPreformas, getPreformasOrdenadas } from "@/lib/preformas";
 
 export default async function EntityLedgerPage({
   params,
@@ -92,7 +92,7 @@ export default async function EntityLedgerPage({
   const [deudasPreforma, preformas, entregasPreforma] = entity.llevaCuentaPreformas
     ? await Promise.all([
         getDeudaPreformas(entity.id),
-        prisma.preforma.findMany({ orderBy: { name: "asc" } }),
+        getPreformasOrdenadas(),
         prisma.entregaPreforma.findMany({
           where: { entityId: entity.id },
           include: { preforma: { select: { name: true } } },

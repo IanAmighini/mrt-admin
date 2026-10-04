@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatQuantity, parseNumeroSuave } from "@/lib/money";
-import { litrosDeKilos } from "@/lib/aceite";
+import { DENSIDAD_TEXTO, litrosDeKilos } from "@/lib/aceite";
 
 /**
  * El casillero de kilos del ticket de balanza, con los litros que dan al lado mientras se escribe.
@@ -31,8 +31,8 @@ export function KilosALitros({ id, className }: { id: string; className: string 
       />
       <p className="text-xs text-foreground/50">
         {litros
-          ? `= ${formatQuantity(litros, "L")} (kilos ÷ 0,91). Entra esto al stock; la cantidad de arriba se ignora.`
-          : "Si cargás los kilos, los litros se calculan solos (kilos ÷ 0,91) y la cantidad de arriba se ignora."}
+          ? `= ${formatQuantity(litros, "L")} (kilos ÷ ${DENSIDAD_TEXTO}). Entra esto al stock; la cantidad de arriba se ignora.`
+          : `Si cargás los kilos, los litros se calculan solos (kilos ÷ ${DENSIDAD_TEXTO}) y la cantidad de arriba se ignora.`}
       </p>
     </div>
   );

@@ -25,6 +25,16 @@ export type DeudaPreforma = {
 };
 
 /**
+ * Las preformas de la más chica a la más grande —850/900, 1500, 4000/5000—, que es como se piensan.
+ * Por nombre quedaban 1500, 4000/5000, 850/900: el orden alfabético compara texto, no números.
+ */
+export async function getPreformasOrdenadas() {
+  const preformas = await prisma.preforma.findMany();
+  const tamano = (nombre: string) => Number(nombre.match(/\d+/)?.[0] ?? Infinity);
+  return preformas.sort((a, b) => tamano(a.name) - tamano(b.name) || a.name.localeCompare(b.name, "es"));
+}
+
+/**
  * Cuántas preformas se le deben a un proveedor que las fía, por tipo.
  *
  * No hay una cuenta cargada a mano: cada envase soplado consumió una preforma que puso él, así que
@@ -35,7 +45,7 @@ export type DeudaPreforma = {
  */
 export async function getDeudaPreformas(entityId: string): Promise<DeudaPreforma[]> {
   const [preformas, lineas, entregas, iniciales] = await Promise.all([
-    prisma.preforma.findMany({ orderBy: { name: "asc" } }),
+    getPreformasOrdenadas(),
     prisma.purchaseLine.findMany({
       where: { document: { account: { entityId } }, item: { preformaId: { not: null } } },
       select: { quantity: true, item: { select: { preformaId: true } } },

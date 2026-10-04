@@ -1412,7 +1412,7 @@ async function createCompraCore(
       const kilosRaw = (kilosPorLinea[i] ?? "").trim();
 
       // **Aceite: kilos del ticket y precio por tonelada.** Los litros que entran al stock son una
-      // cuenta (kilos ÷ 0,91), y el subtotal sale directo de los kilos —kilos ÷ 1000 × precio—, no
+      // cuenta (kilos ÷ 0,92), y el subtotal sale directo de los kilos —kilos ÷ 1000 × precio—, no
       // de litros × un precio por litro redondeado, que correría el total.
       if (kilosRaw) {
         const item = categoriaPorItem.get(itemId);

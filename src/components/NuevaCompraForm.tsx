@@ -14,7 +14,7 @@ import {
 } from "@/lib/money";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
-import { litrosDeKilos } from "@/lib/aceite";
+import { DENSIDAD_TEXTO, litrosDeKilos } from "@/lib/aceite";
 import { FacturaDeCompraFields } from "./FacturaDeCompraFields";
 import {
   ImpuestosFields,
@@ -430,7 +430,7 @@ export function NuevaCompraFields({
                     />
                   </div>
                   <div className="min-w-0 flex-1 basis-[120px]">
-                    <label className="text-xs text-foreground/60">Litros (kilos ÷ 0,91)</label>
+                    <label className="text-xs text-foreground/60">Litros (kilos ÷ {DENSIDAD_TEXTO})</label>
                     <p className="px-2 py-2 text-sm tabular-nums">{litros ? formatQuantity(litros, "L") : "—"}</p>
                   </div>
                 </>

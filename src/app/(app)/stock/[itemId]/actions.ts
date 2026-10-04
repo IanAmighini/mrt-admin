@@ -45,7 +45,7 @@ export async function createItemMovement(formData: FormData) {
 
   if (sourceKgRaw) {
     // Sólo el aceite entra por kilos. Con cualquier otro insumo esto es un error de carga, no una
-    // conversión: dividir rollos de stretch por 0,91 no significa nada.
+    // conversión: dividir rollos de stretch por 0,92 no significa nada.
     if (item.category !== "ACEITE") {
       throw new UserError("Los kilos son sólo para el aceite. Para este insumo cargá la cantidad.");
     }
