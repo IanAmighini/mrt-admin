@@ -11,6 +11,7 @@ export function ProductionRunFormFields({
   tapas,
   cajas,
   etiquetas,
+  aceites,
   editingRunId,
   defaultValues,
   defaultRows,
@@ -21,6 +22,7 @@ export function ProductionRunFormFields({
   tapas: ItemInfo[];
   cajas: ItemInfo[];
   etiquetas: ItemInfo[];
+  aceites: ItemInfo[];
   /** Si viene, el formulario edita esta carga en vez de crear una nueva. */
   editingRunId?: string;
   defaultValues?: { date?: string; notes?: string };
@@ -57,6 +59,7 @@ export function ProductionRunFormFields({
         tapas={tapas}
         cajas={cajas}
         etiquetas={etiquetas}
+        aceites={aceites}
         defaultRows={defaultRows}
       />
       <ArmadoLinesFields marcas={marcas} formatos={formatos} defaultRows={defaultArmados} />

@@ -15,7 +15,7 @@ export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [runs, oilFillEfficiencyPercent, marcas, formatos, tapas, cajas, etiquetas] = await Promise.all([
+  const [runs, oilFillEfficiencyPercent, marcas, formatos, tapas, cajas, etiquetas, aceites] = await Promise.all([
     prisma.productionRun.findMany({
       orderBy: { date: "desc" },
       include: {
@@ -54,11 +54,17 @@ export default async function ProduccionPage() {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    // Cuando se termina el girasol, se completa con Alto Oleico y la etiqueta sigue diciendo girasol.
+    prisma.item.findMany({
+      where: { category: "ACEITE" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
   ]);
 
   // Qué insumo se usó de cada categoría reemplazable, comparando contra la receta: si lo que se
   // consumió no es lo que la receta dice, fue un reemplazo y hay que dejarlo elegido al editar.
-  const REEMPLAZABLES = ["TAPAS", "CAJAS", "ETIQUETAS"] as const;
+  const REEMPLAZABLES = ["TAPAS", "CAJAS", "ETIQUETAS", "ACEITE"] as const;
   type LineaDeCorrida = (typeof runs)[number]["lines"][number];
   function reemplazosDe(line: LineaDeCorrida) {
     const usado: Partial<Record<(typeof REEMPLAZABLES)[number], string>> = {};
@@ -92,14 +98,20 @@ export default async function ProduccionPage() {
         tapaUsadaItemId: usado.TAPAS ?? "",
         cajaUsadaItemId: usado.CAJAS ?? "",
         etiquetaUsadaItemId: usado.ETIQUETAS ?? "",
+        aceiteUsadoItemId: usado.ACEITE ?? "",
       };
     }
     for (const line of run.lines) {
       if (line.tipo !== "PALLETS" && line.tipo !== "CAJAS") continue;
-      const fila = porProducto.get(line.productId) ?? filaVaciaDe(line);
-      if (line.tipo === "PALLETS") fila.pallets = formatNumeroExacto(line.quantity);
-      else fila.cajas = formatNumeroExacto(line.quantity);
-      porProducto.set(line.productId, fila);
+      // Un mismo producto puede ir en dos ítems con insumos distintos —6 pallets con girasol y 4 con
+      // Alto Oleico—, y juntarlos en uno al editar haría perder unos u otros. Se agrupa por producto
+      // y por lo que se usó.
+      const clave = `${line.productId}|${JSON.stringify(reemplazosDe(line))}`;
+      const fila = porProducto.get(clave) ?? filaVaciaDe(line);
+      const sumado = (actual: string) => formatNumeroExacto(line.quantity.plus(actual.replace(",", ".")));
+      if (line.tipo === "PALLETS") fila.pallets = sumado(fila.pallets);
+      else fila.cajas = sumado(fila.cajas);
+      porProducto.set(clave, fila);
     }
     return Array.from(porProducto.values());
   }
@@ -167,6 +179,7 @@ export default async function ProduccionPage() {
                 tapas={tapas}
                 cajas={cajas}
                 etiquetas={etiquetas}
+                aceites={aceites}
               />
             </FormModal>
             <FormModal
@@ -223,6 +236,7 @@ export default async function ProduccionPage() {
                         tapas={tapas}
                         cajas={cajas}
                         etiquetas={etiquetas}
+                        aceites={aceites}
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
                         defaultRows={filasDe(run)}

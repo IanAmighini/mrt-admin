@@ -18,6 +18,7 @@ type Row = {
   tapaUsadaItemId: string;
   cajaUsadaItemId: string;
   etiquetaUsadaItemId: string;
+  aceiteUsadoItemId: string;
 };
 
 export type FilaInicial = Omit<Row, "key">;
@@ -31,6 +32,7 @@ const filaVacia = (key: number): Row => ({
   tapaUsadaItemId: "",
   cajaUsadaItemId: "",
   etiquetaUsadaItemId: "",
+  aceiteUsadoItemId: "",
 });
 
 const inputClass =
@@ -42,6 +44,7 @@ export function ProductionLinesFields({
   tapas,
   cajas,
   etiquetas,
+  aceites,
   defaultRows,
 }: {
   marcas: MarcaInfo[];
@@ -49,6 +52,7 @@ export function ProductionLinesFields({
   tapas: ItemInfo[];
   cajas: ItemInfo[];
   etiquetas: ItemInfo[];
+  aceites: ItemInfo[];
   /** Al editar: los ítems que ya tiene la carga. Sin esto el formulario abre vacío y hay que
    * volver a tipear todo, con el agregado de que al guardar reemplaza lo que había. */
   defaultRows?: FilaInicial[];
@@ -155,9 +159,10 @@ export function ProductionLinesFields({
           </div>
           {/* Se completan solo si se usó algo distinto a la receta: las tres tapas de 29mm son
               intercambiables, cuando se acaba la caja de la marca se usa la Lisa, y a veces se
-              etiqueta con las de papel en vez de las autoadhesivas. Siempre se renderizan, aunque
-              estén vacías, porque el servidor aparea las filas por posición. */}
-          <div className="grid grid-cols-3 gap-2">
+              etiqueta con las de papel en vez de las autoadhesivas, y si se termina el girasol se
+              completa con Alto Oleico. Siempre se renderizan, aunque estén vacías, porque el
+              servidor aparea las filas por posición. */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div>
               <label className="text-xs text-foreground/60">Tapa usada</label>
               <select
@@ -202,6 +207,22 @@ export function ProductionLinesFields({
                 {etiquetas.map((e) => (
                   <option key={e.id} value={e.id}>
                     {e.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-foreground/60">Aceite usado</label>
+              <select
+                name="aceiteUsadoItemId"
+                value={row.aceiteUsadoItemId}
+                onChange={(e) => updateRow(row.key, { aceiteUsadoItemId: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">— el de la receta —</option>
+                {aceites.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
                   </option>
                 ))}
               </select>

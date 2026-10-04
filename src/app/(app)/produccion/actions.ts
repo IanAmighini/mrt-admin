@@ -75,6 +75,14 @@ export async function updateOilEfficiency(formData: FormData) {
   revalidatePath("/produccion");
 }
 
+/** Lo que se puede indicar que se usó en lugar de lo que dice la receta, y cómo se nombra. */
+const REEMPLAZABLE = {
+  TAPAS: { rol: "tapa", uno: "una" },
+  CAJAS: { rol: "caja", uno: "una" },
+  ETIQUETAS: { rol: "etiqueta", uno: "una" },
+  ACEITE: { rol: "aceite", uno: "un" },
+} as const satisfies Partial<Record<SupplierCategory, { rol: string; uno: string }>>;
+
 /**
  * Lo que una fila de producción consume de cada insumo, aplicando los reemplazos: la receta dice
  * CUÁNTO, el reemplazo sólo cambia DE QUÉ insumo sale (la tapa amarilla en vez de la roja).
@@ -137,12 +145,13 @@ async function createProductionRunCore(
   const tapaUsadaIds = formData.getAll("tapaUsadaItemId").map(String);
   const cajaUsadaIds = formData.getAll("cajaUsadaItemId").map(String);
   const etiquetaUsadaIds = formData.getAll("etiquetaUsadaItemId").map(String);
+  const aceiteUsadoIds = formData.getAll("aceiteUsadoItemId").map(String);
 
   // Los campos del formulario llegan como arrays paralelos que se aparean por posición. Si alguno
   // viniera con distinto largo, los reemplazos caerían en la fila equivocada y descontarían del
   // insumo que no era, sin que nadie lo note. Mejor romper fuerte.
   if (
-    [formatoIds, palletsRaw, cajasRaw, tapaUsadaIds, cajaUsadaIds, etiquetaUsadaIds].some(
+    [formatoIds, palletsRaw, cajasRaw, tapaUsadaIds, cajaUsadaIds, etiquetaUsadaIds, aceiteUsadoIds].some(
       (arr) => arr.length !== marcaIds.length
     )
   ) {
@@ -159,6 +168,7 @@ async function createProductionRunCore(
       tapaUsadaItemId: tapaUsadaIds[i] || "",
       cajaUsadaItemId: cajaUsadaIds[i] || "",
       etiquetaUsadaItemId: etiquetaUsadaIds[i] || "",
+      aceiteUsadoItemId: aceiteUsadoIds[i] || "",
     }))
     // La fila vacía que queda al tocar "+ Agregar" y no completarla no corta la carga.
     .filter((l) => l.marcaId || l.formatoId || l.palletsRaw || l.cajasRaw)
@@ -212,22 +222,24 @@ async function createProductionRunCore(
   // Los reemplazos se validan contra la base y no solo con el filtro del desplegable: un POST
   // armado a mano podría, si no, descontar tapas del aceite.
   const reemplazoIds = Array.from(
-    new Set(producido.flatMap((l) => [l.tapaUsadaItemId, l.cajaUsadaItemId, l.etiquetaUsadaItemId]).filter(Boolean))
+    new Set(producido.flatMap((l) => [l.tapaUsadaItemId, l.cajaUsadaItemId, l.etiquetaUsadaItemId, l.aceiteUsadoItemId]).filter(Boolean))
   );
   const reemplazos = reemplazoIds.length
     ? await prisma.item.findMany({ where: { id: { in: reemplazoIds } }, select: { id: true, name: true, category: true } })
     : [];
   const reemplazoPorId = new Map(reemplazos.map((i) => [i.id, i]));
   for (const line of producido) {
-    for (const [itemId, categoria, rol] of [
-      [line.tapaUsadaItemId, "TAPAS", "tapa"],
-      [line.cajaUsadaItemId, "CAJAS", "caja"],
-      [line.etiquetaUsadaItemId, "ETIQUETAS", "etiqueta"],
+    for (const [itemId, categoria] of [
+      [line.tapaUsadaItemId, "TAPAS"],
+      [line.cajaUsadaItemId, "CAJAS"],
+      [line.etiquetaUsadaItemId, "ETIQUETAS"],
+      [line.aceiteUsadoItemId, "ACEITE"],
     ] as const) {
       if (!itemId) continue;
       const item = reemplazoPorId.get(itemId);
-      if (!item) throw new UserError(`El insumo elegido como ${rol} usada ya no existe.`);
-      if (item.category !== categoria) throw new UserError(`"${item.name}" no es una ${rol}.`);
+      const { rol, uno } = REEMPLAZABLE[categoria];
+      if (!item) throw new UserError(`El insumo elegido como ${rol} ${categoria === "ACEITE" ? "usado" : "usada"} ya no existe.`);
+      if (item.category !== categoria) throw new UserError(`"${item.name}" no es ${uno} ${rol}.`);
     }
   }
 
@@ -262,18 +274,18 @@ async function createProductionRunCore(
         ...(line.tapaUsadaItemId ? { TAPAS: line.tapaUsadaItemId } : {}),
         ...(line.cajaUsadaItemId ? { CAJAS: line.cajaUsadaItemId } : {}),
         ...(line.etiquetaUsadaItemId ? { ETIQUETAS: line.etiquetaUsadaItemId } : {}),
+        ...(line.aceiteUsadoItemId ? { ACEITE: line.aceiteUsadoItemId } : {}),
       };
-      const ROL_DE_CATEGORIA: Partial<Record<SupplierCategory, string>> = { TAPAS: "tapa", CAJAS: "caja", ETIQUETAS: "etiqueta" };
-      for (const categoria of Object.keys(reemplazoPorCategoria) as SupplierCategory[]) {
-        const rol = ROL_DE_CATEGORIA[categoria] ?? "insumo";
+      for (const categoria of Object.keys(reemplazoPorCategoria) as (keyof typeof REEMPLAZABLE)[]) {
+        const { rol, uno } = REEMPLAZABLE[categoria];
         const enReceta = product.recipe.filter((r) => r.item.category === categoria);
         // Aceptar la instrucción y descartarla en silencio dejaría el stock mal sin que nadie se
         // entere, así que se avisa.
         if (enReceta.length === 0) {
-          throw new UserError(`${nombre} no tiene ${rol} en la receta — cargala antes de indicar cuál usaste.`);
+          throw new UserError(`${nombre} no tiene ${rol} en la receta — cargá la receta antes de indicar cuál usaste.`);
         }
         if (enReceta.length > 1) {
-          throw new UserError(`${nombre} tiene más de una ${rol} en la receta — corregila antes de indicar cuál usaste.`);
+          throw new UserError(`${nombre} tiene más de ${uno} ${rol} en la receta — corregila antes de indicar cuál usaste.`);
         }
       }
 
