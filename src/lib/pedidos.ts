@@ -1,6 +1,36 @@
-import type { Prisma } from "@prisma/client";
+import type { PedidoStatus, Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 import { sumDecimals } from "./money";
+import { addDays, parseFecha } from "./period";
+
+export type FiltroDePedidos = { estado?: string; entityId?: string; from?: string; to?: string };
+
+const ESTADOS: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
+
+/**
+ * Los pedidos que muestra la pantalla con estos filtros. Lo usa también el Excel, para que lo que se
+ * imprime sea exactamente lo que se estaba mirando.
+ */
+export async function getPedidosFiltrados({ estado, entityId, from, to }: FiltroDePedidos) {
+  const status = ESTADOS.find((e) => e === estado) ?? null;
+  const pedidos = await prisma.pedido.findMany({
+    where: {
+      ...(status ? { status } : {}),
+      ...(entityId ? { entityId } : {}),
+      ...(from || to
+        ? {
+            date: {
+              ...(from ? { gte: parseFecha(from) } : {}),
+              ...(to ? { lt: addDays(parseFecha(to), 1) } : {}),
+            },
+          }
+        : {}),
+    },
+    include: { entity: true, lines: { include: { product: true } } },
+    orderBy: { date: "desc" },
+  });
+  return { pedidos, status, hayFiltro: Boolean(status || entityId || from || to) };
+}
 
 export function getPedidosPendientesByEntity(entityId: string) {
   return prisma.pedido.findMany({

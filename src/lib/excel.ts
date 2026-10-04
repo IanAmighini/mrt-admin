@@ -25,6 +25,9 @@ export type ExcelSheet<Row = never> = {
   totals?: CellValue[];
   /** Índices dentro de `rows` que van en negrita (ej. el "Saldo anterior"). */
   boldRowIndexes?: number[];
+  /** Para la que se baja y se imprime: apaisada, al ancho de la hoja y con el encabezado de las
+   * columnas repetido en cada página. */
+  paraImprimir?: boolean;
 };
 
 /** `sheet()` es identidad: existe solo para que TypeScript infiera `Row` por hoja. */
@@ -137,6 +140,17 @@ export async function buildWorkbook(sheets: ExcelSheet<never>[]): Promise<Uint8A
     });
 
     ws.views = [{ state: "frozen", ySplit: headerRow.number }];
+    if (def.paraImprimir) {
+      ws.pageSetup = {
+        paperSize: 9, // A4
+        orientation: "landscape",
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        printTitlesRow: `${headerRow.number}:${headerRow.number}`,
+        margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+      };
+    }
     if (def.rows.length > 0) {
       ws.autoFilter = {
         from: { row: headerRow.number, column: 1 },

@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import type { PedidoStatus } from "@prisma/client";
+import { Download } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { formatNumeroExacto, formatQuantity } from "@/lib/money";
@@ -12,7 +13,8 @@ import { PedidoStatusSelect } from "@/components/PedidoStatusSelect";
 import { FilterBar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { Table, TableEmpty, Td, Th, Thead } from "@/components/ui/Table";
 import { createPedido, deletePedido, updatePedido } from "./actions";
-import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
+import { formatFecha, toDateInputValue } from "@/lib/period";
+import { getPedidosFiltrados } from "@/lib/pedidos";
 
 const STATUS_FILTERS: { value: PedidoStatus | ""; label: string }[] = [
   { value: "", label: "Todos" },
@@ -30,12 +32,7 @@ export default async function PedidosPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const statusFilter = STATUS_FILTERS.some((s) => s.value === estado)
-    ? (estado as PedidoStatus | "")
-    : "";
-  const hayFiltro = Boolean(statusFilter || entityId || from || to);
-
-  const [clientes, marcas, formatos, pedidos] = await Promise.all([
+  const [clientes, marcas, formatos, { pedidos, status, hayFiltro }] = await Promise.all([
     prisma.entity.findMany({
       where: { type: { in: ["CLIENTE", "AMBOS"] } },
       orderBy: { name: "asc" },
@@ -45,23 +42,13 @@ export default async function PedidosPage({
       orderBy: [{ bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
       select: { id: true, presentation: true },
     }),
-    prisma.pedido.findMany({
-      where: {
-        ...(statusFilter ? { status: statusFilter } : {}),
-        ...(entityId ? { entityId } : {}),
-        ...(from || to
-          ? {
-              date: {
-                ...(from ? { gte: parseFecha(from) } : {}),
-                ...(to ? { lt: addDays(parseFecha(to), 1) } : {}),
-              },
-            }
-          : {}),
-      },
-      include: { entity: true, lines: { include: { product: true } } },
-      orderBy: { date: "desc" },
-    }),
+    getPedidosFiltrados({ estado, entityId, from, to }),
   ]);
+  const statusFilter = status ?? "";
+  // El Excel baja lo mismo que se está mirando: se le pasan los filtros tal cual.
+  const exportQuery = new URLSearchParams(
+    Object.entries({ estado: statusFilter, entityId, from, to }).filter((e): e is [string, string] => Boolean(e[1]))
+  ).toString();
 
   return (
     <div className="space-y-8">
@@ -73,11 +60,20 @@ export default async function PedidosPage({
         </p>
       </div>
 
-      {canEdit && (
-        <FormModal triggerLabel="Nuevo pedido" title="Nuevo pedido" action={createPedido} maxWidthClass="max-w-2xl">
-          <PedidoFormFields clientes={clientes} marcas={marcas} formatos={formatos} />
-        </FormModal>
-      )}
+      <div className="flex flex-wrap gap-3">
+        {canEdit && (
+          <FormModal triggerLabel="Nuevo pedido" title="Nuevo pedido" action={createPedido} maxWidthClass="max-w-2xl">
+            <PedidoFormFields clientes={clientes} marcas={marcas} formatos={formatos} />
+          </FormModal>
+        )}
+        <a
+          href={`/pedidos/export${exportQuery ? `?${exportQuery}` : ""}`}
+          className="flex w-fit items-center gap-1.5 rounded-lg border border-foreground/20 px-4 py-2 text-sm font-medium transition-colors hover:bg-foreground/5"
+        >
+          <Download size={16} />
+          Descargar Excel
+        </a>
+      </div>
 
       <FilterBar limpiarHref="/pedidos" hayFiltro={hayFiltro} textoBoton="Filtrar">
         <FiltroSelect
