@@ -39,8 +39,10 @@ import { EditFacturaFields } from "@/components/EditFacturaFields";
 import { GastoFormFields } from "@/components/GastoFormFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
+import { GastoDeCajaFields } from "@/components/CajaFormFields";
+import { crearGastoDeCaja } from "@/app/(app)/caja-chica/actions";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
-import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, hoyEnInput, parseFecha, toDateInputValue } from "@/lib/period";
 import { getDestinatarios, getEntregasParaElegir } from "@/lib/entregas";
 
 const inputClass =
@@ -373,9 +375,15 @@ export default async function AccountLedgerPage({
         </div>
         <div className="flex items-center gap-2">
           {isTreasuryEntity && canEdit && (
-            <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity}>
-              <DocumentFormFields monedaCuenta={monedaCuenta} fixedEntityId={entityId} isTreasury />
-            </FormModal>
+            <>
+              {/* Lo que más sale de una caja: un sueldo, la limpieza, el remís. */}
+              <FormModal triggerLabel="Gasto" title={`Gasto de ${entity.name}`} action={crearGastoDeCaja}>
+                <GastoDeCajaFields hoy={hoyEnInput()} cajaId={entityId} cajaNombre={entity.name} />
+              </FormModal>
+              <FormModal triggerLabel="Movimiento" title="Nuevo movimiento" action={createDocumentForEntity} peso="secundario">
+                <DocumentFormFields monedaCuenta={monedaCuenta} fixedEntityId={entityId} isTreasury />
+              </FormModal>
+            </>
           )}
           <a
             href={exportHref}
