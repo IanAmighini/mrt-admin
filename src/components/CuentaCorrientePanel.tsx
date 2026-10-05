@@ -93,7 +93,11 @@ export function CuentaCorrientePanel({
         {canEdit && (
           <div className="flex flex-wrap gap-3">
             {!isTreasury && (
-              <FormModal triggerLabel="Registrar pago" title="Registrar pago" action={createPaymentForEntity}>
+              <FormModal
+                triggerLabel={isCliente ? "Registrar cobro" : "Registrar pago"}
+                title={isCliente ? "Registrar cobro" : "Registrar pago"}
+                action={createPaymentForEntity}
+              >
                 <PaymentFormFields
                   fixedEntityId={entityId}
                   moneda={moneda}

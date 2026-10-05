@@ -31,6 +31,8 @@ export async function PagosPageContent({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
   const isCobro = entityNoun === "Cliente";
+  // Lo que entra de un cliente es un cobro; lo que sale a un proveedor, un pago.
+  const pago = isCobro ? "cobro" : "pago";
 
   const [entities, pagos, treasuries, proveedores, cartera] = await Promise.all([
     prisma.entity.findMany({ where: { type: { in: typeFilter } }, orderBy: { name: "asc" } }),
@@ -59,12 +61,12 @@ export async function PagosPageContent({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold mb-1">{title}</h1>
-          <p className="text-sm text-foreground/60">Últimos pagos registrados.</p>
+          <p className="text-sm text-foreground/60">Últimos {pago}s registrados.</p>
         </div>
         {canEdit && (
           <FormModal
-            triggerLabel="Nuevo pago"
-            title="Registrar pago"
+            triggerLabel={`Nuevo ${pago}`}
+            title={`Registrar ${pago}`}
             action={createPaymentForEntity}
             maxWidthClass="max-w-xl"
           >
@@ -80,7 +82,7 @@ export async function PagosPageContent({
       </div>
 
       <section>
-        <h2 className="text-sm font-semibold mb-2">Últimos pagos</h2>
+        <h2 className="text-sm font-semibold mb-2">Últimos {pago}s</h2>
         <div className="overflow-x-auto">
           <table className={`w-full text-sm ${APILADA}`}>
             <thead>
@@ -130,7 +132,7 @@ export async function PagosPageContent({
                           <FormModal
                             triggerLabel="Editar"
                             iconName="edit"
-                            title="Editar pago"
+                            title={`Editar ${pago}`}
                             action={updatePayment}
                             maxWidthClass="max-w-xl"
                           >
@@ -161,7 +163,7 @@ export async function PagosPageContent({
                             action={deletePayment}
                             hiddenName="paymentId"
                             hiddenValue={payment.id}
-                            nombre={`el pago de ${formatMoney(payment.amount, payment.currency)} del ${formatFecha(payment.date)}`}
+                            nombre={`el ${pago} de ${formatMoney(payment.amount, payment.currency)} del ${formatFecha(payment.date)}`}
                           />
                         </div>
                       </td>
@@ -172,7 +174,7 @@ export async function PagosPageContent({
               {pagos.length === 0 && (
                 <tr>
                   <td colSpan={canEdit ? 7 : 6} className="py-6 text-center text-foreground/40">
-                    Todavía no hay pagos cargados.
+                    Todavía no hay {pago}s cargados.
                   </td>
                 </tr>
               )}

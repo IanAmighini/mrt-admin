@@ -46,7 +46,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/pedidos", label: "Pedidos", roles: ALL_ROLES },
   { href: "/entregas", label: "Entregas", roles: ADMINISTRATIVOS },
   { href: "/compras", label: "Compras y gastos", roles: ADMINISTRATIVOS },
-  { href: "/pagos-clientes", label: "Pagos de Clientes", roles: ADMINISTRATIVOS },
+  { href: "/pagos-clientes", label: "Cobros de Clientes", roles: ADMINISTRATIVOS },
   { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
   // Los dos papeles que se emiten y se le entregan a alguien: la orden al proveedor, el libro al
   // contador. El libro queda fuera de Reportes, que es gerencial, porque la secretaría lo coteja
