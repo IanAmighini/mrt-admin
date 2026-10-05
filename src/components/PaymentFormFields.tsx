@@ -400,7 +400,7 @@ export function PaymentFormFields({
           name="reference"
           rows={2}
           required={esRetencion}
-          placeholder={esRetencion ? "Número del certificado de retención" : "Observaciones del pago..."}
+          placeholder={esRetencion ? "Número del certificado de retención" : `Observaciones del ${isCobro ? "cobro" : "pago"}...`}
           className={inputClass}
         />
       </div>
@@ -414,7 +414,7 @@ export function PaymentFormFields({
       />
 
       <button type="submit" className={submitClass}>
-        Registrar pago
+        {isCobro ? "Registrar cobro" : "Registrar pago"}
       </button>
     </>
   );
