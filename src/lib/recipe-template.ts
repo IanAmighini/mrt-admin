@@ -50,6 +50,16 @@ function tapaPorBoca(ml: number): string {
   return ml <= 1500 ? "Tapa 29mm Priva Amarilla" : "Tapa 48-41 baja Amarilla";
 }
 
+/**
+ * Las marcas que etiquetan un envase con la etiqueta de otra medida, por marca + aceite: envase → la
+ * medida de la etiqueta que se usa. Va marca por marca y no como regla general a propósito: que
+ * una marca no tenga cargada su etiqueta de 850 no quiere decir que use la de 900, y adivinarlo
+ * descontaría etiquetas que no se usaron. Se agrega acá cuando producción lo confirma.
+ */
+const ETIQUETA_DE_OTRA_MEDIDA: Record<string, Record<number, number>> = {
+  "Goye Girasol": { 850: 900 },
+};
+
 /** Un ml entero para armar nombres: `Decimal(900.00)` tiene que dar "900", no "900.00". */
 function ml(value: Prisma.Decimal | number): number {
   return Math.round(Number(value));
@@ -79,10 +89,9 @@ export async function buildRecipeTemplate(
 
   const cajaDeMarca = `Caja ${marca.name} ${formato.unitsPerBox}x${tramo}`;
   const cajaLisa = `Caja Lisa ${formato.unitsPerBox}x${tramo}`;
-  // La etiqueta de su medida, y si la marca no la tiene, la del tramo: Goye etiqueta el envase de
-  // 850 con la de 900. La propia, si existe, gana siempre.
   const etiquetaPropia = `Etiqueta ${marca.name} ${marca.oilType} ${capacidad}ml`;
-  const etiquetaDelTramo = `Etiqueta ${marca.name} ${marca.oilType} ${tramo}ml`;
+  const otraMedida = ETIQUETA_DE_OTRA_MEDIDA[`${marca.name} ${marca.oilType}`]?.[capacidad];
+  const etiquetaPrestada = otraMedida ? `Etiqueta ${marca.name} ${marca.oilType} ${otraMedida}ml` : null;
 
   const nombres = [
     "Pallet de madera",
@@ -91,7 +100,7 @@ export async function buildRecipeTemplate(
     cajaDeMarca,
     cajaLisa,
     `Aceite ${marca.oilType}`,
-    ...(marca.usaEtiqueta ? [etiquetaPropia, etiquetaDelTramo] : []),
+    ...(marca.usaEtiqueta ? [etiquetaPropia, ...(etiquetaPrestada ? [etiquetaPrestada] : [])] : []),
   ];
 
   const items = await tx.item.findMany({
@@ -139,7 +148,9 @@ export async function buildRecipeTemplate(
   // Sin etiqueta es producto terminado sin etiquetar, así que ahí la ausencia es correcta. Para el
   // resto, que falte es un error: exigir() lo dice con nombre y apellido.
   if (marca.usaEtiqueta) {
-    const etiqueta = porNombre.has(etiquetaPropia) || !porNombre.has(etiquetaDelTramo) ? etiquetaPropia : etiquetaDelTramo;
+    // La propia, si existe, gana siempre: la prestada es sólo para cuando la marca no la tiene.
+    const etiqueta =
+      etiquetaPrestada && !porNombre.has(etiquetaPropia) && porNombre.has(etiquetaPrestada) ? etiquetaPrestada : etiquetaPropia;
     lines.push({ itemId: exigir(etiqueta, "ETIQUETAS"), quantityPerUnit: porBotella });
   }
 
