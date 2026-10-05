@@ -79,7 +79,10 @@ export async function buildRecipeTemplate(
 
   const cajaDeMarca = `Caja ${marca.name} ${formato.unitsPerBox}x${tramo}`;
   const cajaLisa = `Caja Lisa ${formato.unitsPerBox}x${tramo}`;
-  const etiqueta = `Etiqueta ${marca.name} ${marca.oilType} ${capacidad}ml`;
+  // La etiqueta de su medida, y si la marca no la tiene, la del tramo: Goye etiqueta el envase de
+  // 850 con la de 900. La propia, si existe, gana siempre.
+  const etiquetaPropia = `Etiqueta ${marca.name} ${marca.oilType} ${capacidad}ml`;
+  const etiquetaDelTramo = `Etiqueta ${marca.name} ${marca.oilType} ${tramo}ml`;
 
   const nombres = [
     "Pallet de madera",
@@ -88,7 +91,7 @@ export async function buildRecipeTemplate(
     cajaDeMarca,
     cajaLisa,
     `Aceite ${marca.oilType}`,
-    ...(marca.usaEtiqueta ? [etiqueta] : []),
+    ...(marca.usaEtiqueta ? [etiquetaPropia, etiquetaDelTramo] : []),
   ];
 
   const items = await tx.item.findMany({
@@ -136,6 +139,7 @@ export async function buildRecipeTemplate(
   // Sin etiqueta es producto terminado sin etiquetar, así que ahí la ausencia es correcta. Para el
   // resto, que falte es un error: exigir() lo dice con nombre y apellido.
   if (marca.usaEtiqueta) {
+    const etiqueta = porNombre.has(etiquetaPropia) || !porNombre.has(etiquetaDelTramo) ? etiquetaPropia : etiquetaDelTramo;
     lines.push({ itemId: exigir(etiqueta, "ETIQUETAS"), quantityPerUnit: porBotella });
   }
 

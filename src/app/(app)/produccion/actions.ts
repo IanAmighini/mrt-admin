@@ -359,7 +359,10 @@ async function createProductionRunCore(
     // que no hay aceite ni envases que descontar ni que devolver. Antes se cargaba como producción
     // con pallets negativos, y eso devolvía al stock insumos que nunca se desenvasaron.
     for (const a of armados) {
-      const product = await resolveOrCreateProduct(tx, a.marcaId, a.formatoId, oilFillEfficiencyPercent);
+      // Armar y desarmar no consumen insumos: no hace falta que el producto tenga receta.
+      const product = await resolveOrCreateProduct(tx, a.marcaId, a.formatoId, oilFillEfficiencyPercent, {
+        recetaOpcional: true,
+      });
       const nombre = `${product.name} ${product.oilType} ${product.presentation}`;
       if (!product.boxesPerPallet) {
         throw new UserError(`${nombre} no tiene cargadas las cajas por pallet.`);

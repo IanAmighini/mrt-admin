@@ -102,7 +102,9 @@ export async function createPedido(formData: FormData) {
 
     const lineData = [];
     for (const line of lines) {
-      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
+      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent, {
+        recetaOpcional: true,
+      });
       lineData.push({ pedidoId: pedido.id, productId: product.id, pallets: line.pallets });
     }
     await tx.pedidoLine.createMany({ data: lineData });
@@ -170,7 +172,9 @@ export async function updatePedido(formData: FormData) {
 
     const lineData = [];
     for (const line of lines) {
-      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
+      const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent, {
+        recetaOpcional: true,
+      });
       lineData.push({ pedidoId, productId: product.id, pallets: line.pallets });
     }
     await tx.pedidoLine.createMany({ data: lineData });
