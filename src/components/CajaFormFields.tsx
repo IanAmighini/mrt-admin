@@ -86,6 +86,78 @@ export function GastoDeCajaFields({
   );
 }
 
+/**
+ * El ajuste por arqueo: se contó la plata del cajón y no coincide con el saldo. Se carga la
+ * diferencia —lo que sobró o lo que faltó— y el saldo queda igual a lo que se contó.
+ */
+export function AjusteDeCajaFields({ hoy, cajaId }: { hoy: string; cajaId?: string }) {
+  const [sobra, setSobra] = useState(false);
+
+  return (
+    <>
+      {cajaId && <input type="hidden" name="cajaId" value={cajaId} />}
+      <div className="space-y-1">
+        <p className="text-sm">¿Qué dio el arqueo?</p>
+        <div className="grid grid-cols-2 gap-2">
+          <label className={toggleClass}>
+            <input
+              type="radio"
+              name="sentido"
+              value="FALTA"
+              checked={!sobra}
+              onChange={() => setSobra(false)}
+              className="sr-only"
+            />
+            Faltó plata
+          </label>
+          <label className={toggleClass}>
+            <input
+              type="radio"
+              name="sentido"
+              value="SOBRA"
+              checked={sobra}
+              onChange={() => setSobra(true)}
+              className="sr-only"
+            />
+            Sobró plata
+          </label>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="date">
+            Fecha
+          </label>
+          <input id="date" type="date" name="date" required defaultValue={hoy} className={inputClass} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="amount">
+            Diferencia *
+          </label>
+          <input id="amount" name="amount" required inputMode="decimal" placeholder="1.500" className={inputClass} />
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-sm" htmlFor="concepto">
+          Motivo *
+        </label>
+        <input id="concepto" name="concepto" required placeholder="Arqueo del viernes" className={inputClass} />
+      </div>
+
+      <p className="text-xs text-foreground/50">
+        {sobra ? "Sube" : "Baja"} el saldo de la caja por la diferencia, para que quede igual a lo que
+        se contó. No es un gasto: si después aparece lo que faltaba cargar, cargalo y borrá este ajuste.
+      </p>
+
+      <button type="submit" className={submitClass}>
+        Cargar ajuste
+      </button>
+    </>
+  );
+}
+
 /** El pase: plata que se mueve entre dos cajas. Es un solo hecho, con una pata en cada libro. */
 export function PaseDeCajaFields({
   hoy,

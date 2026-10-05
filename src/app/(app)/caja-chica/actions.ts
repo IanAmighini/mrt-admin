@@ -129,6 +129,63 @@ export async function crearGastoDeCaja(formData: FormData) {
 }
 
 /**
+ * El arqueo: se contó la plata y no da lo que dice la app. Corrige el saldo por la diferencia, para
+ * arriba o para abajo, con el motivo escrito.
+ *
+ * No es un gasto —no tiene rubro y no entra al gasto del mes—: es plata que no se sabe a dónde fue o
+ * de dónde vino. Si después aparece lo que faltaba cargar, se carga eso y se borra el ajuste.
+ */
+export async function crearAjusteDeCaja(formData: FormData) {
+  const { user, caja } = await cajaElegidaYUsuario(String(formData.get("cajaId") || ""));
+
+  const date = leerFecha(formData.get("date"));
+  const amount = parseNumeroEscrito(String(formData.get("amount") || ""), "monto");
+  if (!amount.greaterThan(0)) throw new UserError("El monto tiene que ser mayor a cero.");
+  const sobra = String(formData.get("sentido") || "") === "SOBRA";
+  if (!sobra && String(formData.get("sentido") || "") !== "FALTA") {
+    throw new UserError("Indicá si en el arqueo sobró o faltó plata.");
+  }
+  const concepto = String(formData.get("concepto") || "").trim();
+  if (!concepto) throw new UserError("Escribí el motivo del ajuste.");
+  const motivo = `${sobra ? "Sobrante" : "Faltante"} de arqueo · ${concepto}`;
+
+  const numero = await prisma.$transaction(async (tx) => {
+    const number = await proximoNumeroDeCaja(tx, caja.accountId);
+    await tx.document.create({
+      data: {
+        accountId: caja.accountId,
+        type: "AJUSTE",
+        number,
+        date,
+        currency: "ARS",
+        netAmount: amount,
+        totalAmount: sobra ? amount : amount.negated(),
+        reason: motivo,
+        treasuryCategory: "AJUSTE_ARQUEO",
+        createdById: user.id,
+      },
+    });
+    // Un faltante más grande que lo que hay deja la caja en rojo: es que falta cargar otra cosa.
+    await asegurarSinNegativos(tx, { cuentas: [caja.accountId] });
+    return number;
+  });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "CREATE",
+    entityType: "Movimiento de caja",
+    summary: `Ajuste de ${caja.name} ${numero} — ${motivo} — ${sobra ? "" : "-"}${formatMoney(amount)}`,
+    cambios: diffDeCampos(
+      null,
+      { numero, date, concepto: motivo, monto: formatMoney(sobra ? amount : amount.negated()) },
+      CAMPOS_DEL_MOVIMIENTO
+    ),
+  });
+
+  revalidarCajas([caja]);
+}
+
+/**
  * La plata que se mueve de una caja a otra: lo que la caja grande le da a la secretaría para la
  * semana, y lo que ella devuelve.
  *

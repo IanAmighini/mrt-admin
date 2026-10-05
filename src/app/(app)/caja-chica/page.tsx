@@ -10,10 +10,10 @@ import {
 import { formatFecha, formatPeriodLabel, hoyEnInput, periodFromSearchParams, periodLastDay } from "@/lib/period";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { GastoDeCajaFields, PaseDeCajaFields } from "@/components/CajaFormFields";
+import { AjusteDeCajaFields, GastoDeCajaFields, PaseDeCajaFields } from "@/components/CajaFormFields";
 import { PeriodoFilter } from "@/components/ui/PeriodoFilter";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
-import { crearGastoDeCaja, crearPaseDeCaja, borrarMovimientoDeCaja } from "./actions";
+import { crearAjusteDeCaja, crearGastoDeCaja, crearPaseDeCaja, borrarMovimientoDeCaja } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +63,9 @@ export default async function CajaChicaPage({
               peso="secundario"
             >
               <PaseDeCajaFields hoy={hoy} cajaNombre={caja.name} otrasCajas={otrasCajas} />
+            </FormModal>
+            <FormModal triggerLabel="Ajuste" title="Ajuste por arqueo" action={crearAjusteDeCaja} peso="secundario">
+              <AjusteDeCajaFields hoy={hoy} />
             </FormModal>
           </div>
         )}
