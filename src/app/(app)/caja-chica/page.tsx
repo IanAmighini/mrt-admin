@@ -41,6 +41,31 @@ export default async function CajaChicaPage({
   const esHasta_hoy = ultimoDia >= new Date(new Date().setHours(0, 0, 0, 0));
   const etiquetaSaldo = esHasta_hoy ? "Saldo de hoy" : `Saldo al ${formatFecha(ultimoDia)}`;
 
+  /** Lo que muestra cada movimiento, igual en la lista del teléfono y en la tabla. */
+  function filaDe(entry: (typeof statement.entries)[number]) {
+    const doc = entry.source.kind === "document" ? entry.source.document : null;
+    // El concepto es lo que escribió quien lo cargó; el título con número sólo aporta ruido en
+    // una planilla de caja, donde nadie busca por "Ajuste #CAJA-00012".
+    const concepto = doc?.reason ?? entry.title;
+    const rubro = doc?.expenseCategory
+      ? EXPENSE_CATEGORY_LABELS[doc.expenseCategory]
+      : doc?.treasuryCategory
+        ? TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory]
+        : null;
+    // Lo que escribió un cobro o un pago se borra desde ese pago, no desde acá.
+    const borrar =
+      canEdit && doc && !doc.sourcePaymentId ? (
+        <DeleteButton
+          action={borrarMovimientoDeCaja}
+          hiddenName="documentId"
+          hiddenValue={doc.id}
+          nombre={`${concepto} — ${formatMoney(entry.debe.plus(entry.haber))}`}
+          consecuencia={doc.treasuryCategory === "PASE" ? "Se borra también la pata de la otra caja." : undefined}
+        />
+      ) : null;
+    return { concepto, rubro, borrar };
+  }
+
   return (
     <div className="space-y-8">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -74,21 +99,21 @@ export default async function CajaChicaPage({
       {/* El saldo es el número contra el que se cuenta la plata del cajón; lo que entró y lo que
           salió son contexto. Antes los tres pesaban igual y había que leer las tres etiquetas
           para encontrar el que importa. */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-primary/30 bg-primary/[0.06] p-5 sm:col-span-1">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
+        <div className="col-span-2 rounded-xl border border-primary/30 bg-primary/[0.06] p-5 sm:col-span-1">
           <p className="flex items-center gap-2 text-sm text-foreground/60">
             <Wallet size={15} className="text-foreground/40" />
             {etiquetaSaldo}
           </p>
           <p className="mt-1 text-3xl font-semibold tabular-nums">{formatMoney(statement.saldoFinal)}</p>
         </div>
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5">
+        <div className="min-w-0 rounded-xl border border-foreground/10 bg-background shadow-sm p-4 sm:p-5">
           <p className="text-sm text-foreground/60">Entró en el período</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums">{formatMoney(statement.totalDebe)}</p>
+          <p className="mt-1 text-base font-semibold tabular-nums sm:text-xl">{formatMoney(statement.totalDebe)}</p>
         </div>
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5">
+        <div className="min-w-0 rounded-xl border border-foreground/10 bg-background shadow-sm p-4 sm:p-5">
           <p className="text-sm text-foreground/60">Salió en el período</p>
-          <p className="mt-1 text-xl font-semibold tabular-nums">{formatMoney(statement.totalHaber)}</p>
+          <p className="mt-1 text-base font-semibold tabular-nums sm:text-xl">{formatMoney(statement.totalHaber)}</p>
         </div>
       </div>
 
@@ -101,73 +126,88 @@ export default async function CajaChicaPage({
           <PeriodoFilter basePath="/caja-chica" preset={preset} from={params.from} to={params.to} />
         </div>
 
-        <Table className="min-w-[46rem]">
-          <Thead>
-            <Th className="pl-4">Fecha</Th>
-            <Th>Concepto</Th>
-            <Th>Rubro</Th>
-            <Th align="derecha">Ingreso</Th>
-            <Th align="derecha">Egreso</Th>
-            <Th align="derecha">Saldo</Th>
-            {canEdit && <Th className="pr-4" />}
-          </Thead>
-          <tbody>
-            <Tr className="bg-foreground/5">
-              <Td className="pl-4" colSpan={5}>
-                Saldo anterior
-              </Td>
-              <Td numero className="font-semibold">
-                {formatMoney(statement.saldoAnterior)}
-              </Td>
-              {canEdit && <Td />}
-            </Tr>
-            {statement.entries.map((entry) => {
-              const doc = entry.source.kind === "document" ? entry.source.document : null;
-              // El concepto es lo que escribió quien lo cargó; el título con número sólo aporta
-              // ruido en una planilla de caja, donde nadie busca por "Ajuste #CAJA-00012".
-              const concepto = doc?.reason ?? entry.title;
-              const rubro = doc?.expenseCategory
-                ? EXPENSE_CATEGORY_LABELS[doc.expenseCategory]
-                : doc?.treasuryCategory
-                  ? TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory]
-                  : null;
-              // Lo que escribió un cobro o un pago se borra desde ese pago, no desde acá.
-              const propio = Boolean(doc && !doc.sourcePaymentId);
-              return (
-                <Tr key={entry.key}>
-                  <Td className="pl-4 whitespace-nowrap">{formatFecha(entry.date)}</Td>
-                  <Td>{concepto}</Td>
-                  <Td className="text-foreground/60">{rubro ?? "—"}</Td>
-                  <Td numero>{entry.debe.greaterThan(ZERO) ? formatMoney(entry.debe) : "—"}</Td>
-                  <Td numero>{entry.haber.greaterThan(ZERO) ? formatMoney(entry.haber) : "—"}</Td>
-                  <Td numero className="font-medium">
-                    {formatMoney(entry.saldoAcumulado)}
-                  </Td>
-                  {canEdit && (
-                    <Td className="pr-4">
-                      {propio && doc && (
-                        <DeleteButton
-                          action={borrarMovimientoDeCaja}
-                          hiddenName="documentId"
-                          hiddenValue={doc.id}
-                          nombre={`${concepto} — ${formatMoney(entry.debe.plus(entry.haber))}`}
-                          consecuencia={
-                            doc.treasuryCategory === "PASE"
-                              ? "Se borra también la pata de la otra caja."
-                              : undefined
-                          }
-                        />
-                      )}
+        {/* En el teléfono, una lista: en la tabla quedaban a la vista la fecha, el concepto y el
+            rubro, y los montos —lo único que importa para contar la plata— afuera. */}
+        <ul className="divide-y divide-foreground/5 sm:hidden">
+          <li className="flex items-center justify-between gap-3 bg-foreground/5 px-4 py-2 text-sm">
+            <span>Saldo anterior</span>
+            <span className="font-semibold tabular-nums">{formatMoney(statement.saldoAnterior)}</span>
+          </li>
+          {statement.entries.map((entry) => {
+            const { concepto, rubro, borrar } = filaDe(entry);
+            return (
+              <li key={entry.key} className="flex items-start justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-foreground/50">
+                    {formatFecha(entry.date)}
+                    {rubro && ` · ${rubro}`}
+                  </p>
+                  <p className="text-sm break-words">{concepto}</p>
+                </div>
+                <div className="flex shrink-0 items-start gap-1">
+                  <div className="text-right tabular-nums">
+                    <p className="text-sm font-semibold">
+                      {entry.debe.greaterThan(ZERO) ? `+${formatMoney(entry.debe)}` : `−${formatMoney(entry.haber)}`}
+                    </p>
+                    <p className="text-xs text-foreground/50">Saldo {formatMoney(entry.saldoAcumulado)}</p>
+                  </div>
+                  {borrar}
+                </div>
+              </li>
+            );
+          })}
+          {statement.entries.length === 0 && (
+            <li className="px-4 py-6 text-center text-sm text-foreground/40">No hay movimientos en este período.</li>
+          )}
+        </ul>
+
+        <div className="hidden sm:block">
+          <Table className="min-w-[46rem]">
+            <Thead>
+              <Th className="pl-4">Fecha</Th>
+              <Th>Concepto</Th>
+              <Th>Rubro</Th>
+              <Th align="derecha">Ingreso</Th>
+              <Th align="derecha">Egreso</Th>
+              <Th align="derecha">Saldo</Th>
+              {canEdit && <Th className="pr-4" />}
+            </Thead>
+            <tbody>
+              <Tr className="bg-foreground/5">
+                <Td className="pl-4" colSpan={5}>
+                  Saldo anterior
+                </Td>
+                <Td numero className="font-semibold">
+                  {formatMoney(statement.saldoAnterior)}
+                </Td>
+                {canEdit && <Td />}
+              </Tr>
+              {statement.entries.map((entry) => {
+                const { concepto, rubro, borrar } = filaDe(entry);
+                return (
+                  <Tr key={entry.key}>
+                    <Td className="pl-4 whitespace-nowrap">{formatFecha(entry.date)}</Td>
+                    <Td>{concepto}</Td>
+                    <Td className="text-foreground/60">{rubro ?? "—"}</Td>
+                    <Td numero>{entry.debe.greaterThan(ZERO) ? formatMoney(entry.debe) : "—"}</Td>
+                    <Td numero>{entry.haber.greaterThan(ZERO) ? formatMoney(entry.haber) : "—"}</Td>
+                    <Td numero className="font-medium">
+                      {formatMoney(entry.saldoAcumulado)}
                     </Td>
-                  )}
-                </Tr>
-              );
-            })}
-            {statement.entries.length === 0 && (
-              <TableEmpty colSpan={canEdit ? 7 : 6}>No hay movimientos en este período.</TableEmpty>
-            )}
-          </tbody>
-        </Table>
+                    {canEdit && (
+                      <Td className="pr-4">
+                        {borrar}
+                      </Td>
+                    )}
+                  </Tr>
+                );
+              })}
+              {statement.entries.length === 0 && (
+                <TableEmpty colSpan={canEdit ? 7 : 6}>No hay movimientos en este período.</TableEmpty>
+              )}
+            </tbody>
+          </Table>
+        </div>
       </div>
     </div>
   );

@@ -9,22 +9,38 @@
  * El envoltorio importa más de lo que parece: una tabla sin él rompe el ancho de la página en el
  * teléfono, y la app se mira desde el teléfono para consultar un saldo o un stock.
  */
+/**
+ * En el teléfono, cada fila como una ficha: las celdas una al lado de la otra, bajando de renglón
+ * cuando no entran, y sin encabezado. Es para las tablas de listado —entregas, compras, pagos—,
+ * donde arrastrar la tabla al costado para llegar al monto era la única forma de verlo. Las celdas
+ * se entienden solas (un nombre, una fecha, un monto), así que el encabezado no hace falta.
+ *
+ * Exportada para las tablas que no usan `Table`.
+ */
+export const APILADA =
+  "max-sm:block max-sm:[&_tbody]:block max-sm:[&_thead]:hidden " +
+  "max-sm:[&_tr]:flex max-sm:[&_tr]:flex-wrap max-sm:[&_tr]:items-center max-sm:[&_tr]:gap-x-3 max-sm:[&_tr]:gap-y-1 max-sm:[&_tr]:py-3 " +
+  "max-sm:[&_td]:p-0 max-sm:[&_td[colspan]]:w-full";
+
 export function Table({
   children,
   className,
   /** En las tablas que van adentro de una tarjeta, el borde y el fondo los pone la tarjeta. */
   suelta = true,
+  /** Ver `APILADA`. */
+  apilada = false,
 }: {
   children: React.ReactNode;
   className?: string;
   suelta?: boolean;
+  apilada?: boolean;
 }) {
   const envoltorio = suelta
     ? "overflow-x-auto"
     : "overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm";
   return (
     <div className={envoltorio}>
-      <table className={`w-full text-sm ${className ?? ""}`}>{children}</table>
+      <table className={`w-full text-sm ${apilada ? APILADA : ""} ${className ?? ""}`}>{children}</table>
     </div>
   );
 }

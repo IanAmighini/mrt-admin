@@ -50,6 +50,66 @@ export default async function PedidosPage({
     Object.entries({ estado: statusFilter, entityId, from, to }).filter((e): e is [string, string] => Boolean(e[1]))
   ).toString();
 
+  type PedidoConLineas = (typeof pedidos)[number];
+
+  /** El estado: quien carga lo cambia desde la lista, y quien sólo mira ve la etiqueta. */
+  function estadoDe(pedido: PedidoConLineas) {
+    return canEdit ? (
+      <PedidoStatusSelect pedidoId={pedido.id} status={pedido.status} />
+    ) : (
+      <span
+        className={`rounded px-2 py-1 text-xs font-medium ${PEDIDO_STATUS_COLORS[pedido.status]}`}
+      >
+        {PEDIDO_STATUS_LABELS[pedido.status]}
+      </span>
+    );
+  }
+
+  function accionesDe(pedido: PedidoConLineas) {
+    return (
+      <div className="flex items-center gap-2">
+        <FormModal
+          triggerLabel="Editar" iconName="edit"
+          title="Editar pedido"
+          action={updatePedido}
+          maxWidthClass="max-w-2xl"
+        >
+          <PedidoFormFields
+            clientes={clientes}
+            marcas={marcas}
+            formatos={formatos}
+            editingPedidoId={pedido.id}
+            orderNumber={pedido.orderNumber}
+            defaultValues={{
+              entityId: pedido.entityId,
+              date: toDateInputValue(pedido.date),
+              comments: pedido.comments ?? "",
+            }}
+            defaultRows={pedido.lines.map((line) => ({
+              marcaId:
+                marcas.find(
+                  (m) =>
+                    m.name === line.product.name &&
+                    m.oilType === line.product.oilType
+                )?.id ?? "",
+              formatoId:
+                formatos.find(
+                  (f) => f.presentation === line.product.presentation
+                )?.id ?? "",
+              pallets: formatNumeroExacto(line.pallets),
+            }))}
+          />
+        </FormModal>
+        <DeleteButton
+          action={deletePedido}
+          hiddenName="pedidoId"
+          hiddenValue={pedido.id}
+          nombre={`el pedido #${pedido.orderNumber}`}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
       <div>
@@ -95,6 +155,42 @@ export default async function PedidosPage({
         <FiltroFechas from={from} to={to} />
       </FilterBar>
 
+      {/* En el teléfono, una ficha por pedido: en la tabla, las líneas de un mismo pedido
+          comparten celdas y lo que se pidió quedaba fuera de pantalla. */}
+      <ul className="space-y-3 sm:hidden">
+        {pedidos.map((pedido) => (
+          <li key={pedido.id} className="space-y-2 rounded-xl border border-foreground/10 bg-background p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium break-words">{pedido.entity.name}</p>
+                <p className="text-xs text-foreground/50">
+                  {formatFecha(pedido.date)} · Pedido {pedido.orderNumber}
+                  {pedido.deliveryDate && ` · Entrega ${formatFecha(pedido.deliveryDate)}`}
+                </p>
+              </div>
+              <div className="shrink-0">{estadoDe(pedido)}</div>
+            </div>
+            <ul className="space-y-0.5 text-sm">
+              {pedido.lines.map((line) => (
+                <li key={line.id}>
+                  <span className="font-semibold tabular-nums">{formatQuantity(line.pallets)}</span>{" "}
+                  {formatProductBrandLabel(line.product)}
+                  <span className="text-foreground/50"> · {line.product.presentation}</span>
+                </li>
+              ))}
+            </ul>
+            {pedido.comments && <p className="text-xs text-foreground/60">{pedido.comments}</p>}
+            {canEdit && <div className="flex justify-end">{accionesDe(pedido)}</div>}
+          </li>
+        ))}
+        {pedidos.length === 0 && (
+          <li className="py-6 text-center text-sm text-foreground/40">
+            {hayFiltro ? "No hay pedidos con este filtro." : "Todavía no hay pedidos cargados."}
+          </li>
+        )}
+      </ul>
+
+      <div className="hidden sm:block">
       <Table>
         <Thead>
           <Th>Fecha</Th>
@@ -129,15 +225,7 @@ export default async function PedidosPage({
                           {pedido.orderNumber}
                         </Td>
                         <Td arriba rowSpan={pedido.lines.length}>
-                          {canEdit ? (
-                            <PedidoStatusSelect pedidoId={pedido.id} status={pedido.status} />
-                          ) : (
-                            <span
-                              className={`rounded px-2 py-1 text-xs font-medium ${PEDIDO_STATUS_COLORS[pedido.status]}`}
-                            >
-                              {PEDIDO_STATUS_LABELS[pedido.status]}
-                            </span>
-                          )}
+                          {estadoDe(pedido)}
                         </Td>
                       </>
                     )}
@@ -156,46 +244,7 @@ export default async function PedidosPage({
                         </Td>
                         {canEdit && (
                           <Td arriba rowSpan={pedido.lines.length}>
-                            <div className="flex items-center gap-2">
-                              <FormModal
-                                triggerLabel="Editar" iconName="edit"
-                                title="Editar pedido"
-                                action={updatePedido}
-                                maxWidthClass="max-w-2xl"
-                              >
-                                <PedidoFormFields
-                                  clientes={clientes}
-                                  marcas={marcas}
-                                  formatos={formatos}
-                                  editingPedidoId={pedido.id}
-                                  orderNumber={pedido.orderNumber}
-                                  defaultValues={{
-                                    entityId: pedido.entityId,
-                                    date: toDateInputValue(pedido.date),
-                                    comments: pedido.comments ?? "",
-                                  }}
-                                  defaultRows={pedido.lines.map((line) => ({
-                                    marcaId:
-                                      marcas.find(
-                                        (m) =>
-                                          m.name === line.product.name &&
-                                          m.oilType === line.product.oilType
-                                      )?.id ?? "",
-                                    formatoId:
-                                      formatos.find(
-                                        (f) => f.presentation === line.product.presentation
-                                      )?.id ?? "",
-                                    pallets: formatNumeroExacto(line.pallets),
-                                  }))}
-                                />
-                              </FormModal>
-                              <DeleteButton
-                                action={deletePedido}
-                                hiddenName="pedidoId"
-                                hiddenValue={pedido.id}
-                                nombre={`el pedido #${pedido.orderNumber}`}
-                              />
-                            </div>
+                            {accionesDe(pedido)}
                           </Td>
                         )}
                       </>
@@ -211,6 +260,7 @@ export default async function PedidosPage({
             )}
           </tbody>
         </Table>
+      </div>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import {
   updatePayment,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { formatFecha, toDateInputValue } from "@/lib/period";
+import { APILADA } from "@/components/ui/Table";
 
 export async function PagosPageContent({
   typeFilter,
@@ -55,7 +56,7 @@ export async function PagosPageContent({
 
   return (
     <div className="space-y-10">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold mb-1">{title}</h1>
           <p className="text-sm text-foreground/60">Últimos pagos registrados.</p>
@@ -81,7 +82,7 @@ export async function PagosPageContent({
       <section>
         <h2 className="text-sm font-semibold mb-2">Últimos pagos</h2>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className={`w-full text-sm ${APILADA}`}>
             <thead>
               <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">{entityNoun}</th>

@@ -361,8 +361,8 @@ export default async function AccountLedgerPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
           <Link
             href={isTreasuryEntity ? "/tesoreria" : `/cuentas-corrientes/${entity.slug}`}
             className="text-sm underline underline-offset-2"
@@ -373,7 +373,7 @@ export default async function AccountLedgerPage({
             {isTreasuryEntity ? entity.name : `${entity.name} — Cuenta ${CIRCUIT_LABELS[circuit]}`}
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {isTreasuryEntity && canEdit && (
             <>
               {/* Lo que más sale de una caja: un sueldo, la limpieza, el remís. */}
@@ -421,26 +421,60 @@ export default async function AccountLedgerPage({
         )}
       </form>
 
-      <div className="grid gap-4 sm:grid-cols-4 max-w-3xl">
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-          <p className="text-sm text-foreground/60">Saldo anterior</p>
-          <p className="text-lg font-semibold">{formatMoney(statement.saldoAnterior)}</p>
-        </div>
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-          <p className="text-sm text-foreground/60">Debe</p>
-          <p className="text-lg font-semibold">{formatMoney(statement.totalDebe)}</p>
-        </div>
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-          <p className="text-sm text-foreground/60">Haber</p>
-          <p className="text-lg font-semibold">{formatMoney(statement.totalHaber)}</p>
-        </div>
-        <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-          <p className="text-sm text-foreground/60">Saldo</p>
-          <p className="text-lg font-semibold">{formatMoney(statement.saldoFinal)}</p>
-        </div>
+      {/* De a dos en el teléfono: una abajo de la otra ocupaban la pantalla entera antes del
+          primer movimiento. */}
+      <div className="grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
+        {[
+          ["Saldo anterior", statement.saldoAnterior],
+          ["Debe", statement.totalDebe],
+          ["Haber", statement.totalHaber],
+          ["Saldo", statement.saldoFinal],
+        ].map(([rotulo, monto]) => (
+          <div key={String(rotulo)} className="min-w-0 rounded-xl border border-foreground/10 bg-background shadow-sm p-3 sm:p-4">
+            <p className="text-xs text-foreground/60 sm:text-sm">{String(rotulo)}</p>
+            <p className="text-base font-semibold tabular-nums sm:text-lg">{formatMoney(monto as typeof statement.saldoFinal)}</p>
+          </div>
+        ))}
       </div>
 
-      <div className="overflow-x-auto">
+      {/* En el teléfono, una lista: la tabla de cinco columnas dejaba la descripción en una tira de
+          tres palabras por renglón y los montos cortados contra el borde. */}
+      <ul className="divide-y divide-foreground/5 border-y border-foreground/10 sm:hidden">
+        {statement.entries
+          .slice()
+          .reverse()
+          .map((entry) => (
+            <li key={entry.key} className="space-y-2 py-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs text-foreground/50">{formatFecha(entry.date)}</p>
+                  <p className="text-sm font-medium break-words">{entry.title}</p>
+                  {entry.subtitle && <p className="text-xs text-foreground/50 break-words">{entry.subtitle}</p>}
+                </div>
+                <div className="shrink-0 text-right tabular-nums">
+                  <p className="text-sm font-semibold">
+                    {entry.debe.isZero() ? `−${formatMoney(entry.haber)}` : `+${formatMoney(entry.debe)}`}
+                  </p>
+                  <p className="text-xs text-foreground/50">Saldo {formatMoney(entry.saldoAcumulado)}</p>
+                </div>
+              </div>
+              {canEdit && <div className="flex justify-end">{renderActions(entry)}</div>}
+            </li>
+          ))}
+        {fromDate && (
+          <li className="flex items-center justify-between gap-3 py-3 text-sm font-medium">
+            <span>Saldo anterior al {formatFecha(fromDate)}</span>
+            <span className="tabular-nums">{formatMoney(statement.saldoAnterior)}</span>
+          </li>
+        )}
+        {statement.entries.length === 0 && (
+          <li className="py-6 text-center text-sm text-foreground/40">
+            {hasFilter ? "Sin movimientos en este período." : "Sin movimientos todavía."}
+          </li>
+        )}
+      </ul>
+
+      <div className="hidden overflow-x-auto sm:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-foreground/10 text-left text-foreground/60">

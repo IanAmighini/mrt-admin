@@ -204,7 +204,7 @@ export default async function ProduccionPage() {
                   {run.lines.length} {run.lines.length === 1 ? "item" : "items"}
                 </span>
               </div>
-              <div className="flex items-center gap-5 text-sm">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm whitespace-nowrap">
                 <span>
                   <span className="font-semibold">{formatQuantity(pallets)}</span>{" "}
                   <span className="text-foreground/50">pallets</span>

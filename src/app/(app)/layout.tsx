@@ -58,7 +58,9 @@ export default async function AppLayout({
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
         <SidebarNav entries={entries} />
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        {/* `min-w-0`: sin esto el contenido se estira hasta el ancho de la tabla más ancha y la página
+            entera se corre al costado, en vez de que la tabla se deslice adentro de su lugar. */}
+        <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

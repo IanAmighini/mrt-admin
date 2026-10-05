@@ -15,6 +15,7 @@ import { KilosALitros } from "@/components/KilosALitros";
 import { FormModal } from "@/components/Modal";
 import { formatFecha, hoyEnInput } from "@/lib/period";
 import { updateItemAjustes } from "../actions";
+import { APILADA } from "@/components/ui/Table";
 
 export default async function ItemDetailPage({
   params,
@@ -330,7 +331,7 @@ export default async function ItemDetailPage({
       <div>
         <h2 className="text-sm font-semibold mb-2">Kardex</h2>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className={`w-full text-sm ${APILADA}`}>
             <thead>
               <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 pr-4">Fecha</th>

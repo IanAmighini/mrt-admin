@@ -12,6 +12,7 @@ import {
   updateFormato,
   updateMarca,
 } from "./actions";
+import { APILADA } from "@/components/ui/Table";
 
 const inputClass =
   "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -38,7 +39,7 @@ export default async function CatalogoPage() {
       </div>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Marcas</h2>
           {canEdit && (
             <FormModal triggerLabel="Nueva marca" title="Nueva marca" action={createMarca}>
@@ -80,7 +81,7 @@ export default async function CatalogoPage() {
           )}
         </div>
         <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
-          <table className="w-full text-sm">
+          <table className={`w-full text-sm ${APILADA} max-sm:[&_tr]:px-4`}>
             <thead>
               <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 px-4">Marca</th>
@@ -180,7 +181,7 @@ export default async function CatalogoPage() {
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Formatos de pallet</h2>
           {canEdit && (
             <FormModal triggerLabel="Nuevo formato" title="Nuevo formato" action={createFormato}>
@@ -247,7 +248,7 @@ export default async function CatalogoPage() {
           )}
         </div>
         <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
-          <table className="w-full text-sm">
+          <table className={`w-full text-sm ${APILADA} max-sm:[&_tr]:px-4`}>
             <thead>
               <tr className="border-b border-foreground/10 text-left text-foreground/60">
                 <th className="py-2 px-4">Presentación</th>

@@ -148,7 +148,7 @@ export default async function ChequesPage({
         />
       </FilterBar>
 
-      <Table>
+      <Table apilada>
         <Thead>
           <Th>Cheque</Th>
           <Th>Cobrable desde</Th>

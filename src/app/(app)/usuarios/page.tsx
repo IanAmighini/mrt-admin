@@ -7,6 +7,7 @@ import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/nav";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { createUser, toggleUserActive, updateUser } from "./actions";
+import { APILADA } from "@/components/ui/Table";
 
 const ESTADO_FILTERS: { value: "" | "activos" | "inactivos"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -41,7 +42,7 @@ export default async function UsuariosPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold mb-1">Usuarios</h1>
           <p className="text-sm text-foreground/60">{filteredUsers.length} usuarios registrados</p>
@@ -123,7 +124,7 @@ export default async function UsuariosPage({
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className={`w-full text-sm ${APILADA}`}>
           <thead>
             <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">Nombre</th>

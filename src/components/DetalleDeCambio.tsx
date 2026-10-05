@@ -47,7 +47,7 @@ export function TablaDeActividad({
 
   return (
     <>
-      <Table>
+      <Table apilada>
         <Thead>
           <Th>Fecha</Th>
           <Th>Usuario</Th>
@@ -66,7 +66,8 @@ export function TablaDeActividad({
                 </span>
               </Td>
               <Td>{fila.tipo}</Td>
-              <Td>
+              {/* En el teléfono, en su propio renglón: es lo que se lee. */}
+              <Td className="max-sm:basis-full">
                 <button
                   type="button"
                   onClick={() => abrir(fila)}

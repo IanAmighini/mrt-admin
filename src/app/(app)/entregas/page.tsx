@@ -97,7 +97,7 @@ export default async function EntregasPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold mb-1">Entregas</h1>
           <p className="text-sm text-foreground/60">
@@ -133,7 +133,7 @@ export default async function EntregasPage({
         <FiltroFechas from={from} to={to} />
       </FilterBar>
 
-      <Table>
+      <Table apilada>
         <Thead>
           <Th>Remito</Th>
           <Th>Cliente</Th>

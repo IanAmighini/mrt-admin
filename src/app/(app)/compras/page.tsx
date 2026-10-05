@@ -134,7 +134,7 @@ export default async function ComprasPage({
         <FiltroFechas from={from} to={to} />
       </FilterBar>
 
-      <Table>
+      <Table apilada>
         <Thead>
           <Th>Proveedor</Th>
           <Th>Comprobante</Th>

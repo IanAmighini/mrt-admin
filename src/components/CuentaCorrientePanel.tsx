@@ -88,7 +88,7 @@ export function CuentaCorrientePanel({
 
   return (
     <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold">Cuenta corriente</h2>
         {canEdit && (
           <div className="flex flex-wrap gap-3">
