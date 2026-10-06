@@ -43,7 +43,7 @@ export function OrdenPagoFields({
 
       {pagos.length === 0 ? (
         <p className="text-sm text-foreground/60">
-          No hay pagos de la cuenta Blanco sin orden. Cargá primero el pago —uno por medio— y volvé
+          No hay pagos de la Cuenta 1 (c/factura) sin orden. Cargá primero el pago —uno por medio— y volvé
           acá para agruparlos.
         </p>
       ) : (
@@ -52,7 +52,7 @@ export function OrdenPagoFields({
             <p className="text-sm">
               Pagos que entran en la orden
               <span className="block text-xs text-foreground/50">
-                Sólo los de la cuenta Blanco que no están en otra orden.
+                Sólo los de la Cuenta 1 (c/factura) que no están en otra orden.
               </span>
             </p>
             <div className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-foreground/10 p-2">

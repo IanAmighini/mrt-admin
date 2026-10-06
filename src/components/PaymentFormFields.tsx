@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import type { Circuit, Currency, Entity, PaymentMethod } from "@prisma/client";
-import { PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS, RETENTION_KIND_ORDER } from "@/lib/labels";
+import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS, RETENTION_KIND_LABELS, RETENTION_KIND_ORDER } from "@/lib/labels";
 import { metodosDePago } from "@/lib/pagos";
 import { ViajeFields, type ViajeOption } from "./ViajeFields";
 import { formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
+import { SelectBuscable } from "@/components/ui/SelectBuscable";
 
 /** Lo mínimo de un cheque para poder elegirlo; ya serializado, porque esto corre en el navegador. */
 export type ChequeEnCartera = {
@@ -117,23 +118,16 @@ export function PaymentFormFields({
           <label className="text-sm" htmlFor="entityId">
             {entityNoun} *
           </label>
-          <select
+          <SelectBuscable
             id="entityId"
             name="entityId"
             required
             value={entityId}
-            onChange={(e) => setEntityId(e.target.value)}
+            onChange={setEntityId}
+            opciones={(entities ?? []).map((e) => ({ value: e.id, label: e.name }))}
+            placeholder={`Escribí el ${entityNoun?.toLowerCase() ?? "nombre"}…`}
             className={inputClass}
-          >
-            <option value="" disabled>
-              Seleccionar {entityNoun?.toLowerCase()}...
-            </option>
-            {entities?.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
       )}
 
@@ -157,7 +151,7 @@ export function PaymentFormFields({
                 }}
                 className="sr-only"
               />
-              {c === "BLANCO" ? "Blanco (con factura)" : "Negro (sin factura)"}
+              {CIRCUIT_LABELS[c]}
             </label>
           ))}
         </div>
@@ -206,7 +200,7 @@ export function PaymentFormFields({
             name="amount"
             required
             inputMode="decimal"
-            placeholder="0.00"
+            placeholder="150.000,00"
             value={monto}
             onChange={(e) => setMonto(e.target.value)}
             readOnly={eligeDeCartera && elegidos.length > 0}

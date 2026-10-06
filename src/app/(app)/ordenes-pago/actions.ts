@@ -40,7 +40,7 @@ export async function crearOrdenPago(formData: FormData) {
     (p) => p.account.entityId !== entityId || p.account.circuit !== "BLANCO"
   );
   if (fuera.length > 0) {
-    throw new UserError("Los pagos tienen que ser todos de la cuenta Blanco de este proveedor.");
+    throw new UserError("Los pagos tienen que ser todos de la Cuenta 1 (c/factura) de este proveedor.");
   }
 
   const yaEnOtra = pagos.filter((p) => p.ordenPagoId);

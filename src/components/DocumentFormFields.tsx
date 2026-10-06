@@ -117,7 +117,7 @@ export function DocumentFormFields({
                 onChange={() => setCircuit("BLANCO")}
                 className="sr-only"
               />
-              Blanco (con factura)
+              Cuenta 1 (c/factura)
             </label>
             <label className={toggleClass}>
               <input
@@ -128,7 +128,7 @@ export function DocumentFormFields({
                 onChange={() => setCircuit("NEGRO")}
                 className="sr-only"
               />
-              Negro (sin factura)
+              Cuenta 2 (s/factura)
             </label>
           </div>
         </div>
@@ -153,12 +153,17 @@ export function DocumentFormFields({
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="number">
-            Número
-          </label>
-          <input id="number" name="number" required defaultValue={defaultValues?.number} className={inputClass} />
-        </div>
+        {/* En una caja el número lo pone la app. */}
+        {isTreasury ? (
+          <input type="hidden" name="number" value={defaultValues?.number ?? ""} />
+        ) : (
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="number">
+              Número
+            </label>
+            <input id="number" name="number" required defaultValue={defaultValues?.number} className={inputClass} />
+          </div>
+        )}
         <div className="space-y-1">
           <label className="text-sm" htmlFor="date">
             Fecha
@@ -264,7 +269,7 @@ export function DocumentFormFields({
             defaults={defaultValues?.impuestos}
             onChange={setImpuestos}
             titulo="Desglose de la nota"
-            aclaracion="Una nota en Blanco es un comprobante fiscal: el neto va abierto por alícuota y entra así al libro de IVA."
+            aclaracion="Una nota de la Cuenta 1 (c/factura) es un comprobante fiscal: el neto va abierto por alícuota y entra así al libro de IVA."
           />
           <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
             <span className="text-sm">Total</span>

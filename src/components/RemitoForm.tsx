@@ -53,7 +53,7 @@ export function RemitoFormFields({
       <p className="text-xs text-foreground/50">
         {editingDocumentId
           ? "Al guardar se reemplazan las líneas de este remito por las que cargues acá."
-          : "Un mismo remito puede tener líneas facturadas (van a Blanco) y sin facturar (van a Negro) — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea."}
+          : "Un mismo remito puede tener líneas facturadas (van a la Cuenta 1) y sin facturar (van a la Cuenta 2) — se cargan las dos cuentas del cliente automáticamente según lo que elijas por línea."}
       </p>
       <input type="hidden" name="entityId" value={entityId} />
       {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}

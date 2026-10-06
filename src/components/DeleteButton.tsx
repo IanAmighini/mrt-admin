@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
+import { useEnvioUnico } from "./useEnvioUnico";
 
 /**
  * Botón de eliminar con confirmación propia.
@@ -59,6 +60,7 @@ export function DeleteButton({
     null
   );
 
+  const unaVez = useEnvioUnico(pending);
   const wasPending = useRef(false);
   useEffect(() => {
     if (wasPending.current && !pending && !error) {
@@ -89,7 +91,7 @@ export function DeleteButton({
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}
       >
-        <form action={formAction} className="space-y-4 p-6">
+        <form action={formAction} onSubmit={unaVez} className="space-y-4 p-6">
           <input type="hidden" name={hiddenName} value={hiddenValue} />
           {children}
           <h2 className="text-base font-semibold text-balance">

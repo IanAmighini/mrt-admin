@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { Circuit, Currency, Entity, PaymentMethod } from "@prisma/client";
-import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { metodosDePago } from "@/lib/pagos";
 import { ViajeFields, type ViajeOption } from "./ViajeFields";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
@@ -92,7 +92,7 @@ export function EditPaymentFields({
                 }}
                 className="sr-only"
               />
-              {c === "BLANCO" ? "Blanco (con factura)" : "Negro (sin factura)"}
+              {CIRCUIT_LABELS[c]}
             </label>
           ))}
         </div>

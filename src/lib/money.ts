@@ -109,7 +109,14 @@ export function formatNumeroExacto(
   value: Prisma.Decimal | number | string | null | undefined
 ): string {
   if (value === null || value === undefined) return "";
-  return value.toString().replace(".", ",");
+  // Con todos sus decimales y con el punto de miles, como se escribe acá: "30.543,478". Se vuelve a
+  // leer igual —`parseNumeroSuave` entiende los miles cuando hay coma—, y un monto de catorce
+  // cifras sin agrupar no se podía leer de un vistazo. `toFixed()` y no `toString()`, que para
+  // números muy chicos o muy grandes escribe "1e-7".
+  const [entera, decimales] = new Prisma.Decimal(value).toFixed().split(".");
+  const signo = entera.startsWith("-") ? "-" : "";
+  const agrupada = entera.replace("-", "").replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return decimales ? `${signo}${agrupada},${decimales}` : `${signo}${agrupada}`;
 }
 
 export function sumDecimals(values: (Prisma.Decimal | number | string | null | undefined)[]) {

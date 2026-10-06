@@ -21,6 +21,8 @@ import {
   impuestosIniciales,
   type ImpuestosValores,
 } from "./ImpuestosFields";
+import { useEnvioUnico } from "./useEnvioUnico";
+import { SelectBuscable } from "@/components/ui/SelectBuscable";
 
 type Circuit = "BLANCO" | "NEGRO";
 
@@ -279,23 +281,16 @@ export function NuevaCompraFields({
                 <input type="hidden" name="entityId" value={fixedEntity.id} />
               </>
             ) : (
-              <select
+              <SelectBuscable
                 id="entityId"
                 name="entityId"
                 required
                 value={proveedorId}
-                onChange={(e) => setProveedorId(e.target.value)}
+                onChange={setProveedorId}
+                opciones={proveedores.map((p) => ({ value: p.id, label: p.name }))}
+                placeholder="Escribí el proveedor…"
                 className={inputClass}
-              >
-                <option value="" disabled>
-                  — Elegir proveedor —
-                </option>
-                {proveedores.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
+              />
             )}
           </div>
           <div className="space-y-1">
@@ -391,19 +386,22 @@ export function NuevaCompraFields({
               </div>
               <div className="min-w-0 flex-[2] basis-[210px]">
                 <label className="text-xs text-foreground/60">Insumo</label>
-                <select
+                {/* Se puede buscar el insumo directo, sin elegir antes el tipo: el tipo sale del
+                    insumo. Con el tipo elegido, la lista se acota a ese tipo. */}
+                <SelectBuscable
                   value={row.itemId}
-                  onChange={(e) => changeItem(row.key, e.target.value)}
-                  disabled={!row.category}
-                  className={`${inputClass} disabled:cursor-not-allowed disabled:bg-foreground/5 disabled:text-foreground/40`}
-                >
-                  <option value="">{row.category ? "— Insumo —" : "Elegí el tipo primero"}</option>
-                  {(row.category ? itemsPorCategoria.get(row.category) ?? [] : []).map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(itemId) => {
+                    const elegido = items.find((i) => i.id === itemId);
+                    changeItem(row.key, itemId, elegido ? { category: elegido.category } : {});
+                  }}
+                  opciones={(row.category ? itemsPorCategoria.get(row.category) ?? [] : items).map((i) => ({
+                    value: i.id,
+                    label: i.name,
+                    detalle: row.category ? undefined : SUPPLIER_CATEGORY_LABELS[i.category],
+                  }))}
+                  placeholder="Escribí el insumo…"
+                  className={inputClass}
+                />
               </div>
               {esAceite ? (
                 <>
@@ -497,14 +495,14 @@ export function NuevaCompraFields({
                 </>
               )}
               <div className="min-w-0 flex-1 basis-[160px]">
-                <label className="text-xs text-foreground/60">Circuito</label>
+                <label className="text-xs text-foreground/60">Cuenta</label>
                 <select
                   value={row.circuit}
                   onChange={(e) => updateRow(row.key, { circuit: e.target.value as Circuit })}
                   className={inputClass}
                 >
-                  <option value="BLANCO">Blanco (facturado)</option>
-                  <option value="NEGRO">Negro (sin facturar)</option>
+                  <option value="BLANCO">Cuenta 1 (c/factura)</option>
+                  <option value="NEGRO">Cuenta 2 (s/factura)</option>
                 </select>
               </div>
               <div className="min-w-0 flex-1 basis-[120px]">
@@ -556,7 +554,7 @@ export function NuevaCompraFields({
 
         <div className="flex flex-wrap justify-end gap-6 border-t border-foreground/10 pt-3 text-sm">
           <div className="text-right">
-            <p className="text-xs text-foreground/50">Neto Blanco</p>
+            <p className="text-xs text-foreground/50">Neto Cuenta 1</p>
             <p className="font-semibold">{plata(netos.BLANCO)}</p>
           </div>
           <div className="text-right">
@@ -564,11 +562,11 @@ export function NuevaCompraFields({
             <p className="font-semibold">{plata(iva)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-foreground/50">Total Blanco</p>
+            <p className="text-xs text-foreground/50">Total Cuenta 1</p>
             <p className="font-semibold">{plata(totals.BLANCO)}</p>
           </div>
           <div className="text-right">
-            <p className="text-xs text-foreground/50">Total Negro</p>
+            <p className="text-xs text-foreground/50">Total Cuenta 2</p>
             <p className="font-semibold">{plata(totals.NEGRO)}</p>
           </div>
           <div className="text-right">
@@ -617,9 +615,10 @@ export function NuevaCompraForm({
       return userErrorMessage(e);
     }
   }, null);
+  const unaVez = useEnvioUnico(pending);
 
   return (
-    <form action={formAction}>
+    <form action={formAction} onSubmit={unaVez}>
       <NuevaCompraFields {...props} error={error} pending={pending} />
     </form>
   );

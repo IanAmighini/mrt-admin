@@ -6,6 +6,8 @@ import { formatMoney, formatQuantity, parseNumeroSuave } from "@/lib/money";
 import { formatPallets, formatProductBrandLabel } from "@/lib/product-label";
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { desarmadosPorLinea, type StockParaPlan } from "@/lib/plan-de-entrega";
+import { useEnvioUnico } from "./useEnvioUnico";
+import { SelectBuscable } from "@/components/ui/SelectBuscable";
 
 const IVA_RATE = 21;
 
@@ -84,7 +86,14 @@ export function NuevaEntregaForm({
   const [cotizacion, setCotizacion] = useState("");
   const cliente = fixedEntity ?? clientes.find((c) => c.id === entityId);
   const cuentaEnDolares = cliente?.moneda === "USD";
-  const cotizacionNum = parseNumeroSuave(cotizacion);
+  // La cotización sólo aparece cuando el precio está en la otra moneda: casi nunca, y verla siempre
+  // hacía pensar que había que llenarla. Viene marcada si el cliente tiene algún precio en dólares.
+  const tienePrecioEnDolares = Object.values(pricesByEntity[cliente?.id ?? ""] ?? {}).some((porProducto) =>
+    Object.values(porProducto).some((p) => p.currency === "USD")
+  );
+  const [otraMonedaElegida, setOtraMonedaElegida] = useState<boolean | null>(null);
+  const otraMoneda = otraMonedaElegida ?? (!cuentaEnDolares && tienePrecioEnDolares);
+  const cotizacionNum = otraMoneda ? parseNumeroSuave(cotizacion) : null;
   const hayCotizacion = Boolean(cotizacionNum?.greaterThan(0));
   // Con cotización, el precio se escribe en la otra moneda que la de la cuenta: dólares en una en
   // pesos (La Campechana), pesos en una en dólares.
@@ -103,6 +112,7 @@ export function NuevaEntregaForm({
       return userErrorMessage(e);
     }
   }, null);
+  const unaVez = useEnvioUnico(pending);
   const [rows, setRows] = useState<Row[]>([
     { key: 0, marcaKey: "", productId: "", pallets: "", cajas: "", pricePerBottle: "", facturado: true },
   ]);
@@ -207,7 +217,7 @@ export function NuevaEntregaForm({
   const destinatarios = entityId ? (destinatariosByEntity[entityId] ?? []) : [];
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={formAction} onSubmit={unaVez} className="space-y-6">
       <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
         <h2 className="text-sm font-semibold">Información general</h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -221,21 +231,16 @@ export function NuevaEntregaForm({
                 <input type="hidden" name="entityId" value={fixedEntity.id} />
               </>
             ) : (
-              <select
+              <SelectBuscable
                 id="entityId"
                 name="entityId"
                 required
                 value={entityId}
-                onChange={(e) => setEntityId(e.target.value)}
+                onChange={setEntityId}
+                opciones={clientes.map((c) => ({ value: c.id, label: c.name }))}
+                placeholder="Escribí el cliente…"
                 className={inputClass}
-              >
-                <option value="">— Elegir cliente —</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              />
             )}
           </div>
           <div className="space-y-1">
@@ -251,27 +256,35 @@ export function NuevaEntregaForm({
             <input id="date" type="date" name="date" required className={inputClass} />
           </div>
           <div className="space-y-1">
-            <label className="text-sm" htmlFor="exchangeRate">
-              {cuentaEnDolares ? "Cotización del dólar (si el precio es en pesos)" : "Cotización del dólar (si el precio es en U$S)"}
+            <label className="flex items-center gap-2 pt-7 text-sm">
+              <input
+                type="checkbox"
+                checked={otraMoneda}
+                onChange={(e) => setOtraMonedaElegida(e.target.checked)}
+                className="size-4 accent-primary"
+              />
+              {cuentaEnDolares ? "El precio está en pesos" : "El precio está en dólares"}
             </label>
-            <input
-              id="exchangeRate"
-              name="exchangeRate"
-              inputMode="decimal"
-              placeholder="1.523"
-              value={cotizacion}
-              onChange={(e) => setCotizacion(e.target.value)}
-              className={inputClass}
-            />
-            <p className="text-xs text-foreground/50">
-              {enDolares
-                ? "El precio por botella va en U$S; los pesos se calculan con esta cotización."
-                : enPesos
-                  ? "El precio por botella va en pesos; se pasa a dólares con esta cotización."
-                  : cuentaEnDolares
-                    ? "La cuenta se lleva en dólares: vacía, los precios van en U$S."
-                    : "Vacía, los precios van en pesos."}
-            </p>
+            {otraMoneda && (
+              <>
+                <input
+                  id="exchangeRate"
+                  name="exchangeRate"
+                  aria-label="Cotización del dólar"
+                  inputMode="decimal"
+                  placeholder="Cotización, ej. 1.523"
+                  required
+                  value={cotizacion}
+                  onChange={(e) => setCotizacion(e.target.value)}
+                  className={inputClass}
+                />
+                <p className="text-xs text-foreground/50">
+                  {cuentaEnDolares
+                    ? "El precio por botella va en pesos; se pasa a dólares con esta cotización."
+                    : "El precio por botella va en U$S; los pesos se calculan con esta cotización."}
+                </p>
+              </>
+            )}
           </div>
           {viajes.length > 0 && (
             <div className="space-y-1">

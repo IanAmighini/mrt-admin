@@ -51,7 +51,7 @@ export function buildStatementSheets(statement: AccountStatement): ExcelSheet<ne
   }
 
   const subtitle = [
-    `Circuito: ${CIRCUIT_LABELS[statement.account.circuit]}`,
+    CIRCUIT_LABELS[statement.account.circuit],
     periodLabel(statement),
     `Generado el ${formatFecha(statement.generatedAt)}`,
   ];
@@ -93,7 +93,7 @@ export function buildStatementSheets(statement: AccountStatement): ExcelSheet<ne
 
 export function statementFilename(statement: AccountStatement): string {
   const { from, to } = statement.period;
-  const circuito = CIRCUIT_LABELS[statement.account.circuit].toLowerCase();
+  const circuito = statement.account.circuit === "BLANCO" ? "cuenta1" : "cuenta2";
   const rango =
     from || to
       ? `${from ? toDateInputValue(from) : "inicio"}_${to ? toDateInputValue(periodLastDay({ from: from ?? to, to })) : "hoy"}`

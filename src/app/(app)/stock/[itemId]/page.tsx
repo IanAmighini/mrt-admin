@@ -114,8 +114,8 @@ export default async function ItemDetailPage({
                       Circuito
                     </label>
                     <select id="venta-circuito" name="circuit" defaultValue="BLANCO" className={inputClass}>
-                      <option value="BLANCO">Blanco (facturado)</option>
-                      <option value="NEGRO">Negro (sin facturar)</option>
+                      <option value="BLANCO">Cuenta 1 (c/factura)</option>
+                      <option value="NEGRO">Cuenta 2 (s/factura)</option>
                     </select>
                   </div>
                   <div className="space-y-1">

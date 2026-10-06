@@ -4,6 +4,7 @@ import { formatFecha, hoyEnInput } from "@/lib/period";
 import type { RecentMovement } from "@/lib/ledger";
 import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
+import { tituloDeCaja } from "@/lib/account-statement";
 import { DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import {
   cargarEnCuenta,
@@ -222,7 +223,9 @@ export function CuentaCorrientePanel({
             >
               <div>
                 <p className="text-sm font-medium">
-                  {DOCUMENT_TYPE_LABELS[movement.document.type]} #{movement.document.number}
+                  {isTreasury
+                    ? tituloDeCaja(movement.document).title
+                    : `${DOCUMENT_TYPE_LABELS[movement.document.type]} #${movement.document.number}`}
                 </p>
                 <p className="text-xs text-foreground/50">{formatFecha(movement.date)}</p>
               </div>

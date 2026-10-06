@@ -93,6 +93,25 @@ export function documentSubtitle(
 }
 
 /**
+ * Cómo se lee un movimiento de caja: lo que pasó ("Pago a Cristian Amighini — Efectivo") y no
+ * "Ajuste #P-72idy5rx", que es un código interno. El número sólo se muestra en los que se cargaron
+ * a mano (gastos, ajustes por arqueo), que son los que alguien puede querer buscar; los que escribió
+ * un cobro o un pago se buscan por ese cobro o ese pago.
+ */
+export function tituloDeCaja(
+  doc: Pick<DocumentWithRelations, "number" | "reason" | "treasuryCategory" | "sourcePaymentId">
+): { title: string; subtitle: string | null } {
+  const categoria = doc.treasuryCategory ? TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory] : null;
+  // Los que generó otra carga (un cobro, un pago, un cambio de cheques) llevan un código interno.
+  const generado = Boolean(doc.sourcePaymentId) || doc.number.startsWith("CAMBIO-");
+  const numero = generado ? null : `Nº ${doc.number.replace(/^CAJA-0*/, "")}`;
+  return {
+    title: doc.reason ?? categoria ?? "Movimiento de caja",
+    subtitle: [doc.reason ? categoria : null, numero].filter(Boolean).join(" · ") || null,
+  };
+}
+
+/**
  * Arma el estado de cuenta de una cuenta: documentos y pagos mezclados en orden cronológico, con
  * el debe/haber y el saldo acumulado. Lo consumen tanto la pantalla del libro mayor como el Excel.
  *
@@ -138,13 +157,17 @@ export async function getAccountStatement({
 
   const all: Omit<StatementEntry, "saldoAcumulado">[] = [];
 
+  const esCaja = account.entity.type === "TESORERIA";
   for (const doc of documents) {
     const effect = getDocumentEffect(doc);
+    const { title, subtitle } = esCaja
+      ? tituloDeCaja(doc)
+      : { title: `${DOCUMENT_TYPE_LABELS[doc.type]} #${doc.number}`, subtitle: documentSubtitle(doc) };
     all.push({
       key: `doc-${doc.id}`,
       date: doc.date,
-      title: `${DOCUMENT_TYPE_LABELS[doc.type]} #${doc.number}`,
-      subtitle: documentSubtitle(doc),
+      title,
+      subtitle,
       currency: doc.currency,
       debe: effect.greaterThan(0) ? effect : ZERO,
       haber: effect.lessThan(0) ? effect.negated() : ZERO,

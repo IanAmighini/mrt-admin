@@ -8,6 +8,7 @@ import { EXPENSE_CATEGORY_LABELS, EXPENSE_CATEGORY_ORDER } from "@/lib/labels";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { ImpuestosFields } from "./ImpuestosFields";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
+import { SelectBuscable } from "@/components/ui/SelectBuscable";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
@@ -90,13 +91,15 @@ export function GastoFormFields({
           <label className="text-sm" htmlFor="entityId">
             Proveedor
           </label>
-          <select
+          <SelectBuscable
             id="entityId"
             name="entityId"
             required
             defaultValue={defaultValues?.entityId ?? ""}
-            onChange={(e) => {
-              const elegido = (proveedores ?? []).find((p) => p.id === e.target.value);
+            opciones={(proveedores ?? []).map((p) => ({ value: p.id, label: p.name }))}
+            placeholder="Escribí el proveedor…"
+            onChange={(proveedorId) => {
+              const elegido = (proveedores ?? []).find((p) => p.id === proveedorId);
               // Cambiar de proveedor cambia la moneda de la cuenta; los montos se vuelven a escribir en ésa.
               setMonedaDeLaCuenta(elegido?.moneda ?? "ARS");
               setCurrency(elegido?.moneda ?? "ARS");
@@ -104,14 +107,7 @@ export function GastoFormFields({
               setRubro(elegido?.expenseCategory ?? "");
             }}
             className={inputClass}
-          >
-            <option value="">— Elegir —</option>
-            {(proveedores ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
       )}
 
@@ -127,7 +123,7 @@ export function GastoFormFields({
               onChange={() => setCircuit("BLANCO")}
               className="sr-only"
             />
-            Blanco (con factura)
+            Cuenta 1 (c/factura)
           </label>
           <label className={toggleClass}>
             <input
@@ -138,7 +134,7 @@ export function GastoFormFields({
               onChange={() => setCircuit("NEGRO")}
               className="sr-only"
             />
-            Negro (sin factura)
+            Cuenta 2 (s/factura)
           </label>
         </div>
       </div>

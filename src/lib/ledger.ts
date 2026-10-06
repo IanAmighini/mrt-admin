@@ -6,6 +6,7 @@ import {
   type DocumentType,
   type EntityType,
   type ExpenseCategory,
+  type PaymentMethod,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
@@ -419,9 +420,20 @@ export async function getRecentMovementsForEntity(
 }
 
 /** Pagos más recientes, filtrados por tipo de entidad (clientes o proveedores). */
-export async function getRecentPayments(typeFilter: EntityType[], limit = 30) {
+export async function getRecentPayments(
+  typeFilter: EntityType[],
+  limit = 30,
+  /** Los filtros de la pantalla de cobros y pagos. `to` es exclusivo. */
+  filtros: { entityId?: string; method?: PaymentMethod; from?: Date | null; to?: Date | null } = {}
+) {
   return prisma.payment.findMany({
-    where: { account: { entity: { type: { in: typeFilter } } } },
+    where: {
+      account: { entity: { type: { in: typeFilter }, ...(filtros.entityId ? { id: filtros.entityId } : {}) } },
+      ...(filtros.method ? { method: filtros.method } : {}),
+      ...(filtros.from || filtros.to
+        ? { date: { ...(filtros.from ? { gte: filtros.from } : {}), ...(filtros.to ? { lt: filtros.to } : {}) } }
+        : {}),
+    },
     include: { account: { include: { entity: true } }, allocations: { include: { document: true } } },
     orderBy: { date: "desc" },
     take: limit,

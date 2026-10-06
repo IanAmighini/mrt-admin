@@ -35,6 +35,7 @@ import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
 import { cajaDelProducto, enteroNoNegativo } from "@/lib/cajas";
 import { aLaMonedaDeLaCuenta, convertirMontos, leerCotizacion, monedaEscrita } from "@/lib/moneda";
 import type { AuditAction } from "@prisma/client";
+import { proximoNumeroDeCaja } from "@/lib/caja";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
 
@@ -205,8 +206,8 @@ export async function updateDocument(formData: FormData) {
   const type = String(formData.get("type") || "") as DocumentType;
   if (!NON_FACTURA_TYPES.includes(type)) throw new UserError("Tipo de comprobante inválido.");
 
-  const number = String(formData.get("number") || "").trim();
-  if (!number) throw new UserError("El número es obligatorio.");
+  // Un movimiento de caja no muestra el número —lo puso la app—, así que llega vacío y se conserva.
+  const number = String(formData.get("number") || "").trim() || document.number;
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
@@ -407,8 +408,10 @@ export async function createDocumentForEntity(formData: FormData) {
   const type = String(formData.get("type") || "") as DocumentType;
   if (!NON_FACTURA_TYPES.includes(type)) throw new UserError("Tipo de comprobante inválido.");
 
-  const number = String(formData.get("number") || "").trim();
-  if (!number) throw new UserError("El número es obligatorio.");
+  // En una caja el número lo pone la app (CAJA-00012): nadie da comprobante por un ajuste de arqueo,
+  // y tipearlo a mano dejaba numeraciones sueltas como "01-01".
+  const numeroEscrito = String(formData.get("number") || "").trim();
+  if (!numeroEscrito && entidad.type !== "TESORERIA") throw new UserError("El número es obligatorio.");
 
   const date = parseFormDate(formData.get("date"));
   const dueDate = parseOptionalFormDate(formData.get("dueDate"));
@@ -439,6 +442,7 @@ export async function createDocumentForEntity(formData: FormData) {
   const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, entityId);
 
   const document = await prisma.$transaction(async (tx) => {
+    const number = numeroEscrito || (await proximoNumeroDeCaja(tx, account.id));
     const creado = await tx.document.create({
       data: {
         accountId: account.id,
@@ -480,12 +484,12 @@ export async function createDocumentForEntity(formData: FormData) {
     action: "CREATE",
     entityType: "Movimiento de cuenta",
     entityId: document.id,
-    summary: `#${number} — ${account.entity.name} — ${formatMoney(totals.totalAmount, currency)}`,
+    summary: `#${document.number} — ${account.entity.name} — ${formatMoney(totals.totalAmount, currency)}`,
     cambios: diffDeCampos(
       null,
       fotoDelComprobante({
         tipo: DOCUMENT_TYPE_LABELS[type],
-        number,
+        number: document.number,
         date,
         dueDate,
         currency,
@@ -947,7 +951,7 @@ export async function crearDevolucion(formData: FormData) {
     const cajasTocadas: string[] = [];
     for (const [circuit, circuitLines] of porCircuito) {
       const account = accounts.find((a) => a.circuit === circuit);
-      if (!account) throw new UserError(`No se encontró la cuenta ${CIRCUIT_LABELS[circuit]} de este cliente.`);
+      if (!account) throw new UserError(`No se encontró la ${CIRCUIT_LABELS[circuit]} de este cliente.`);
 
       const netAmount = circuitLines.reduce((acc, l) => acc.plus(l.subtotal), toDecimal(0));
       // Lo mismo que el remito: en Blanco lleva IVA, en Negro no.
@@ -1762,7 +1766,7 @@ export async function createFactura(formData: FormData) {
   const accountId = String(formData.get("accountId") || "");
   const account = await getAccountOrThrow(accountId);
   if (account.circuit !== "BLANCO") {
-    throw new UserError("Las facturas solo se cargan en la cuenta Blanco.");
+    throw new UserError("Las facturas solo se cargan en la Cuenta 1 (c/factura).");
   }
 
   const number = String(formData.get("number") || "").trim();
@@ -2098,7 +2102,7 @@ async function validarDestino(params: {
       throw new UserError(
         circuitProveedor === params.circuit
           ? motivo
-          : `${motivo} El cobro es en ${CIRCUIT_LABELS[params.circuit].toLowerCase()}, pero se imputa a la cuenta en ${CIRCUIT_LABELS[circuitProveedor].toLowerCase()} del proveedor.`
+          : `${motivo} El cobro es de la ${CIRCUIT_LABELS[params.circuit]}, pero se imputa a la ${CIRCUIT_LABELS[circuitProveedor]} del proveedor.`
       );
     }
     return;
@@ -2731,13 +2735,13 @@ export async function moveRemitoToBlanco(formData: FormData) {
     throw new UserError("Este remito ya está facturado, no se puede mover.");
   }
   if (document.account.circuit === "BLANCO") {
-    throw new UserError("El remito ya está en la cuenta Blanco.");
+    throw new UserError("El remito ya está en la Cuenta 1 (c/factura).");
   }
 
   const blancoAccount = await prisma.account.findUnique({
     where: { entityId_circuit: { entityId: document.account.entityId, circuit: "BLANCO" } },
   });
-  if (!blancoAccount) throw new UserError("No se encontró la cuenta Blanco de esta entidad.");
+  if (!blancoAccount) throw new UserError("No se encontró la Cuenta 1 (c/factura) de esta entidad.");
 
   await prisma.document.update({
     where: { id: document.id },
@@ -2749,7 +2753,7 @@ export async function moveRemitoToBlanco(formData: FormData) {
     action: "UPDATE",
     entityType: "Remito",
     entityId: document.account.entityId,
-    summary: `#${document.number} — ${document.account.entity.name} — movido a cuenta Blanco`,
+    summary: `#${document.number} — ${document.account.entity.name} — pasado a Cuenta 1 (c/factura)`,
     cambios: [
       { campo: "Cuenta", antes: CIRCUIT_LABELS[document.account.circuit], despues: CIRCUIT_LABELS.BLANCO },
     ],

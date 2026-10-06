@@ -196,15 +196,15 @@ export function RemitoLinesFields({
               )}
             </div>
             <div className="col-span-2 min-w-0">
-              <label className="text-xs text-foreground/60">Circuito</label>
+              <label className="text-xs text-foreground/60">Cuenta</label>
               <select
                 name="lineCircuit"
                 value={row.circuit}
                 onChange={(e) => updateRow(row.key, { circuit: e.target.value as Circuit })}
                 className={selectClass}
               >
-                <option value="BLANCO">Blanco (facturado)</option>
-                <option value="NEGRO">Negro (sin facturar)</option>
+                <option value="BLANCO">Cuenta 1 (c/factura)</option>
+                <option value="NEGRO">Cuenta 2 (s/factura)</option>
               </select>
             </div>
             <div className="col-span-2 min-w-0">

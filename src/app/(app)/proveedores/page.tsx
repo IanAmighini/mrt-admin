@@ -128,10 +128,10 @@ export default async function ProveedoresPage({
           <Th secundaria>Rubro</Th>
           <Th secundaria>CUIT</Th>
           <Th secundaria align="derecha">
-            Saldo Blanco
+            Cuenta 1 (c/factura)
           </Th>
           <Th secundaria align="derecha">
-            Saldo Negro
+            Cuenta 2 (s/factura)
           </Th>
           <Th align="derecha">Total</Th>
         </Thead>

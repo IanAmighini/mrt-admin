@@ -163,7 +163,7 @@ export function ViajesPanel({
           .map((s) => (
             <div key={s.circuito} className="flex items-center justify-between gap-3 pt-1 text-sm">
               <span className="text-foreground/60">
-                Sin asignar · cuenta {s.circuito === "BLANCO" ? "Blanco" : "Negro"}
+                Sin asignar · {s.circuito === "BLANCO" ? "Cuenta 1 (c/factura)" : "Cuenta 2 (s/factura)"}
               </span>
               <span className="font-medium tabular-nums text-foreground/60">
                 {formatMoney(s.monto, moneda)}

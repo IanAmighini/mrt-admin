@@ -1,5 +1,6 @@
 import type { Entity } from "@prisma/client";
 import { PedidoLinesFields, type FilaDePedido } from "./PedidoLinesFields";
+import { SelectBuscable } from "@/components/ui/SelectBuscable";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
@@ -39,19 +40,14 @@ export function PedidoFormFields({
       {editingPedidoId && <input type="hidden" name="pedidoId" value={editingPedidoId} />}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Cliente">
-          <select
+          <SelectBuscable
             name="entityId"
             required
             defaultValue={defaultValues?.entityId ?? ""}
+            opciones={clientes.map((c) => ({ value: c.id, label: c.name }))}
+            placeholder="Escribí el cliente…"
             className={selectClass}
-          >
-            <option value="">— Elegir cliente —</option>
-            {clientes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          />
         </Field>
         <Field label="Fecha">
           <input

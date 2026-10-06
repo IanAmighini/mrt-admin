@@ -224,14 +224,14 @@ export default async function DashboardClientesPage() {
 
       <div className="grid gap-8 lg:grid-cols-2">
         <TopDeudaSection
-          title="Clientes con más deuda — Cuenta Blanco"
+          title="Clientes con más deuda — Cuenta 1 (c/factura)"
           rows={topBlanco}
           circuit="blanco"
           entityNoun="Cliente"
           emptyMessage="Todavía no hay clientes cargados."
         />
         <TopDeudaSection
-          title="Clientes con más deuda — Cuenta Negro"
+          title="Clientes con más deuda — Cuenta 2 (s/factura)"
           rows={topNegro}
           circuit="negro"
           entityNoun="Cliente"

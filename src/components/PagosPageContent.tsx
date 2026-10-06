@@ -1,9 +1,9 @@
 import Link from "next/link";
-import type { EntityType } from "@prisma/client";
+import type { Currency, EntityType, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getRecentPayments, getTreasuries } from "@/lib/ledger";
-import { formatMoney, formatNumeroExacto } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
 import { DeleteButton } from "./DeleteButton";
@@ -16,17 +16,25 @@ import {
   deletePayment,
   updatePayment,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
-import { formatFecha, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
+import { FilterBar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { APILADA } from "@/components/ui/Table";
+
+export type FiltrosDePagos = { entityId?: string; medio?: string; from?: string; to?: string };
 
 export async function PagosPageContent({
   typeFilter,
   title,
   entityNoun,
+  basePath,
+  filtros = {},
 }: {
   typeFilter: EntityType[];
   title: string;
   entityNoun: string;
+  /** Para el botón Limpiar de los filtros. */
+  basePath: string;
+  filtros?: FiltrosDePagos;
 }) {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
@@ -34,9 +42,19 @@ export async function PagosPageContent({
   // Lo que entra de un cliente es un cobro; lo que sale a un proveedor, un pago.
   const pago = isCobro ? "cobro" : "pago";
 
+  const medio = filtros.medio && filtros.medio in PAYMENT_METHOD_LABELS ? (filtros.medio as PaymentMethod) : undefined;
+  const hayFiltro = Boolean(filtros.entityId || medio || filtros.from || filtros.to);
+
   const [entities, pagos, treasuries, proveedores, cartera] = await Promise.all([
     prisma.entity.findMany({ where: { type: { in: typeFilter } }, orderBy: { name: "asc" } }),
-    getRecentPayments(typeFilter, 30),
+    // Sin filtros, los últimos 30, que es lo que se mira para ver si ya se cargó algo. Con filtros,
+    // todo lo que coincida: es para sumar un período o un cliente, y cortar en 30 daría mal el total.
+    getRecentPayments(typeFilter, hayFiltro ? 2000 : 30, {
+      entityId: filtros.entityId || undefined,
+      method: medio,
+      from: filtros.from ? parseFecha(filtros.from) : null,
+      to: filtros.to ? addDays(parseFecha(filtros.to), 1) : null,
+    }),
     getTreasuries(),
     isCobro
       ? prisma.entity.findMany({ where: { type: { in: ["PROVEEDOR", "AMBOS"] } }, orderBy: { name: "asc" } })
@@ -56,12 +74,24 @@ export async function PagosPageContent({
   const linkedPaymentById = new Map(linkedPayments.map((p) => [p.id, p]));
   const treasuryById = new Map(treasuries.map((t) => [t.id, t]));
 
+  // El total de lo que se está viendo, por moneda: un cobro en dólares no se suma a los pesos.
+  const totalPorMoneda = new Map<string, Prisma.Decimal>();
+  for (const p of pagos) totalPorMoneda.set(p.currency, (totalPorMoneda.get(p.currency) ?? ZERO).plus(p.amount));
+  const totales = Array.from(totalPorMoneda.entries())
+    .sort(([a]) => (a === "ARS" ? -1 : 1))
+    .map(([moneda, monto]) => formatMoney(monto, moneda as Currency))
+    .join(" + ");
+
   return (
-    <div className="space-y-10">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold mb-1">{title}</h1>
-          <p className="text-sm text-foreground/60">Últimos {pago}s registrados.</p>
+          <p className="text-sm text-foreground/60">
+            {hayFiltro
+              ? `${pagos.length} ${pagos.length === 1 ? pago : `${pago}s`}${totales ? ` · ${totales}` : ""}`
+              : `Últimos ${pagos.length} ${pago}s · ${totales || formatMoney(0)}`}
+          </p>
         </div>
         {canEdit && (
           <FormModal
@@ -81,8 +111,25 @@ export async function PagosPageContent({
         )}
       </div>
 
+      <FilterBar limpiarHref={basePath} hayFiltro={hayFiltro}>
+        <FiltroSelect
+          label={entityNoun}
+          name="entityId"
+          defaultValue={filtros.entityId}
+          opciones={entities.map((e) => ({ value: e.id, label: e.name }))}
+          className="w-full sm:w-56"
+        />
+        <FiltroSelect
+          label="Medio"
+          name="medio"
+          defaultValue={medio}
+          opciones={Object.entries(PAYMENT_METHOD_LABELS).map(([value, label]) => ({ value, label }))}
+        />
+        <FiltroFechas from={filtros.from} to={filtros.to} />
+      </FilterBar>
+
       <section>
-        <h2 className="text-sm font-semibold mb-2">Últimos {pago}s</h2>
+        <h2 className="text-sm font-semibold mb-2">{hayFiltro ? `${pago[0].toUpperCase()}${pago.slice(1)}s` : `Últimos ${pago}s`}</h2>
         <div className="overflow-x-auto">
           <table className={`w-full text-sm ${APILADA}`}>
             <thead>
@@ -174,7 +221,7 @@ export async function PagosPageContent({
               {pagos.length === 0 && (
                 <tr>
                   <td colSpan={canEdit ? 7 : 6} className="py-6 text-center text-foreground/40">
-                    Todavía no hay {pago}s cargados.
+                    {hayFiltro ? `No hay ${pago}s con este filtro.` : `Todavía no hay ${pago}s cargados.`}
                   </td>
                 </tr>
               )}

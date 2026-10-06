@@ -4,6 +4,7 @@ import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Pencil, Plus, X, type LucideIcon } from "lucide-react";
 import { buttonClass, type PesoDeBoton } from "./ui/Button";
+import { useEnvioUnico } from "./useEnvioUnico";
 
 const TRIGGER_ICONS: Record<string, LucideIcon> = {
   plus: Plus,
@@ -55,6 +56,7 @@ export function FormModal({
     null
   );
 
+  const unaVez = useEnvioUnico(pending);
   const wasPending = useRef(false);
   useEffect(() => {
     if (wasPending.current && !pending && !error) {
@@ -98,8 +100,11 @@ export function FormModal({
           {error && (
             <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">{error}</p>
           )}
-          <form key={resetKey} action={formAction} className="space-y-3">
-            {children}
+          <form key={resetKey} action={formAction} onSubmit={unaVez}>
+            {/* Mientras guarda, todo deshabilitado: el botón de guardar vive en `children`. */}
+            <fieldset disabled={pending} className="m-0 min-w-0 space-y-3 border-0 p-0 disabled:opacity-60">
+              {children}
+            </fieldset>
           </form>
         </div>
       </dialog>

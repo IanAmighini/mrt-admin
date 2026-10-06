@@ -64,8 +64,8 @@ export async function LibroIvaSection({
           <p className="flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
             <AlertTriangle className="h-4 w-4" />
             {libro.remitosSinFacturar.length === 1
-              ? "Hay un comprobante en Blanco sin facturar en este período"
-              : `Hay ${libro.remitosSinFacturar.length} comprobantes en Blanco sin facturar en este período`}
+              ? "Hay un comprobante de la Cuenta 1 (c/factura) sin facturar en este período"
+              : `Hay ${libro.remitosSinFacturar.length} comprobantes de la Cuenta 1 (c/factura) sin facturar en este período`}
           </p>
           <p className="mt-1 text-amber-800 dark:text-amber-300">
             Ni un remito ni una compra son comprobantes fiscales, así que no entran al libro. Esa
@@ -90,8 +90,8 @@ export async function LibroIvaSection({
           <p className="flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
             <AlertTriangle className="h-4 w-4" />
             {libro.notasSinClasificar.length === 1
-              ? "Hay una nota en Blanco que no entró al libro"
-              : `Hay ${libro.notasSinClasificar.length} notas en Blanco que no entraron al libro`}
+              ? "Hay una nota de la Cuenta 1 (c/factura) que no entró al libro"
+              : `Hay ${libro.notasSinClasificar.length} notas de la Cuenta 1 (c/factura) que no entraron al libro`}
           </p>
           <p className="mt-1 text-amber-800 dark:text-amber-300">
             La cuenta es de una entidad marcada como “Ambos”, así que no se puede saber si la nota la
@@ -110,7 +110,7 @@ export async function LibroIvaSection({
 
       <Planilla
         titulo="I.V.A. Ventas — Facturas A"
-        aclaracion="Los comprobantes tipo Factura de la cuenta Blanco."
+        aclaracion="Los comprobantes tipo Factura de la Cuenta 1 (c/factura)."
         columnaEntidad="Comprador"
         columnaPercepcion="RG 5329 3%"
         renglones={libro.ventas}
@@ -120,7 +120,7 @@ export async function LibroIvaSection({
 
       <Planilla
         titulo="I.V.A. Compras"
-        aclaracion="Las facturas de los proveedores y las facturas de gasto, de la cuenta Blanco."
+        aclaracion="Las facturas de los proveedores y las facturas de gasto, de la Cuenta 1 (c/factura)."
         columnaEntidad="Proveedor"
         columnaPercepcion="Percepciones"
         conConcepto
@@ -208,7 +208,7 @@ export async function LibroIvaSection({
 
       <p className="text-xs text-foreground/50">
         Las notas de crédito restan: entran en negativo, así que la fila de totales ya es lo que se
-        declara. Las notas en Negro y los ajustes manuales quedan fuera, porque no son comprobantes
+        declara. Las notas de la Cuenta 2 (s/factura) y los ajustes manuales quedan fuera, porque no son comprobantes
         fiscales. <Link href="/cuentas-corrientes" className="underline underline-offset-2">Cuentas corrientes</Link>
       </p>
     </div>

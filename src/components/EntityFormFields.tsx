@@ -103,7 +103,7 @@ export function EntityFormFields({
         )}
         <div className="space-y-1">
           <label className="text-sm" htmlFor="saldoInicialBlanco">
-            Saldo inicial Blanco (opcional)
+            Saldo inicial Cuenta 1 (c/factura) (opcional)
           </label>
           <input
             id="saldoInicialBlanco"
@@ -116,7 +116,7 @@ export function EntityFormFields({
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="saldoInicialNegro">
-            Saldo inicial Negro (opcional)
+            Saldo inicial Cuenta 2 (s/factura) (opcional)
           </label>
           <input
             id="saldoInicialNegro"

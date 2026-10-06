@@ -187,7 +187,7 @@ export default async function AccountLedgerPage({
           hidden={{ documentId: doc.id }}
           className="text-xs underline underline-offset-2"
         >
-          Mover a Blanco
+          Pasar a Cuenta 1 (c/factura)
         </BotonConError>
       ) : null;
 
@@ -370,7 +370,7 @@ export default async function AccountLedgerPage({
             ← Volver a {isTreasuryEntity ? "Tesorería" : entity.name}
           </Link>
           <h1 className="text-xl font-semibold mt-2">
-            {isTreasuryEntity ? entity.name : `${entity.name} — Cuenta ${CIRCUIT_LABELS[circuit]}`}
+            {isTreasuryEntity ? entity.name : `${entity.name} — ${CIRCUIT_LABELS[circuit]}`}
           </h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">

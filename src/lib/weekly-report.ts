@@ -76,7 +76,7 @@ function moneyArs(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
 function otrasMonedas(byCurrency: Map<Currency, Prisma.Decimal>): string {
   const otras = Array.from(byCurrency.entries()).filter(([c]) => c !== "ARS");
   if (otras.length === 0) return "";
-  return ` · ${otras.map(([c, v]) => `${c} ${v.toFixed(2)}`).join(" · ")}`;
+  return ` · ${otras.map(([c, v]) => formatMoney(v, c)).join(" · ")}`;
 }
 
 export type WeeklyReportEmail = {

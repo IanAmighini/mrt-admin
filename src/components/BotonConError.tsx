@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
+import { useEnvioUnico } from "./useEnvioUnico";
 
 /**
  * Un botón que dispara una acción —depositar un cheque, reactivar un usuario, pasar un remito a
@@ -33,8 +34,10 @@ export function BotonConError({
     }
   }, null);
 
+  const unaVez = useEnvioUnico(pending);
+
   return (
-    <form action={formAction}>
+    <form action={formAction} onSubmit={unaVez}>
       {Object.entries(hidden).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}

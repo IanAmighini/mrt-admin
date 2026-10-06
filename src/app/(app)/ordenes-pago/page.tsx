@@ -20,7 +20,7 @@ export default async function OrdenesPagoPage() {
         <h1 className="text-xl font-semibold mb-1">Órdenes de pago</h1>
         <p className="text-sm text-foreground/60">
           El papel que firma el proveedor. Se genera desde su ficha, agrupando los pagos ya cargados
-          — sólo de la cuenta Blanco.
+          — sólo de la Cuenta 1 (c/factura).
         </p>
       </div>
 

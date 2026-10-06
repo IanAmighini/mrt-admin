@@ -28,7 +28,7 @@ export function DevolucionFields({
       <input type="hidden" name="entityId" value={entityId} />
       <p className="text-xs text-foreground/50">
         Lo devuelto vuelve al stock —en pallets o en cajas sueltas— y se le hace al cliente una nota de
-        crédito por lo que vale. Si hay líneas en Blanco y en Negro, sale una nota por cada cuenta.
+        crédito por lo que vale. Si hay líneas de la Cuenta 1 y de la Cuenta 2, sale una nota por cada cuenta.
       </p>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">

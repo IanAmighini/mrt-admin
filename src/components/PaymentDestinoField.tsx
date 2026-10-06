@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Circuit, Entity } from "@prisma/client";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
+import { CIRCUIT_LABELS } from "@/lib/labels";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const toggleClass =
@@ -133,7 +134,7 @@ export function PaymentDestinoField({
                     onChange={() => setProveedorCircuit(c)}
                     className="sr-only"
                   />
-                  {c === "BLANCO" ? "Blanco (con factura)" : "Negro (sin factura)"}
+                  {CIRCUIT_LABELS[c]}
                 </label>
               ))}
             </div>

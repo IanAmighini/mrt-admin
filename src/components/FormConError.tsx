@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { buttonClass } from "./ui/Button";
+import { useEnvioUnico } from "./useEnvioUnico";
 
 /**
  * Un formulario suelto —de los que viven en la página y no adentro de un diálogo— que muestra el
@@ -47,8 +48,10 @@ export function FormConError({
     null
   );
 
+  const unaVez = useEnvioUnico(pending);
+
   return (
-    <form action={formAction} className={className}>
+    <form action={formAction} onSubmit={unaVez} className={className}>
       {children}
       {error && (
         // `basis-full`: en un formulario en fila (flex-wrap) el aviso ocupa su propio renglón.

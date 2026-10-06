@@ -15,8 +15,8 @@ import type { CajaMovementType,
 } from "@prisma/client";
 
 export const CIRCUIT_LABELS: Record<Circuit, string> = {
-  BLANCO: "Blanco",
-  NEGRO: "Negro",
+  BLANCO: "Cuenta 1 (c/factura)",
+  NEGRO: "Cuenta 2 (s/factura)",
 };
 
 /** Segmento de URL → circuito, para las rutas `/cuentas-corrientes/<entidad>/<circuito>`. */

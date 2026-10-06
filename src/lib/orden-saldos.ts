@@ -11,10 +11,10 @@ import type { Prisma } from "@prisma/client";
 export const ORDENES = [
   { value: "", label: "Nombre (A-Z)" },
   { value: "z-a", label: "Nombre (Z-A)" },
-  { value: "blanco-desc", label: "Saldo Blanco: mayor a menor" },
-  { value: "blanco-asc", label: "Saldo Blanco: menor a mayor" },
-  { value: "negro-desc", label: "Saldo Negro: mayor a menor" },
-  { value: "negro-asc", label: "Saldo Negro: menor a mayor" },
+  { value: "blanco-desc", label: "Cuenta 1: mayor a menor" },
+  { value: "blanco-asc", label: "Cuenta 1: menor a mayor" },
+  { value: "negro-desc", label: "Cuenta 2: mayor a menor" },
+  { value: "negro-asc", label: "Cuenta 2: menor a mayor" },
 ] as const;
 
 export type OrdenKey = (typeof ORDENES)[number]["value"];

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { formatNumeroExacto, formatQuantity } from "@/lib/money";
+import { formatNumeroExacto, formatQuantity, parseNumeroSuave } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { getSetting } from "@/lib/settings";
 import { FormModal } from "@/components/Modal";
@@ -108,7 +108,7 @@ export default async function ProduccionPage() {
       // y por lo que se usó.
       const clave = `${line.productId}|${JSON.stringify(reemplazosDe(line))}`;
       const fila = porProducto.get(clave) ?? filaVaciaDe(line);
-      const sumado = (actual: string) => formatNumeroExacto(line.quantity.plus(actual.replace(",", ".")));
+      const sumado = (actual: string) => formatNumeroExacto(line.quantity.plus(parseNumeroSuave(actual) ?? 0));
       if (line.tipo === "PALLETS") fila.pallets = sumado(fila.pallets);
       else fila.cajas = sumado(fila.cajas);
       porProducto.set(clave, fila);

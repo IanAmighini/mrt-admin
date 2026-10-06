@@ -432,7 +432,7 @@ function PricesSection({
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-semibold text-foreground/60">Circuito {CIRCUIT_LABELS[circuit]}</h2>
+      <h2 className="text-sm font-semibold text-foreground/60">{CIRCUIT_LABELS[circuit]}</h2>
       <details className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
         <summary className="cursor-pointer text-sm font-semibold">Listado de precios</summary>
 

@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma, type Currency } from "@prisma/client";
-import { ZERO } from "@/lib/money";
+import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
 import {
   CIRCUIT_LABELS,
   DOCUMENT_TYPE_LABELS,
@@ -39,7 +39,7 @@ function ars(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
 function otrasMonedas(byCurrency: Map<Currency, Prisma.Decimal>): string | null {
   const otras = Array.from(byCurrency.entries()).filter(([currency]) => currency !== "ARS");
   if (otras.length === 0) return null;
-  return otras.map(([currency, amount]) => `${currency} ${amount.toFixed(2)}`).join(" · ");
+  return otras.map(([currency, amount]) => formatMoney(amount, currency)).join(" · ");
 }
 
 function periodSubtitle(period: Period, generatedAt: Date): string[] {
@@ -65,7 +65,7 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
       columns: [
         { header: "Cliente", value: (r) => r.entityName, width: 32 },
         { header: "Comprobante", value: (r) => `${DOCUMENT_TYPE_LABELS[r.type]} #${r.number}`, width: 22 },
-        { header: "Circuito", value: (r) => CIRCUIT_LABELS[r.circuit], width: 10 },
+        { header: "Cuenta", value: (r) => CIRCUIT_LABELS[r.circuit], width: 20 },
         { header: "Fecha", value: (r) => r.date, format: "date" },
         { header: "Vencimiento", value: (r) => r.dueDate, format: "date" },
         { header: "Días de atraso", value: (r) => r.diasAtraso, format: "integer", width: 14 },
@@ -214,7 +214,7 @@ function ventasSheets(report: VentasReport, generatedAt: Date): ExcelSheet<never
         { header: "Fecha", value: (r) => r.date, format: "date" },
         { header: "Remito", value: (r) => `#${r.number}`, width: 14 },
         { header: "Cliente", value: (r) => r.entityName, width: 32 },
-        { header: "Circuito", value: (r) => CIRCUIT_LABELS[r.circuit], width: 10 },
+        { header: "Cuenta", value: (r) => CIRCUIT_LABELS[r.circuit], width: 20 },
         { header: "Producto", value: (r) => r.productLabel, width: 40 },
         { header: "Pallets", value: (r) => r.pallets, format: "number" },
         { header: "Litros", value: (r) => r.litros, format: "number" },
@@ -243,7 +243,7 @@ function cobranzasSheetsDeLado(report: CobranzasReport, generatedAt: Date): Exce
       columns: [
         { header: "Fecha", value: (r) => r.date, format: "date" },
         { header: entidadLabel, value: (r) => r.entityName, width: 32 },
-        { header: "Circuito", value: (r) => CIRCUIT_LABELS[r.circuit], width: 10 },
+        { header: "Cuenta", value: (r) => CIRCUIT_LABELS[r.circuit], width: 20 },
         { header: "Medio", value: (r) => PAYMENT_METHOD_LABELS[r.method], width: 16 },
         { header: "Moneda", value: (r) => r.currency, width: 10 },
         { header: "Monto", value: (r) => r.amount, format: "money" },
@@ -310,7 +310,7 @@ function comprasSheets(report: ComprasReport, generatedAt: Date): ExcelSheet<nev
         { header: "Categoría", value: (r) => SUPPLIER_CATEGORY_LABELS[r.category], width: 24 },
         {
           header: "Cantidades",
-          value: (r) => Array.from(r.qtyByUnit.entries()).map(([unit, qty]) => `${qty.toFixed(2)} ${unit}`).join(" · "),
+          value: (r) => Array.from(r.qtyByUnit.entries()).map(([unit, qty]) => formatQuantity(qty, unit)).join(" · "),
           width: 28,
         },
         { header: "Importe ARS", value: (r) => ars(r.byCurrency), format: "money", width: 16 },
@@ -340,7 +340,7 @@ function comprasSheets(report: ComprasReport, generatedAt: Date): ExcelSheet<nev
         { header: "Fecha", value: (r) => r.date, format: "date" },
         { header: "Remito", value: (r) => `#${r.number}`, width: 14 },
         { header: "Proveedor", value: (r) => r.entityName, width: 32 },
-        { header: "Circuito", value: (r) => CIRCUIT_LABELS[r.circuit], width: 10 },
+        { header: "Cuenta", value: (r) => CIRCUIT_LABELS[r.circuit], width: 20 },
         { header: "Insumo", value: (r) => r.itemName, width: 36 },
         { header: "Cantidad", value: (r) => r.quantity, format: "number" },
         { header: "Unidad", value: (r) => r.unit, width: 10 },
@@ -488,7 +488,7 @@ function gastosSheets(report: GastosReport, generatedAt: Date): ExcelSheet<never
         { header: "CUIT", value: (r) => r.taxId ?? "", width: 16 },
         { header: "Rubro", value: (r) => (r.category ? EXPENSE_CATEGORY_LABELS[r.category] : ""), width: 24 },
         { header: "Concepto", value: (r) => r.reason ?? "", width: 32 },
-        { header: "Circuito", value: (r) => CIRCUIT_LABELS[r.circuit], width: 10 },
+        { header: "Cuenta", value: (r) => CIRCUIT_LABELS[r.circuit], width: 20 },
         { header: "Neto", value: (r) => r.neto, format: "money" },
         { header: "IVA", value: (r) => r.iva, format: "money" },
         { header: "Percepciones", value: (r) => r.percepciones, format: "money" },
@@ -540,7 +540,7 @@ export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
     sheet<RenglonIva>({
       name: "IVA Ventas",
       title: "PLANILLA DETALLE DE I.V.A. VENTAS FACTURAS A",
-      subtitle: encabezado("Sólo comprobantes tipo Factura de la cuenta Blanco."),
+      subtitle: encabezado("Sólo comprobantes tipo Factura de la Cuenta 1 (c/factura)."),
       columns: [
         { header: "Fecha", value: (r) => r.date, format: "date" },
         { header: "Comprobante", value: (r) => r.tipo, width: 16 },
@@ -558,7 +558,7 @@ export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
     sheet<RenglonIva>({
       name: "IVA Compras",
       title: "PLANILLA DETALLE DE I.V.A. COMPRAS",
-      subtitle: encabezado("Facturas de proveedores y facturas de gasto de la cuenta Blanco."),
+      subtitle: encabezado("Facturas de proveedores y facturas de gasto de la Cuenta 1 (c/factura)."),
       // Las mismas columnas de la planilla que se llevaba a mano, en el mismo orden, para que el
       // contador no tenga que traducir nada.
       columns: [
@@ -619,14 +619,14 @@ export function libroIvaSheets(libro: LibroIva): ExcelSheet<never>[] {
       title: "Resumen del período",
       subtitle: [
         ...encabezado(""),
-        `IVA débito fiscal (ventas): ${libro.totalesVentas.iva.toFixed(2)}`,
-        `IVA crédito fiscal (compras): ${libro.totalesCompras.iva.toFixed(2)}`,
+        `IVA débito fiscal (ventas): ${formatMoney(libro.totalesVentas.iva)}`,
+        `IVA crédito fiscal (compras): ${formatMoney(libro.totalesCompras.iva)}`,
         ...libro.retencionesPorTipo.map(
-          (r) => `Retención de ${RETENTION_KIND_LABELS[r.kind]} sufrida: ${r.total.toFixed(2)}`
+          (r) => `Retención de ${RETENTION_KIND_LABELS[r.kind]} sufrida: ${formatMoney(r.total)}`
         ),
         libro.saldoIva.greaterThanOrEqualTo(0)
-          ? `Saldo a pagar: ${libro.saldoIva.toFixed(2)}`
-          : `Saldo a favor: ${libro.saldoIva.negated().toFixed(2)}`,
+          ? `Saldo a pagar: ${formatMoney(libro.saldoIva)}`
+          : `Saldo a favor: ${formatMoney(libro.saldoIva.negated())}`,
       ].filter(Boolean),
       columns: [
         { header: "Lado", value: (r) => r.lado, width: 12 },

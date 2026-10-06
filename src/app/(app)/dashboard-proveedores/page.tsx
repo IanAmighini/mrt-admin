@@ -203,14 +203,14 @@ export default async function DashboardProveedoresPage() {
         </section>
 
         <TopDeudaSection
-          title="Proveedores que más les debemos — Cuenta Blanco"
+          title="Proveedores que más les debemos — Cuenta 1 (c/factura)"
           rows={topBlanco}
           circuit="blanco"
           entityNoun="Proveedor"
           emptyMessage="Todavía no hay proveedores cargados."
         />
         <TopDeudaSection
-          title="Proveedores que más les debemos — Cuenta Negro"
+          title="Proveedores que más les debemos — Cuenta 2 (s/factura)"
           rows={topNegro}
           circuit="negro"
           entityNoun="Proveedor"
