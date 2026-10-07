@@ -39,6 +39,7 @@ export function PaymentFormFields({
   viajes,
   defaultViajeId,
   rotuloSubcuenta,
+  subcuentasPorEntidad,
 }: {
   entities?: Entity[];
   entityNoun?: string;
@@ -55,12 +56,17 @@ export function PaymentFormFields({
   viajes?: ViajeOption[];
   defaultViajeId?: string | null;
   rotuloSubcuenta?: string;
+  /** Desde Cobros y Pagos, donde se elige a quién: las subcuentas de los que las tienen (Gonzalo
+   * Morosoli por camión, Goloeste el alquiler). El selector aparece sólo si el elegido tiene. */
+  subcuentasPorEntidad?: Record<string, { viajes: ViajeOption[]; rotulo: string }>;
 }) {
   const isCobro = entityNoun === "Cliente";
 
   // La moneda de la cuenta cambia qué se pide: en dólares se cargan los pesos que salieron y la
   // cotización, y se acredita la división.
   const [entityId, setEntityId] = useState(fixedEntityId ?? "");
+  const subcuentas = viajes ?? subcuentasPorEntidad?.[entityId]?.viajes;
+  const rotulo = rotuloSubcuenta ?? subcuentasPorEntidad?.[entityId]?.rotulo;
   const [monto, setMonto] = useState("");
   const [circuit, setCircuit] = useState<Circuit>("BLANCO");
   const [method, setMethod] = useState<PaymentMethod>("EFECTIVO");
@@ -400,11 +406,12 @@ export function PaymentFormFields({
       </div>
 
       <ViajeFields
-        viajes={viajes}
+        key={entityId}
+        viajes={subcuentas}
         mostrarDestinatario={false}
-        rotulo={rotuloSubcuenta}
+        rotulo={rotulo}
         defaultViajeId={defaultViajeId}
-        ayudaViaje={`El pago cancela comprobantes de ${(rotuloSubcuenta ?? "ese viaje").toLowerCase() === "viaje" ? "ese viaje" : `esa ${(rotuloSubcuenta ?? "").toLowerCase()}`} y de ninguna otra parte. Sin elegir nada, sólo cancela lo que tampoco la tiene.`}
+        ayudaViaje={`El ${isCobro ? "cobro" : "pago"} cancela comprobantes de ${(rotulo ?? "ese viaje").toLowerCase() === "viaje" ? "ese viaje" : `esa ${(rotulo ?? "").toLowerCase()}`} y de ninguna otra parte. Sin elegir nada, sólo cancela lo que tampoco la tiene.`}
       />
 
       <button type="submit" className={submitClass}>

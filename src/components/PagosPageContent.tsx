@@ -45,7 +45,7 @@ export async function PagosPageContent({
   const medio = filtros.medio && filtros.medio in PAYMENT_METHOD_LABELS ? (filtros.medio as PaymentMethod) : undefined;
   const hayFiltro = Boolean(filtros.entityId || medio || filtros.from || filtros.to);
 
-  const [entities, pagos, treasuries, proveedores, cartera] = await Promise.all([
+  const [entities, pagos, treasuries, proveedores, cartera, conSubcuentas] = await Promise.all([
     prisma.entity.findMany({ where: { type: { in: typeFilter } }, orderBy: { name: "asc" } }),
     // Sin filtros, los últimos 30, que es lo que se mira para ver si ya se cargó algo. Con filtros,
     // todo lo que coincida: es para sumar un período o un cliente, y cortar en 30 daría mal el total.
@@ -62,7 +62,19 @@ export async function PagosPageContent({
     // Para pagarle a un proveedor con cheques de la cartera. Antes sólo estaba en la ficha del
     // proveedor, y desde acá no había forma de elegir uno: se cargaba como cheque nuevo.
     isCobro ? Promise.resolve([]) : getCarteraParaFormulario(),
+    // Los que dividen su cuenta: el selector de subcuenta aparece sólo al elegir uno de éstos.
+    prisma.entity.findMany({
+      where: { type: { in: typeFilter }, llevaViajes: true },
+      select: {
+        id: true,
+        rotuloSubcuenta: true,
+        entregas: { select: { id: true, nombre: true, destino: true }, orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] },
+      },
+    }),
   ]);
+  const subcuentasPorEntidad = Object.fromEntries(
+    conSubcuentas.map((e) => [e.id, { viajes: e.entregas, rotulo: e.rotuloSubcuenta ?? "Viaje" }])
+  );
 
   const linkedPaymentIds = pagos.map((p) => p.linkedPaymentId).filter((id): id is string => !!id);
   const linkedPayments = linkedPaymentIds.length
@@ -106,6 +118,7 @@ export async function PagosPageContent({
               treasuries={treasuries}
               cartera={isCobro ? undefined : cartera}
               proveedores={isCobro ? proveedores : undefined}
+              subcuentasPorEntidad={subcuentasPorEntidad}
             />
           </FormModal>
         )}
@@ -205,6 +218,9 @@ export async function PagosPageContent({
                                 proveedorId: linkedPayment?.account.entityId,
                                 proveedorCircuit: linkedPayment?.account.circuit,
                               }}
+                              viajes={subcuentasPorEntidad[payment.account.entityId]?.viajes}
+                              rotuloSubcuenta={subcuentasPorEntidad[payment.account.entityId]?.rotulo}
+                              defaultViajeId={payment.entregaId}
                             />
                           </FormModal>
                           <DeleteButton
