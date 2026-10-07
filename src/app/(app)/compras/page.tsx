@@ -53,7 +53,7 @@ export default async function ComprasPage({
   };
   const hayFiltro = Boolean(q?.trim() || pagoFilter || tipoFilter || from || to);
 
-  const [items, proveedores, compras, gastos] = await Promise.all([
+  const [items, proveedores, compras, gastos, subcuentas] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     prisma.entity.findMany({
       where: { type: { in: ["PROVEEDOR", "AMBOS"] } },
@@ -62,7 +62,20 @@ export default async function ComprasPage({
     }),
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
     tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q, period),
+    // Los proveedores que dividen su cuenta (Goloeste: alquiler y gastos comunes), para que el gasto
+    // se pueda asignar a una parte también desde acá.
+    prisma.entity.findMany({
+      where: { type: { in: ["PROVEEDOR", "AMBOS"] }, llevaViajes: true },
+      select: {
+        id: true,
+        rotuloSubcuenta: true,
+        entregas: { select: { id: true, nombre: true, destino: true }, orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] },
+      },
+    }),
   ]);
+  const subcuentasPorProveedor = Object.fromEntries(
+    subcuentas.map((e) => [e.id, { viajes: e.entregas, rotulo: e.rotuloSubcuenta ?? "Subcuenta" }])
+  );
 
   const rows = [...compras, ...gastos]
     .map((doc) => ({ doc, pagado: getDocumentPending(doc).lessThanOrEqualTo(0) }))
@@ -103,7 +116,7 @@ export default async function ComprasPage({
               action={createGasto}
               maxWidthClass="max-w-xl"
             >
-              <GastoFormFields proveedores={proveedores} />
+              <GastoFormFields proveedores={proveedores} subcuentasPorProveedor={subcuentasPorProveedor} />
             </FormModal>
             <Link
               href="/compras/nueva"
@@ -203,6 +216,8 @@ export default async function ComprasPage({
                               monedaCuenta={doc.account.entity.moneda}
                               entityId={doc.account.entityId}
                               editingDocumentId={doc.id}
+                              viajes={subcuentasPorProveedor[doc.account.entityId]?.viajes}
+                              rotuloSubcuenta={subcuentasPorProveedor[doc.account.entityId]?.rotulo}
                               defaultValues={{
                                 circuit: doc.account.circuit,
                                 expenseCategory: doc.expenseCategory ?? undefined,
@@ -214,6 +229,7 @@ export default async function ComprasPage({
                                 amount: formatNumeroExacto(doc.totalAmount),
                                 retentionAmount: formatNumeroExacto(doc.retentionAmount),
                                 tributos: desgloseDesdeDocumento(doc),
+                                entregaId: doc.entregaId,
                               }}
                             />
                           </FormModal>

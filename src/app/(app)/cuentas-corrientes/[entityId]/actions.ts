@@ -2830,9 +2830,23 @@ async function parseGasto(formData: FormData) {
   };
 }
 
+/**
+ * La subcuenta del gasto, si la cuenta del proveedor se divide (el alquiler y los gastos comunes de
+ * Goloeste). Antes el formulario la mostraba y acá no se leía: el gasto quedaba sin subcuenta
+ * aunque se la eligiera.
+ */
+async function subcuentaDelGasto(formData: FormData, entityId: string) {
+  const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
+  const nombre = entregaId
+    ? ((await prisma.entrega.findUnique({ where: { id: entregaId }, select: { nombre: true } }))?.nombre ?? null)
+    : null;
+  return { entregaId, nombre };
+}
+
 export async function createGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   const g = await parseGasto(formData);
+  const subcuenta = await subcuentaDelGasto(formData, g.account.entityId);
 
   await prisma.$transaction(async (tx) => {
     const gasto = await tx.document.create({
@@ -2846,6 +2860,7 @@ export async function createGasto(formData: FormData) {
         exchangeRate: g.exchangeRate,
         expenseCategory: g.expenseCategory,
         reason: g.reason,
+        entregaId: subcuenta.entregaId,
         ...g.totals,
         createdById: user.id,
       },
@@ -2863,7 +2878,7 @@ export async function createGasto(formData: FormData) {
       entityType: "Gasto",
       entityId: g.account.entityId,
       summary: `#${g.number} — ${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
-      cambios: diffDeCampos(null, fotoDelGastoCargado(g), CAMPOS_DEL_COMPROBANTE),
+      cambios: diffDeCampos(null, fotoDelGastoCargado(g, subcuenta.nombre), CAMPOS_DEL_COMPROBANTE),
     });
   });
 
@@ -2874,7 +2889,7 @@ export async function createGasto(formData: FormData) {
  * conciliar fila por fila y no hay nada colgando de esas filas. Las imputaciones de pagos no se
  * tocan: el pendiente sale de totalAmount, igual que en updateFactura. */
 /** La foto de lo que trae el formulario de gasto, en la forma que compara `diffDeCampos`. */
-function fotoDelGastoCargado(g: Awaited<ReturnType<typeof parseGasto>>) {
+function fotoDelGastoCargado(g: Awaited<ReturnType<typeof parseGasto>>, subcuenta: string | null) {
   return fotoDelComprobante({
     tipo: DOCUMENT_TYPE_LABELS.GASTO,
     number: g.number,
@@ -2889,7 +2904,7 @@ function fotoDelGastoCargado(g: Awaited<ReturnType<typeof parseGasto>>) {
     totalAmount: g.totals.totalAmount,
     reason: g.reason,
     rubro: EXPENSE_CATEGORY_LABELS[g.expenseCategory],
-    viaje: null,
+    viaje: subcuenta,
     destinatario: null,
   });
 }
@@ -2898,11 +2913,19 @@ export async function updateGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
   const documentId = String(formData.get("documentId") || "");
-  const existente = await prisma.document.findUnique({ where: { id: documentId } });
+  const existente = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { entrega: { select: { nombre: true } } },
+  });
   if (!existente) throw new UserError("El gasto ya no existe.");
   if (existente.type !== "GASTO") throw new UserError("Este comprobante no es un gasto.");
 
   const g = await parseGasto(formData);
+  // El selector sólo aparece si la cuenta se divide: sin el campo, la subcuenta que tenía se queda.
+  const traeSubcuenta = formData.has("entregaId");
+  const subcuenta = traeSubcuenta
+    ? await subcuentaDelGasto(formData, g.account.entityId)
+    : { entregaId: existente.entregaId, nombre: existente.entrega?.nombre ?? null };
 
   await prisma.$transaction(async (tx) => {
     await tx.documentTax.deleteMany({ where: { documentId } });
@@ -2918,6 +2941,7 @@ export async function updateGasto(formData: FormData) {
         exchangeRate: g.exchangeRate,
         expenseCategory: g.expenseCategory,
         reason: g.reason,
+        entregaId: subcuenta.entregaId,
         ...g.totals,
       },
     });
@@ -2934,7 +2958,7 @@ export async function updateGasto(formData: FormData) {
       entityType: "Gasto",
       entityId: g.account.entityId,
       summary: `#${g.number} — ${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
-      cambios: diffDeCampos(fotoDelDocumento(existente), fotoDelGastoCargado(g), CAMPOS_DEL_COMPROBANTE),
+      cambios: diffDeCampos(fotoDelDocumento(existente), fotoDelGastoCargado(g, subcuenta.nombre), CAMPOS_DEL_COMPROBANTE),
     });
   });
 

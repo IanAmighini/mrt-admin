@@ -41,6 +41,7 @@ export function GastoFormFields({
   defaultValues,
   viajes,
   rotuloSubcuenta,
+  subcuentasPorProveedor,
   monedaCuenta = "ARS",
 }: {
   /** Si viene, el proveedor queda fijo (se abre desde su ficha). */
@@ -57,7 +58,13 @@ export function GastoFormFields({
    * gastos comunes de Goloeste. Vacío en los demás y ahí el selector no aparece. */
   viajes?: ViajeOption[];
   rotuloSubcuenta?: string;
+  /** Desde Compras, donde el proveedor se elige en el formulario: las subcuentas de los que las
+   * tienen, para mostrar el selector cuando se elige uno de ésos. */
+  subcuentasPorProveedor?: Record<string, { viajes: ViajeOption[]; rotulo: string }>;
 }) {
+  const [proveedorElegido, setProveedorElegido] = useState(defaultValues?.entityId ?? "");
+  const subcuentas = viajes ?? subcuentasPorProveedor?.[proveedorElegido]?.viajes;
+  const rotulo = rotuloSubcuenta ?? subcuentasPorProveedor?.[proveedorElegido]?.rotulo;
   const [circuit, setCircuit] = useState<"BLANCO" | "NEGRO">(defaultValues?.circuit ?? "BLANCO");
   // La moneda de la cuenta: la del proveedor fijo, o la del que se elija en el selector.
   const [monedaDeLaCuenta, setMonedaDeLaCuenta] = useState<Currency>(
@@ -99,6 +106,7 @@ export function GastoFormFields({
             opciones={(proveedores ?? []).map((p) => ({ value: p.id, label: p.name }))}
             placeholder="Escribí el proveedor…"
             onChange={(proveedorId) => {
+              setProveedorElegido(proveedorId);
               const elegido = (proveedores ?? []).find((p) => p.id === proveedorId);
               // Cambiar de proveedor cambia la moneda de la cuenta; los montos se vuelven a escribir en ésa.
               setMonedaDeLaCuenta(elegido?.moneda ?? "ARS");
@@ -255,9 +263,10 @@ export function GastoFormFields({
       </div>
 
       <ViajeFields
-        viajes={viajes}
+        key={proveedorElegido}
+        viajes={subcuentas}
         mostrarDestinatario={false}
-        rotulo={rotuloSubcuenta}
+        rotulo={rotulo}
         defaultViajeId={defaultValues?.entregaId}
       />
 

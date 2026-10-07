@@ -311,6 +311,8 @@ export default async function AccountLedgerPage({
                 retentionAmount: formatNumeroExacto(doc.retentionAmount),
                 tributos: desgloseDesdeDocumento(doc),
               }}
+              viajes={viajes}
+              rotuloSubcuenta={rotuloSubcuenta}
             />
           </FormModal>
           <DeleteButton
