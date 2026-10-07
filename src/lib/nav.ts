@@ -58,6 +58,8 @@ export const NAV_ITEMS: NavItem[] = [
     group: NAV_GROUPS.ADMINISTRACION,
   },
   { href: "/libro-iva", label: "Libro de IVA", roles: ADMINISTRATIVOS, group: NAV_GROUPS.ADMINISTRACION },
+  // La copia de toda la base, para bajar y guardar. Sólo Admin: el archivo lleva también los usuarios.
+  { href: "/respaldo", label: "Respaldo", roles: ["ADMIN"], group: NAV_GROUPS.ADMINISTRACION },
   { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },
   // Cuelga de Tesorería, igual que Cheques: quien ve Tesorería llega por la tarjeta de la caja y
   // tenerlo además en el menú es repetirlo. La secretaría no ve Tesorería —ahí están el banco y la

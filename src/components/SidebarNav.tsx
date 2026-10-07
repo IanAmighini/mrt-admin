@@ -26,8 +26,7 @@ import {
   Users,
   Wallet,
   X,
-  type LucideIcon,
-} from "lucide-react";
+  type LucideIcon, DatabaseBackup } from "lucide-react";
 import { NAV_GROUPS, type NavEntry, type NavItem } from "@/lib/nav";
 
 const ICONS_BY_GROUP: Record<string, LucideIcon> = {
@@ -51,6 +50,7 @@ const ICONS_BY_HREF: Record<string, LucideIcon> = {
   "/tesoreria": Landmark,
   "/ordenes-pago": FileText,
   "/libro-iva": FileSpreadsheet,
+  "/respaldo": DatabaseBackup,
   "/caja-chica": Coins,
   "/tesoreria/cheques": Banknote,
   "/produccion": Factory,
