@@ -2,7 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth-helpers";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, sumDecimals } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS, DOCUMENT_TYPE_LABELS } from "@/lib/labels";
 import { formatNumeroOP, getOrdenPago } from "@/lib/orden-pago";
 import { userErrorMessage } from "@/lib/user-error";
@@ -37,6 +37,39 @@ export default async function OrdenPagoPage({
   const { orden, emisor, comprobantes, totalFacturas, totalPagado, saldoAnterior, saldoPendiente, conceptos } = datos;
   const etiqueta = `OP N° ${formatNumeroOP(orden.numero)}`;
   const metodos = Array.from(new Set(orden.payments.map((p) => PAYMENT_METHOD_LABELS[p.method])));
+
+  // Un renglón por cheque o echeq, con lo que el proveedor necesita para cobrarlo: número, banco,
+  // desde cuándo y cuánto. Antes un pago con cinco echeqs era un solo renglón con los números
+  // pegados y el total, y no se sabía cuánto era cada uno ni cuándo se podía cobrar. El resto de los
+  // pagos (transferencia, efectivo) siguen siendo un renglón, con la fecha del pago.
+  const filas = orden.payments.flatMap((p) => {
+    const sueltos = {
+      key: p.id,
+      comprobante: p.reference ?? "—",
+      banco: null as string | null,
+      fecha: p.date,
+      tipo: PAYMENT_METHOD_LABELS[p.method],
+      importe: p.amount,
+    };
+    if (p.chequesEntregados.length === 0) return [sueltos];
+    const cheques = [...p.chequesEntregados]
+      .sort(
+        (a, b) =>
+          (a.fechaCobro ?? p.date).getTime() - (b.fechaCobro ?? p.date).getTime() || a.numero.localeCompare(b.numero)
+      )
+      .map((c) => ({
+        key: c.id,
+        comprobante: `#${c.numero}`,
+        banco: c.banco,
+        // Sin fecha de cobro es un cheque al día: se cobra desde que se entrega.
+        fecha: c.fechaCobro ?? p.date,
+        tipo: c.esEcheq ? "Echeq" : "Cheque",
+        importe: c.amount,
+      }));
+    // Si el pago fue por más que los cheques, la diferencia va en su propio renglón.
+    const resto = p.amount.minus(sumDecimals(cheques.map((c) => c.importe)));
+    return resto.isZero() ? cheques : [...cheques, { ...sueltos, key: `${p.id}-resto`, importe: resto }];
+  });
 
   return (
     <div className="space-y-4">
@@ -117,24 +150,31 @@ export default async function OrdenPagoPage({
             <tr className="bg-neutral-900 text-white">
               <th className="px-3 py-2 text-left font-bold">#</th>
               <th className="px-3 py-2 text-left font-bold">N° COMPROBANTE</th>
-              <th className="px-3 py-2 text-left font-bold">FECHA PAGO</th>
+              <th className="px-3 py-2 text-left font-bold">BANCO</th>
+              <th className="px-3 py-2 text-left font-bold">FECHA DE COBRO</th>
               <th className="px-3 py-2 text-left font-bold">TIPO</th>
               <th className="px-3 py-2 text-right font-bold">IMPORTE</th>
             </tr>
           </thead>
           <tbody>
-            {orden.payments.map((p, i) => (
-              <tr key={p.id} className="border-b border-neutral-200">
+            {filas.map((f, i) => (
+              <tr key={f.key} className="border-b border-neutral-200">
                 <td className="px-3 py-2">{i + 1}</td>
-                {/* El comprobante del pago: el número del cheque si lo hubo, o la referencia. */}
-                <td className="px-3 py-2">{p.chequesEntregados.length > 0
-                    ? p.chequesEntregados.map((c) => `#${c.numero}`).join(", ")
-                    : (p.reference ?? "—")}</td>
-                <td className="px-3 py-2">{fecha(p.date)}</td>
-                <td className="px-3 py-2">{PAYMENT_METHOD_LABELS[p.method]}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatMoney(p.amount)}</td>
+                <td className="px-3 py-2">{f.comprobante}</td>
+                <td className="px-3 py-2">{f.banco ?? "—"}</td>
+                <td className="px-3 py-2">{fecha(f.fecha)}</td>
+                <td className="px-3 py-2">{f.tipo}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{formatMoney(f.importe)}</td>
               </tr>
             ))}
+            {filas.length > 1 && (
+              <tr>
+                <td className="px-3 py-2 font-bold" colSpan={5}>
+                  Total
+                </td>
+                <td className="px-3 py-2 text-right font-bold tabular-nums">{formatMoney(totalPagado)}</td>
+              </tr>
+            )}
           </tbody>
         </table>
 
