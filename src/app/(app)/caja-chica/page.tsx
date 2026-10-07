@@ -41,6 +41,10 @@ export default async function CajaChicaPage({
   const esHasta_hoy = ultimoDia >= new Date(new Date().setHours(0, 0, 0, 0));
   const etiquetaSaldo = esHasta_hoy ? "Saldo de hoy" : `Saldo al ${formatFecha(ultimoDia)}`;
 
+  // Lo más nuevo arriba: lo que se busca es lo último que se cargó, y con el orden de la planilla
+  // había que bajar hasta el final. El saldo anterior va abajo, que es donde arranca la cuenta.
+  const recientesPrimero = [...statement.entries].reverse();
+
   /** Lo que muestra cada movimiento, igual en la lista del teléfono y en la tabla. */
   function filaDe(entry: (typeof statement.entries)[number]) {
     const doc = entry.source.kind === "document" ? entry.source.document : null;
@@ -129,11 +133,7 @@ export default async function CajaChicaPage({
         {/* En el teléfono, una lista: en la tabla quedaban a la vista la fecha, el concepto y el
             rubro, y los montos —lo único que importa para contar la plata— afuera. */}
         <ul className="divide-y divide-foreground/5 sm:hidden">
-          <li className="flex items-center justify-between gap-3 bg-foreground/5 px-4 py-2 text-sm">
-            <span>Saldo anterior</span>
-            <span className="font-semibold tabular-nums">{formatMoney(statement.saldoAnterior)}</span>
-          </li>
-          {statement.entries.map((entry) => {
+          {recientesPrimero.map((entry) => {
             const { concepto, rubro, borrar } = filaDe(entry);
             return (
               <li key={entry.key} className="flex items-start justify-between gap-3 px-4 py-3">
@@ -159,6 +159,10 @@ export default async function CajaChicaPage({
           {statement.entries.length === 0 && (
             <li className="px-4 py-6 text-center text-sm text-foreground/40">No hay movimientos en este período.</li>
           )}
+          <li className="flex items-center justify-between gap-3 bg-foreground/5 px-4 py-2 text-sm">
+            <span>Saldo anterior</span>
+            <span className="font-semibold tabular-nums">{formatMoney(statement.saldoAnterior)}</span>
+          </li>
         </ul>
 
         <div className="hidden sm:block">
@@ -173,16 +177,7 @@ export default async function CajaChicaPage({
               {canEdit && <Th className="pr-4" />}
             </Thead>
             <tbody>
-              <Tr className="bg-foreground/5">
-                <Td className="pl-4" colSpan={5}>
-                  Saldo anterior
-                </Td>
-                <Td numero className="font-semibold">
-                  {formatMoney(statement.saldoAnterior)}
-                </Td>
-                {canEdit && <Td />}
-              </Tr>
-              {statement.entries.map((entry) => {
+              {recientesPrimero.map((entry) => {
                 const { concepto, rubro, borrar } = filaDe(entry);
                 return (
                   <Tr key={entry.key}>
@@ -205,6 +200,15 @@ export default async function CajaChicaPage({
               {statement.entries.length === 0 && (
                 <TableEmpty colSpan={canEdit ? 7 : 6}>No hay movimientos en este período.</TableEmpty>
               )}
+              <Tr className="bg-foreground/5">
+                <Td className="pl-4" colSpan={5}>
+                  Saldo anterior
+                </Td>
+                <Td numero className="font-semibold">
+                  {formatMoney(statement.saldoAnterior)}
+                </Td>
+                {canEdit && <Td />}
+              </Tr>
             </tbody>
           </Table>
         </div>
