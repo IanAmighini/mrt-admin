@@ -193,6 +193,7 @@ export default async function ComprasPage({
                         <>
                           <FormModal
                             triggerLabel="Editar"
+                            soloIcono
                             iconName="edit"
                             title="Editar gasto"
                             action={updateGasto}
@@ -227,6 +228,7 @@ export default async function ComprasPage({
                         <>
                           <FormModal
                             triggerLabel="Editar"
+                            soloIcono
                             iconName="edit"
                             title="Editar compra"
                             action={updateCompra}

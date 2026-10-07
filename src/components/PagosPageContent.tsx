@@ -178,6 +178,7 @@ export async function PagosPageContent({
                         <div className="flex items-center gap-2">
                           <FormModal
                             triggerLabel="Editar"
+                            soloIcono
                             iconName="edit"
                             title={`Editar ${pago}`}
                             action={updatePayment}

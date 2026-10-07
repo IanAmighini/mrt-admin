@@ -225,6 +225,7 @@ export default async function ProduccionPage() {
                   <div className="flex items-center gap-2">
                     <FormModal
                       triggerLabel="Editar"
+                      soloIcono
                       title="Editar carga de producción"
                       action={updateProductionRun}
                       maxWidthClass="max-w-2xl"

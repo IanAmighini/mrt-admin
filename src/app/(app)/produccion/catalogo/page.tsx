@@ -106,6 +106,7 @@ export default async function CatalogoPage() {
                       <div className="flex items-center gap-3">
                         <FormModal
                           triggerLabel="Editar"
+                          soloIcono
                           title="Editar marca"
                           action={updateMarca}
                           iconName="edit"
@@ -270,6 +271,7 @@ export default async function CatalogoPage() {
                       <div className="flex items-center gap-3">
                         <FormModal
                           triggerLabel="Editar"
+                          soloIcono
                           title="Editar formato"
                           action={updateFormato}
                           iconName="edit"

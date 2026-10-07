@@ -122,6 +122,7 @@ export function ViajesPanel({
                 <span className="flex items-center gap-1">
                   <FormModal
                     triggerLabel="Editar"
+                    soloIcono
                     title={`Editar ${v.nombre}`}
                     action={actualizarEntrega}
                     iconName="edit"
@@ -191,6 +192,7 @@ export function ViajesPanel({
                 <span className="flex items-center gap-1">
                   <FormModal
                     triggerLabel="Editar"
+                    soloIcono
                     title={`Editar ${d.nombre}`}
                     action={actualizarDestinatario}
                     iconName="edit"

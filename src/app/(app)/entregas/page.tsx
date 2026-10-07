@@ -174,6 +174,7 @@ export default async function EntregasPage({
                     <div className="flex items-center gap-2">
                       <FormModal
                         triggerLabel="Editar"
+                        soloIcono
                         iconName="edit"
                         title="Editar remito"
                         action={updateRemito}

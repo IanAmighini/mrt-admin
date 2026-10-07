@@ -153,7 +153,7 @@ export default async function UsuariosPage({
                 </td>
                 <td className="py-2 pr-4">
                   <div className="flex items-center gap-3">
-                    <FormModal triggerLabel="Editar" iconName="edit" title="Editar usuario" action={updateUser}>
+                    <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar usuario" action={updateUser}>
                       <input type="hidden" name="id" value={u.id} />
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1">

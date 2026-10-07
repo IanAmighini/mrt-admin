@@ -69,7 +69,7 @@ export default async function PedidosPage({
     return (
       <div className="flex items-center gap-2">
         <FormModal
-          triggerLabel="Editar" iconName="edit"
+          triggerLabel="Editar" soloIcono iconName="edit"
           title="Editar pedido"
           action={updatePedido}
           maxWidthClass="max-w-2xl"

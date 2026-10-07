@@ -229,6 +229,7 @@ export default async function EntityLedgerPage({
             <FormModal
               triggerLabel="Editar"
               iconName="edit"
+              peso="secundario"
               title={isCaja ? "Editar la caja" : "Editar cliente/proveedor"}
               action={updateEntity}
             >

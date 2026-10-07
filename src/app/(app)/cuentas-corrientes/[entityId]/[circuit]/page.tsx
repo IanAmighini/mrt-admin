@@ -133,7 +133,7 @@ export default async function AccountLedgerPage({
       const defaultDestino = payment.treasuryId ?? (linkedPayment ? PROVEEDOR_DIRECTO_VALUE : "");
       return (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" iconName="edit" title="Editar pago" action={updatePayment}>
+          <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar pago" action={updatePayment}>
             <EditPaymentFields
               paymentId={payment.id}
               moneda={monedaCuenta}
@@ -209,7 +209,7 @@ export default async function AccountLedgerPage({
       const defaultLines = doc.lines.map((l) => lineaDeRemito(l, circuit));
       return (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-3xl">
+          <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-3xl">
             <RemitoFormFields
               entityId={entityId}
               moneda={monedaCuenta}
@@ -237,7 +237,7 @@ export default async function AccountLedgerPage({
     if (doc.purchaseLines.length > 0) {
       return (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" iconName="edit" title="Editar compra" action={updateCompra} maxWidthClass="max-w-5xl">
+          <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar compra" action={updateCompra} maxWidthClass="max-w-5xl">
             <CompraFormFields
               entidad={{ id: entityId, name: nombreEntidad, moneda: monedaCuenta }}
               items={items}
@@ -263,7 +263,7 @@ export default async function AccountLedgerPage({
     if (doc.type === "FACTURA") {
       return (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" iconName="edit" title="Editar factura" action={updateFactura}>
+          <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar factura" action={updateFactura}>
             <EditFacturaFields
               monedaCuenta={monedaCuenta}
               documentId={doc.id}
@@ -292,6 +292,7 @@ export default async function AccountLedgerPage({
         <div className="flex items-center gap-2">
           <FormModal
             triggerLabel="Editar"
+            soloIcono
             iconName="edit"
             title="Editar gasto"
             action={updateGasto}
@@ -326,6 +327,7 @@ export default async function AccountLedgerPage({
       <div className="flex items-center gap-2">
         <FormModal
           triggerLabel="Editar"
+          soloIcono
           iconName="edit"
           title="Editar movimiento"
           action={updateDocument}

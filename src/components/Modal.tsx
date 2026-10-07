@@ -19,6 +19,7 @@ export function FormModal({
   maxWidthClass = "max-w-lg",
   iconName = "plus",
   peso = "primario",
+  soloIcono = false,
 }: {
   triggerLabel: string;
   title: string;
@@ -29,6 +30,12 @@ export function FormModal({
   /** Cuánto pesa el botón que abre el diálogo. Cuando todos son primarios, el que se usa veinte
    * veces por día se ve igual que el que se usa una vez por mes. */
   peso?: PesoDeBoton;
+  /**
+   * El botón es sólo el ícono, gris, como el tachito de al lado. Para los "Editar" de cada fila de
+   * una lista: eran veinte botones amarillos iguales y no se distinguía la acción principal de la
+   * pantalla. El texto queda como `title` y `aria-label`, con el título del diálogo.
+   */
+  soloIcono?: boolean;
 }) {
   const TriggerIcon = TRIGGER_ICONS[iconName];
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -73,10 +80,11 @@ export function FormModal({
           setResetKey((k) => k + 1);
           dialogRef.current?.showModal();
         }}
-        className={buttonClass(peso, "flex w-fit items-center gap-1.5")}
+        className={soloIcono ? ICONO : buttonClass(peso, "flex w-fit items-center gap-1.5")}
+        {...(soloIcono ? { "aria-label": title, title } : {})}
       >
         <TriggerIcon size={16} />
-        {triggerLabel}
+        {!soloIcono && triggerLabel}
       </button>
       <dialog
         ref={dialogRef}
@@ -111,3 +119,6 @@ export function FormModal({
     </>
   );
 }
+
+const ICONO =
+  "rounded-lg border border-transparent p-2 text-foreground/40 transition-colors hover:border-foreground/15 hover:bg-foreground/5 hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30";
