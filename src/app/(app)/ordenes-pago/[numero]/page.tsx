@@ -45,7 +45,9 @@ export default async function OrdenPagoPage({
   const filas = orden.payments.flatMap((p) => {
     const sueltos = {
       key: p.id,
-      comprobante: p.reference ?? "—",
+      // Una transferencia se identifica por el número que le da el banco; si no lo tiene, va la
+      // descripción como antes.
+      comprobante: p.numeroOperacion ? `Op. ${p.numeroOperacion}` : (p.reference ?? "—"),
       banco: null as string | null,
       fecha: p.date,
       tipo: PAYMENT_METHOD_LABELS[p.method],

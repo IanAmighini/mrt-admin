@@ -391,6 +391,24 @@ export function PaymentFormFields({
         />
       )}
 
+      {method === "TRANSFERENCIA" && (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="numeroOperacion">
+            N° de operación{isCobro ? " *" : ""}
+          </label>
+          <input
+            id="numeroOperacion"
+            name="numeroOperacion"
+            required={isCobro}
+            placeholder="Operación, código de identificación o referencia, según el banco"
+            className={inputClass}
+          />
+          <p className="text-xs text-foreground/50">
+            Si el cobro va directo a un proveedor, este número sale en su orden de pago.
+          </p>
+        </div>
+      )}
+
       <div className="space-y-1">
         <label className="text-sm" htmlFor="reference">
           {esRetencion ? "Nº de certificado" : "Descripción"}

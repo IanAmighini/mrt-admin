@@ -184,7 +184,10 @@ export async function PagosPageContent({
                     <td className="py-2 pr-4">{formatMoney(payment.amount, payment.currency)}</td>
                     <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[payment.method]}</td>
                     <td className="py-2 pr-4">{destinoLabel ?? "—"}</td>
-                    <td className="py-2 pr-4">{payment.reference ?? "—"}</td>
+                    <td className="py-2 pr-4">
+                      {[payment.numeroOperacion && `Op. ${payment.numeroOperacion}`, payment.reference].filter(Boolean).join(" · ") ||
+                        "—"}
+                    </td>
                     <td className="py-2 pr-4">{formatFecha(payment.date)}</td>
                     {canEdit && (
                       <td className="py-2 pr-4">
@@ -214,6 +217,7 @@ export async function PagosPageContent({
                                 ).toString(),
                                 exchangeRate: formatNumeroExacto(payment.exchangeRate),
                                 reference: payment.reference ?? undefined,
+                                numeroOperacion: payment.numeroOperacion ?? undefined,
                                 destino: defaultDestino,
                                 proveedorId: linkedPayment?.account.entityId,
                                 proveedorCircuit: linkedPayment?.account.circuit,

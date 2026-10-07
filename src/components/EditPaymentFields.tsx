@@ -35,6 +35,7 @@ export function EditPaymentFields({
     /** La cotización con la que se hizo, si la cuenta va en dólares. */
     exchangeRate?: string;
     reference?: string;
+    numeroOperacion?: string;
     /** Id de tesorería, PROVEEDOR_DIRECTO_VALUE, o "" si no tiene destino asignado. */
     destino?: string;
     proveedorId?: string;
@@ -182,6 +183,24 @@ export function EditPaymentFields({
         defaultProveedorCircuit={defaultValues.proveedorCircuit}
         montoDelCobro={monto}
       />
+
+      {method === "TRANSFERENCIA" && (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="numeroOperacion">
+            N° de operación
+          </label>
+          <input
+            id="numeroOperacion"
+            name="numeroOperacion"
+            defaultValue={defaultValues.numeroOperacion}
+            placeholder="Operación, código de identificación o referencia, según el banco"
+            className={inputClass}
+          />
+          <p className="text-xs text-foreground/50">
+            Si el cobro va directo a un proveedor, este número sale en su orden de pago.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-1">
         <label className="text-sm" htmlFor="reference">

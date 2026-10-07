@@ -455,6 +455,10 @@ model Payment {
   /// Solo cuando `method` es RETENCION: contra qué impuesto se imputa.
   retentionKind RetentionKind?
   reference     String?
+  /// El número que da el banco a una transferencia (operación, código de identificación o
+  /// referencia, según el banco). Si el cobro va directo a un proveedor, pasa a su pago y sale en
+  /// la orden de pago.
+  numeroOperacion String?
   createdById   String
   createdBy     User           @relation(fields: [createdById], references: [id])
   createdAt     DateTime       @default(now())

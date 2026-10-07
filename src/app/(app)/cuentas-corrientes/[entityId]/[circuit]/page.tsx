@@ -150,6 +150,7 @@ export default async function AccountLedgerPage({
                 ).toString(),
                 exchangeRate: formatNumeroExacto(payment.exchangeRate),
                 reference: payment.reference ?? undefined,
+                numeroOperacion: payment.numeroOperacion ?? undefined,
                 destino: defaultDestino,
                 proveedorId: linkedPayment?.account.entityId,
                 proveedorCircuit: linkedPayment?.account.circuit,

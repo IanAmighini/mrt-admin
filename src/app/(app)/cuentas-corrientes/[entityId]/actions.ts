@@ -603,6 +603,7 @@ const CAMPOS_DEL_PAGO = {
   method: "M\u00e9todo",
   retentionKind: "Tipo de retenci\u00f3n",
   reference: "Descripci\u00f3n",
+  numeroOperacion: "N\u00b0 de operaci\u00f3n",
   circuito: "Cuenta",
   viaje: "Viaje",
 } as const;
@@ -617,10 +618,20 @@ function fotoDelPago(p: {
   method: string;
   retentionKind: string | null;
   reference: string | null;
+  numeroOperacion: string | null;
   circuito: string;
   viaje: string | null;
 }) {
   return { ...p };
+}
+
+/**
+ * El número que el banco le da a una transferencia. Sólo tiene sentido en una transferencia: con
+ * otro medio se descarta, para que no quede colgado un número de un medio anterior.
+ */
+function leerNumeroOperacion(formData: FormData, method: PaymentMethod) {
+  if (method !== "TRANSFERENCIA") return null;
+  return String(formData.get("numeroOperacion") || "").trim() || null;
 }
 
 /**
@@ -2118,6 +2129,8 @@ async function applyPaymentDestino(params: {
     amountArs: Prisma.Decimal | null;
     method: PaymentMethod;
     circuit: Circuit;
+    /** El de la transferencia: va también al pago del proveedor, que es el que sale en su orden. */
+    numeroOperacion: string | null;
   };
   entity: { id: string; name: string };
   /** Si este pago es un cobro (entra plata, ej. desde la página/ficha de clientes) o un pago a
@@ -2174,6 +2187,7 @@ async function applyPaymentDestino(params: {
         currency: monedaProveedor,
         exchangeRate: cotizacion,
         method: payment.method,
+        numeroOperacion: payment.numeroOperacion,
         reference:
           circuitProveedor === payment.circuit
             ? `Cobro directo de ${entity.name}`
@@ -2307,6 +2321,7 @@ export async function createPaymentForEntity(formData: FormData) {
   const date = parseFormDate(formData.get("date"));
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
+  const numeroOperacion = leerNumeroOperacion(formData, method);
   const { retentionKind, destino, proveedorId, proveedorCircuit } = leerRetencion(formData, method);
   // Si este pago entra (cobro a un cliente) o sale (pago a un proveedor): viene explícito del form
   // porque una entidad AMBOS recibe las dos cosas según desde qué pantalla se cargue.
@@ -2346,6 +2361,7 @@ export async function createPaymentForEntity(formData: FormData) {
         method,
         retentionKind,
         reference,
+        numeroOperacion,
         entregaId,
         amountArs,
         createdById: user.id,
@@ -2378,7 +2394,7 @@ export async function createPaymentForEntity(formData: FormData) {
 
   await applyPaymentDestino({
     userId: user.id,
-    payment: { id: payment.id, date, amount, exchangeRate, amountArs, method, circuit },
+    payment: { id: payment.id, date, amount, exchangeRate, amountArs, method, circuit, numeroOperacion },
     entity: account.entity,
     isCobro,
     monedaOrigen: account.entity.moneda,
@@ -2405,6 +2421,7 @@ export async function createPaymentForEntity(formData: FormData) {
         method: PAYMENT_METHOD_LABELS[method],
         retentionKind,
         reference,
+        numeroOperacion,
         circuito: CIRCUIT_LABELS[circuit],
         viaje: nombreDelViajeNuevo,
       }),
@@ -2473,6 +2490,7 @@ export async function deletePayment(formData: FormData) {
           method: PAYMENT_METHOD_LABELS[payment.method],
           retentionKind: payment.retentionKind,
           reference: payment.reference,
+          numeroOperacion: payment.numeroOperacion,
           circuito: CIRCUIT_LABELS[payment.account.circuit],
           viaje: payment.entrega?.nombre ?? null,
         }),
@@ -2516,6 +2534,7 @@ export async function updatePayment(formData: FormData) {
     method: PAYMENT_METHOD_LABELS[payment.method],
     retentionKind: payment.retentionKind,
     reference: payment.reference,
+    numeroOperacion: payment.numeroOperacion,
     circuito: CIRCUIT_LABELS[payment.account.circuit],
     viaje: payment.entrega?.nombre ?? null,
   });
@@ -2536,6 +2555,7 @@ export async function updatePayment(formData: FormData) {
   const { amount, exchangeRate, amountArs } = montoDelPago(formData, account.entity.moneda);
   const method = String(formData.get("method") || "EFECTIVO") as PaymentMethod;
   const reference = String(formData.get("reference") || "").trim() || null;
+  const numeroOperacion = leerNumeroOperacion(formData, method);
   const { retentionKind, destino, proveedorId, proveedorCircuit } = leerRetencion(formData, method);
   const isCobro = formData.get("isCobro") === "1";
   const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
@@ -2602,6 +2622,7 @@ export async function updatePayment(formData: FormData) {
         method,
         retentionKind,
         reference,
+        numeroOperacion,
         entregaId,
         amountArs,
         treasuryId: null,
@@ -2661,7 +2682,7 @@ export async function updatePayment(formData: FormData) {
 
   await applyPaymentDestino({
     userId: user.id,
-    payment: { id: paymentId, date, amount, exchangeRate, amountArs, method, circuit },
+    payment: { id: paymentId, date, amount, exchangeRate, amountArs, method, circuit, numeroOperacion },
     entity: account.entity,
     isCobro,
     monedaOrigen: account.entity.moneda,
@@ -2688,6 +2709,7 @@ export async function updatePayment(formData: FormData) {
         method: PAYMENT_METHOD_LABELS[method],
         retentionKind,
         reference,
+        numeroOperacion,
         circuito: CIRCUIT_LABELS[circuit],
         viaje: nombreDelViaje,
       }),
