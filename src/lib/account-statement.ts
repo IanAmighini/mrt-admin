@@ -206,7 +206,8 @@ export async function getAccountStatement({
     all.push({
       key: `pay-${payment.id}`,
       date: payment.date,
-      title: `Pago — ${PAYMENT_METHOD_LABELS[payment.method]}`,
+      // Lo que entra de un cliente es un cobro; lo que sale a un proveedor, un pago.
+      title: `${account.entity.type === "CLIENTE" ? "Cobro" : "Pago"} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
       subtitle: subtitleParts.length > 0 ? subtitleParts.join(" · ") : null,
       currency: payment.currency,
       debe: ZERO,

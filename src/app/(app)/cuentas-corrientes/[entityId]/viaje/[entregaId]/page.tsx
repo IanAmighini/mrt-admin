@@ -101,7 +101,8 @@ export default async function ViajePage({
                     ) : (
                       <>
                         <span className="font-medium">
-                          Pago — {m.pago ? PAYMENT_METHOD_LABELS[m.pago.method] : ""}
+                          {entrega.entity.type === "CLIENTE" ? "Cobro" : "Pago"} —{" "}
+                          {m.pago ? PAYMENT_METHOD_LABELS[m.pago.method] : ""}
                         </span>
                         {m.detalle && <span className="text-foreground/40"> · {m.detalle}</span>}
                       </>

@@ -240,7 +240,7 @@ export function CuentaCorrientePanel({
             >
               <div>
                 <p className="text-sm font-medium">
-                  Pago — {PAYMENT_METHOD_LABELS[movement.payment.method]}
+                  {entityType === "CLIENTE" ? "Cobro" : "Pago"} — {PAYMENT_METHOD_LABELS[movement.payment.method]}
                 </p>
                 <p className="text-xs text-foreground/50">{formatFecha(movement.date)}</p>
               </div>
