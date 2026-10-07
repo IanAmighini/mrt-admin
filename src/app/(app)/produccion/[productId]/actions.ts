@@ -11,7 +11,6 @@ import { formatProductBrandLabel } from "@/lib/product-label";
 import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { getSetting } from "@/lib/settings";
 import { diffDeCampos, logAudit } from "@/lib/audit";
-import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { cajaDelProducto, enteroNoNegativo } from "@/lib/cajas";
 import { litrosPorPallet } from "@/lib/recipe-template";
 
@@ -338,13 +337,10 @@ export async function createProductMovement(formData: FormData) {
       await tx.cajaMovement.create({
         data: { cajaId, date, quantity: quantity.toNumber(), type, reason, createdById: user.id },
       });
-      await asegurarSinNegativos(tx, { cajas: [cajaId] });
     } else {
       await tx.productMovement.create({
         data: { productId, date, quantity, type, reason, createdById: user.id },
       });
-      // Una merma o un ajuste que resta no pueden sacar pallets que no hay.
-      await asegurarSinNegativos(tx, { productos: [productId] });
     }
   });
 

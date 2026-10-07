@@ -253,12 +253,9 @@ async function createProductionRunCore(
     if (replaceRunId) await tx.productionRun.delete({ where: { id: replaceRunId } });
 
     const run = await tx.productionRun.create({ data: { date, notes, createdById: user.id } });
-    const productosTocados: string[] = [];
-    const cajasTocadas: string[] = [];
 
     for (const line of producido) {
       const product = await resolveOrCreateProduct(tx, line.marcaId, line.formatoId, oilFillEfficiencyPercent);
-      productosTocados.push(product.id);
       const nombre = `${product.name} ${product.oilType} ${product.presentation}`;
 
       // Los productos nuevos nacen con receta, pero los que se crearon antes de que eso existiera
@@ -323,7 +320,6 @@ async function createProductionRunCore(
           throw new UserError(`${nombre} no tiene cargadas las cajas por pallet, así que no se puede saber cuánto lleva una caja.`);
         }
         const cajaId = await cajaDelProducto(tx, product);
-        cajasTocadas.push(cajaId);
         const productionLine = await tx.productionLine.create({
           data: { productionRunId: run.id, productId: product.id, quantity: line.cajas, tipo: "CAJAS" },
         });
@@ -368,8 +364,6 @@ async function createProductionRunCore(
         throw new UserError(`${nombre} no tiene cargadas las cajas por pallet.`);
       }
       const cajaId = await cajaDelProducto(tx, product);
-      productosTocados.push(product.id);
-      cajasTocadas.push(cajaId);
       const signo = a.accion === "ARMADO" ? 1 : -1;
       const productionLine = await tx.productionLine.create({
         data: { productionRunId: run.id, productId: product.id, quantity: a.pallets, tipo: a.accion },
@@ -408,18 +402,12 @@ async function createProductionRunCore(
       replaceRunId
         ? prisma.productionLine.findMany({
             where: { productionRunId: replaceRunId },
-            select: {
-              productId: true,
-              itemMovements: { select: { itemId: true } },
-              cajaMovements: { select: { cajaId: true } },
-            },
+            select: { itemMovements: { select: { itemId: true } } },
           })
         : Promise.resolve([]),
     ]);
     await asegurarSinNegativos(tx, {
       insumos: [...movidos.map((m) => m.itemId), ...anteriores.flatMap((l) => l.itemMovements.map((m) => m.itemId))],
-      productos: [...productosTocados, ...anteriores.map((l) => l.productId)],
-      cajas: [...cajasTocadas, ...anteriores.flatMap((l) => l.cajaMovements.map((m) => m.cajaId))],
     });
 
     const items = producido.length + armados.length;
@@ -465,18 +453,11 @@ export async function deleteProductionRun(formData: FormData) {
   const run = await prisma.productionRun.findUnique({ where: { id: runId } });
   if (!run) throw new UserError("La carga de producción ya no existe.");
   const antes = await fotoDeLaProduccion(prisma, runId);
-  const productosDeLaCarga = await prisma.productionLine.findMany({
-    where: { productionRunId: runId },
-    select: { productId: true, cajaMovements: { select: { cajaId: true } } },
-  });
 
   await prisma.$transaction(async (tx) => {
+    // Borrar devuelve los insumos, así que no hay nada que pueda quedar en rojo. Lo producido puede
+    // haberse entregado ya: el producto queda en negativo, como cuando se entrega antes de cargar.
     await tx.productionRun.delete({ where: { id: runId } });
-    // Lo producido puede haberse entregado ya: sacarlo dejaría el producto en rojo desde ese día.
-    await asegurarSinNegativos(tx, {
-      productos: productosDeLaCarga.map((l) => l.productId),
-      cajas: productosDeLaCarga.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
-    });
   });
 
   await logAudit(prisma, {

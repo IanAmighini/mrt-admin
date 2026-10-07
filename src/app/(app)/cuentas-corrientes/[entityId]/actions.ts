@@ -334,8 +334,6 @@ export async function deleteDocument(formData: FormData) {
       contraparteDe: { select: { id: true } },
       entrega: { select: { nombre: true } },
       destinatario: { select: { nombre: true } },
-      // Si es una devolución: lo que volvió al stock, que se va con ella.
-      lines: { select: { productId: true, cajaMovements: { select: { cajaId: true } } } },
     },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
@@ -359,11 +357,7 @@ export async function deleteDocument(formData: FormData) {
     const cuentaDeLaOtraPata = otraPata
       ? (await prisma.document.findUnique({ where: { id: otraPata }, select: { accountId: true } }))?.accountId
       : null;
-    await asegurarSinNegativos(tx, {
-      cuentas: [document.accountId, cuentaDeLaOtraPata ?? null],
-      productos: document.lines.map((l) => l.productId),
-      cajas: document.lines.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
-    });
+    await asegurarSinNegativos(tx, { cuentas: [document.accountId, cuentaDeLaOtraPata ?? null] });
 
     await logAudit(tx, {
       userId: user.id,
@@ -858,7 +852,8 @@ async function leerLineasDeProducto(formData: FormData, currency: Currency, exch
  * **Las cajas sueltas que falten se sacan de desarmar pallets de ese formato.** Es lo que pasa en el
  * depósito: para entregar 48 cajas se desarma un pallet de 84, se cargan 48 y quedan 36 sueltas. El
  * desarmado no puede ser un trámite aparte —no se cargaría nunca—, así que lo hace la entrega sola,
- * y el formulario avisa antes de guardar cuántos pallets va a desarmar.
+ * y el formulario avisa antes de guardar cuántos pallets va a desarmar. Si no hay pallets, no se
+ * desarma nada y las cajas quedan en negativo hasta que se cargue la producción del día.
  */
 async function moverStockDeLinea(
   tx: Prisma.TransactionClient,
@@ -871,7 +866,7 @@ async function moverStockDeLinea(
     tipo: "ENTREGA" | "DEVOLUCION";
     userId: string;
   }
-): Promise<string | null> {
+): Promise<void> {
   const { line, documentLineId, date, motivo, tipo, userId } = params;
   const signo = tipo === "ENTREGA" ? -1 : 1;
   const base = { date, documentLineId, createdById: userId };
@@ -881,7 +876,7 @@ async function moverStockDeLinea(
     await tx.productMovement.create({
       data: { ...base, productId: line.productId, quantity: line.quantity.times(signo), type: tipo, reason: motivo },
     });
-    return null;
+    return;
   }
 
   if (line.pallets > 0) {
@@ -889,7 +884,7 @@ async function moverStockDeLinea(
       data: { ...base, productId: line.productId, quantity: signo * line.pallets, type: tipo, reason: motivo },
     });
   }
-  if (line.cajas === 0) return null;
+  if (line.cajas === 0) return;
 
   const product = await tx.product.findUniqueOrThrow({ where: { id: line.productId } });
   const cajaId = await cajaDelProducto(tx, product);
@@ -897,9 +892,15 @@ async function moverStockDeLinea(
   if (tipo === "ENTREGA") {
     const sueltas = (await tx.cajaMovement.aggregate({ where: { cajaId }, _sum: { quantity: true } }))._sum.quantity ?? 0;
     const faltan = line.cajas - Math.max(sueltas, 0);
-    if (faltan > 0) {
+    // Se desarman sólo los pallets que hay. Si tampoco hay pallets, las cajas se hicieron hoy y la
+    // producción todavía no se cargó: quedan en negativo hasta que se cargue, en vez de inventar un
+    // desarmado de un pallet que no existe.
+    const palletsQueHay = (await tx.productMovement.aggregate({ where: { productId: product.id }, _sum: { quantity: true } }))
+      ._sum.quantity;
+    const disponibles = Math.max(Math.floor(palletsQueHay?.toNumber() ?? 0), 0);
+    if (faltan > 0 && disponibles > 0) {
       const bpp = product.boxesPerPallet!;
-      const aDesarmar = Math.ceil(faltan / bpp);
+      const aDesarmar = Math.min(Math.ceil(faltan / bpp), disponibles);
       const motivoDesarmado = `Desarmado para ${motivo.charAt(0).toLowerCase()}${motivo.slice(1)}`;
       await tx.productMovement.create({
         data: { ...base, productId: product.id, quantity: -aDesarmar, type: "DESARMADO", reason: motivoDesarmado },
@@ -913,7 +914,6 @@ async function moverStockDeLinea(
   await tx.cajaMovement.create({
     data: { ...base, cajaId, quantity: signo * line.cajas, type: tipo, reason: motivo },
   });
-  return cajaId;
 }
 
 /**
@@ -948,7 +948,6 @@ export async function crearDevolucion(formData: FormData) {
 
   let total = toDecimal(0);
   await prisma.$transaction(async (tx) => {
-    const cajasTocadas: string[] = [];
     for (const [circuit, circuitLines] of porCircuito) {
       const account = accounts.find((a) => a.circuit === circuit);
       if (!account) throw new UserError(`No se encontró la ${CIRCUIT_LABELS[circuit]} de este cliente.`);
@@ -995,7 +994,7 @@ export async function crearDevolucion(formData: FormData) {
             subtotal: l.subtotal,
           },
         });
-        const cajaId = await moverStockDeLinea(tx, {
+        await moverStockDeLinea(tx, {
           line: l,
           documentLineId: documentLine.id,
           date,
@@ -1003,7 +1002,6 @@ export async function crearDevolucion(formData: FormData) {
           tipo: "DEVOLUCION",
           userId: user.id,
         });
-        if (cajaId) cajasTocadas.push(cajaId);
       }
     }
 
@@ -1052,7 +1050,7 @@ async function createRemitoCore(
    * producción: si el alta falla, la original sigue estando, y la verificación de stock compara
    * contra cómo estaba de verdad antes de editar.
    */
-  reemplaza?: { documentId: string; productIds: string[]; cajaIds: string[] }
+  reemplaza?: { documentId: string }
 ) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
@@ -1105,7 +1103,6 @@ async function createRemitoCore(
       await tx.paymentAllocation.deleteMany({ where: { documentId: reemplaza.documentId } });
       await tx.document.delete({ where: { id: reemplaza.documentId } });
     }
-    const cajasTocadas: string[] = [...(reemplaza?.cajaIds ?? [])];
 
     for (const [circuit, circuitLines] of linesByCircuit) {
       const account = accountByCircuit.get(circuit);
@@ -1151,7 +1148,7 @@ async function createRemitoCore(
         const documentLine = await tx.documentLine.create({
           data: { ...l, documentId: document.id },
         });
-        const cajaId = await moverStockDeLinea(tx, {
+        await moverStockDeLinea(tx, {
           line: l,
           documentLineId: documentLine.id,
           date,
@@ -1159,7 +1156,6 @@ async function createRemitoCore(
           tipo: "ENTREGA",
           userId: user.id,
         });
-        if (cajaId) cajasTocadas.push(cajaId);
       }
     }
 
@@ -1170,11 +1166,8 @@ async function createRemitoCore(
       });
     }
 
-    // No se puede entregar lo que no está: cada producto, desde la fecha del remito en adelante.
-    await asegurarSinNegativos(tx, {
-      productos: [...lines.map((l) => l.productId), ...(reemplaza?.productIds ?? [])],
-      cajas: cajasTocadas,
-    });
+    // Se puede entregar lo que todavía no está cargado: la producción se carga al final del día,
+    // así que lo que se produce y se entrega el mismo día queda en negativo hasta entonces.
 
     const nombres = new Map(
       (await tx.product.findMany({
@@ -1260,12 +1253,6 @@ export async function deleteRemito(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
-    // Si la entrega desarmó un pallet, borrarla se lleva también las cajas que sobraron. Si ya se
-    // usaron en otra entrega, quedarían en negativo.
-    await asegurarSinNegativos(tx, {
-      productos: document.lines.map((l) => l.productId),
-      cajas: document.lines.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
-    });
 
     await logAudit(tx, {
       userId: user.id,
@@ -1294,11 +1281,7 @@ export async function updateRemito(formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const original = await getRemitoOrThrow(documentId);
 
-  await createRemitoCore(user, formData, "UPDATE", fotoDeComprobanteConLineas(original), {
-    documentId,
-    productIds: original.lines.map((l) => l.productId),
-    cajaIds: original.lines.flatMap((l) => l.cajaMovements.map((m) => m.cajaId)),
-  });
+  await createRemitoCore(user, formData, "UPDATE", fotoDeComprobanteConLineas(original), { documentId });
 }
 
 /** Núcleo compartido por createCompra y updateCompra (que borra y vuelve a llamar a este núcleo)

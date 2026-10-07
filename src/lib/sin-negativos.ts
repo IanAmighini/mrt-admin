@@ -7,7 +7,7 @@ import { formatFecha } from "./period";
 import { NUMERO_SALDO_INICIAL } from "./saldo-inicial";
 
 /**
- * Ninguna caja con plata negativa y ningún stock negativo, en ningún momento.
+ * Ninguna caja con plata negativa y ningún insumo en negativo, en ningún momento.
  *
  * Las dos cosas son siempre un error de carga: no se puede pagar con plata que no está ni envasar
  * con aceite que no llegó. Si el número da negativo es porque falta cargar algo —el cobro, el
@@ -25,6 +25,11 @@ import { NUMERO_SALDO_INICIAL } from "./saldo-inicial";
  * nada que ver. Así que se compara punto por punto contra cómo estaba antes de la operación: es un
  * error si en algún momento queda en negativo **y** más abajo de lo que ya estaba. Corregir un
  * agujero viejo se puede; abrir uno nuevo o hacerlo más hondo, no.
+ *
+ * **El producto terminado y las cajas sueltas sí pueden quedar en negativo** (decidido el
+ * 2026-10-07). La producción se carga al final del día, así que lo que se produce y se entrega el
+ * mismo día sale antes de entrar: frenar la entrega obligaba a cargar la producción antes de tiempo
+ * o a inventar un ajuste. El negativo se ve en Stock y se cierra solo al cargar la producción.
  */
 
 type Fila = { id: string; inicial: boolean; date: Date; createdAt: Date; monto: Prisma.Decimal };
@@ -97,22 +102,6 @@ const filasDeInsumo = async (db: Cliente, itemId: string): Promise<Fila[]> =>
     })
   ).map((m) => ({ id: m.id, inicial: false, date: m.date, createdAt: m.createdAt, monto: m.quantity }));
 
-const filasDeProducto = async (db: Cliente, productId: string): Promise<Fila[]> =>
-  (
-    await db.productMovement.findMany({
-      where: { productId },
-      select: { id: true, date: true, createdAt: true, quantity: true },
-    })
-  ).map((m) => ({ id: m.id, inicial: false, date: m.date, createdAt: m.createdAt, monto: m.quantity }));
-
-const filasDeCaja = async (db: Cliente, cajaId: string): Promise<Fila[]> =>
-  (
-    await db.cajaMovement.findMany({
-      where: { cajaId },
-      select: { id: true, date: true, createdAt: true, quantity: true },
-    })
-  ).map((m) => ({ id: m.id, inicial: false, date: m.date, createdAt: m.createdAt, monto: new Prisma.Decimal(m.quantity) }));
-
 const unicos = (ids: (string | null | undefined)[] | undefined) =>
   Array.from(new Set((ids ?? []).filter((x): x is string => Boolean(x))));
 
@@ -133,15 +122,10 @@ export async function asegurarSinNegativos(
   que: {
     cuentas?: (string | null)[];
     insumos?: (string | null)[];
-    productos?: (string | null)[];
-    /** Cajas sueltas, por caja. */
-    cajas?: (string | null)[];
   }
 ) {
   const cuentas = unicos(que.cuentas);
   const insumos = unicos(que.insumos);
-  const productos = unicos(que.productos);
-  const cajas = unicos(que.cajas);
 
   if (cuentas.length > 0) {
     const cajas = await tx.account.findMany({
@@ -167,35 +151,6 @@ export async function asegurarSinNegativos(
       if (rojo) {
         throw new UserError(
           `No hay suficiente ${item.name}: el ${formatFecha(rojo.date)} el stock quedaría en ${formatQuantity(rojo.saldo, item.unit)}. Si entró y todavía no está cargado, cargá primero el ingreso.`
-        );
-      }
-    }
-  }
-
-  if (productos.length > 0) {
-    const prods = await tx.product.findMany({
-      where: { id: { in: productos } },
-      select: { id: true, name: true, oilType: true, presentation: true },
-    });
-    for (const p of prods) {
-      const [antes, despues] = await Promise.all([filasDeProducto(prisma, p.id), filasDeProducto(tx, p.id)]);
-      const rojo = primerRojo(antes, despues, TOLERANCIA_STOCK);
-      if (rojo) {
-        throw new UserError(
-          `No hay suficiente ${p.name} ${p.oilType} ${p.presentation}: el ${formatFecha(rojo.date)} quedaría en ${formatQuantity(rojo.saldo)} pallets. Revisá que esté cargada la producción.`
-        );
-      }
-    }
-  }
-
-  if (cajas.length > 0) {
-    const filas = await tx.caja.findMany({ where: { id: { in: cajas } } });
-    for (const c of filas) {
-      const [antes, despues] = await Promise.all([filasDeCaja(prisma, c.id), filasDeCaja(tx, c.id)]);
-      const rojo = primerRojo(antes, despues, TOLERANCIA_STOCK);
-      if (rojo) {
-        throw new UserError(
-          `No hay suficientes cajas sueltas de ${c.name} ${c.oilType} ${c.unitsPerBox}x${formatQuantity(c.bottleCapacityMl)}: el ${formatFecha(rojo.date)} quedarían ${formatQuantity(rojo.saldo)}. Revisá que estén cargadas las cajas que hizo producción o el desarmado del pallet.`
         );
       }
     }

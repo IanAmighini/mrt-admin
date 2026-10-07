@@ -194,7 +194,12 @@ export function NuevaEntregaForm({
   });
   // Cuántos pallets se van a desarmar para sacar las cajas sueltas: se avisa antes de guardar.
   const plan = desarmadosPorLinea(
-    computedRows.map((r) => ({ productId: r.row.productId, cajas: r.cajas, boxesPerPallet: r.product?.boxesPerPallet ?? null })),
+    computedRows.map((r) => ({
+      productId: r.row.productId,
+      pallets: r.pallets,
+      cajas: r.cajas,
+      boxesPerPallet: r.product?.boxesPerPallet ?? null,
+    })),
     stock
   );
 
@@ -329,9 +334,9 @@ export function NuevaEntregaForm({
         </div>
 
         <div className="space-y-3">
-          {computedRows.map(({ row, product, pallets, cajas, botellas, subtotal, iva, pricePerBottle, perPallet }, idx) => {
+          {computedRows.map(({ row, product, cajas, botellas, subtotal, iva, pricePerBottle, perPallet }, idx) => {
             const hay = row.productId ? stock[row.productId] : undefined;
-            const { aDesarmar, sobran } = plan[idx];
+            const { aDesarmar, sobran, faltanPallets, faltanCajas } = plan[idx];
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
               <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
@@ -445,8 +450,18 @@ export function NuevaEntregaForm({
                   <p className="col-span-12 -mt-1 text-xs text-foreground/50">
                     Hay {formatPallets(hay.pallets, product?.boxesPerPallet ?? null)} de este formato y{" "}
                     {formatQuantity(hay.sueltas)} {hay.sueltas === 1 ? "caja suelta" : "cajas sueltas"} · {formatQuantity(botellas)} botellas
-                    {pallets > hay.pallets && (
-                      <span className="text-red-600 dark:text-red-400"> · no alcanzan los pallets</span>
+                    {/* No frena: lo que se produce y se entrega en el día se carga a la noche. */}
+                    {(faltanPallets > 0 || faltanCajas > 0) && (
+                      <span className="block text-amber-700 dark:text-amber-400">
+                        Todavía no está cargado:{" "}
+                        {[
+                          faltanPallets > 0 && `${formatQuantity(faltanPallets)} ${faltanPallets === 1 ? "pallet" : "pallets"}`,
+                          faltanCajas > 0 && `${formatQuantity(faltanCajas)} ${faltanCajas === 1 ? "caja" : "cajas"}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" y ")}
+                        . Se puede entregar igual: queda en negativo hasta que se cargue la producción.
+                      </span>
                     )}
                     {aDesarmar > 0 && (
                       <span className="block text-amber-700 dark:text-amber-400">
