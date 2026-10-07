@@ -4,12 +4,19 @@ import type { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { puedeVerRuta } from "@/lib/nav";
-import { getAccountBalance, getTreasuries, getVencimientos } from "@/lib/ledger";
+import {
+  getAccountBalance,
+  getEntitySaldos,
+  getTreasuries,
+  getUltimaCotizacion,
+  getVencimientos,
+  separarRetiroSocietario,
+} from "@/lib/ledger";
 import { getCartera } from "@/lib/cheques";
 import { getInsumosMinimoReport } from "@/lib/reports";
 import { getCajaChica } from "@/lib/caja";
 import { circuitoDeTesoreria } from "@/lib/pagos";
-import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
+import { formatMoney, formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { formatFecha } from "@/lib/period";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { buttonClass } from "@/components/ui/Button";
@@ -47,8 +54,8 @@ export default async function InicioPage() {
   const hoy = new Date();
   const enUnaSemana = new Date(hoy.getTime() + 7 * MS_POR_DIA);
 
-  const verVencimientos = ve("/entregas") || ve("/compras");
-  const [pedidos, insumos, vencimientos, cartera, cajaChica, tesorerias, ultimaProduccion] = await Promise.all([
+  const [pedidos, insumos, vencimientos, proveedores, cotizacion, cartera, cajaChica, tesorerias, ultimaProduccion] =
+    await Promise.all([
     ve("/pedidos")
       ? prisma.pedido.findMany({
           where: { status: "EN_COLA" },
@@ -57,7 +64,9 @@ export default async function InicioPage() {
         })
       : null,
     ve("/stock") ? getInsumosMinimoReport() : null,
-    verVencimientos ? getVencimientos() : null,
+    ve("/entregas") ? getVencimientos() : null,
+    ve("/proveedores") ? getEntitySaldos(["PROVEEDOR", "AMBOS"]) : null,
+    ve("/proveedores") ? getUltimaCotizacion() : null,
     ve("/tesoreria/cheques") ? getCartera() : null,
     ve("/caja-chica") ? getCajaChica().then(async (c) => ({ ...c, saldo: await getAccountBalance(c.accountId) })) : null,
     ve("/tesoreria")
@@ -75,16 +84,21 @@ export default async function InicioPage() {
       : null,
   ]);
 
-  // Lo que nos deben y ya venció, y lo que debemos y vence esta semana (o ya venció).
-  const deClientes = (vencimientos ?? []).filter(
-    (d) => d.account.entity.type === "CLIENTE" || d.account.entity.type === "AMBOS"
+  // Lo que nos deben y ya venció.
+  const vencidosClientes = (vencimientos ?? []).filter(
+    (d) =>
+      (d.account.entity.type === "CLIENTE" || d.account.entity.type === "AMBOS") && d.dueDate && d.dueDate < hoy
   );
-  const vencidosClientes = ve("/entregas") ? deClientes.filter((d) => d.dueDate && d.dueDate < hoy) : [];
-  const aPagar = ve("/compras")
-    ? (vencimientos ?? []).filter(
-        (d) => d.account.entity.type === "PROVEEDOR" && d.dueDate && d.dueDate <= enUnaSemana
-      )
-    : [];
+  // Lo que les debemos a los proveedores, por saldo y no por vencimiento: a Cristian se le paga por
+  // adelantado, así que sus compras figuraban "por vencer" aunque la cuenta esté a favor nuestro. La
+  // cuenta por la que retiran los socios queda afuera, igual que en la lista de Proveedores.
+  const enPesos = (fila: { entity: { moneda: string }; total: number }) =>
+    fila.entity.moneda === "USD" && cotizacion ? toDecimal(fila.total).times(cotizacion) : toDecimal(fila.total);
+  const lesDebemos = separarRetiroSocietario(proveedores ?? [])
+    .deuda.filter((f) => f.total > 0)
+    .sort((a, b) => enPesos(b).comparedTo(enPesos(a)));
+  const deudaPesos = sumDecimals(lesDebemos.filter((f) => f.entity.moneda !== "USD").map((f) => f.total));
+  const deudaDolares = sumDecimals(lesDebemos.filter((f) => f.entity.moneda === "USD").map((f) => f.total));
   // Los que ya se pueden depositar o se pueden esta semana.
   const chequesParaDepositar = (cartera ?? []).filter((c) => !c.fechaCobro || c.fechaCobro <= enUnaSemana);
   const palletsEnCola = sumDecimals((pedidos ?? []).flatMap((p) => p.lines.map((l) => l.pallets)));
@@ -186,63 +200,44 @@ export default async function InicioPage() {
           </Tarjeta>
         )}
 
-        {ve("/compras") && (
+        {proveedores && (
           <Tarjeta
-            titulo="Para pagar esta semana"
+            titulo="Lo que les debemos"
             resumen={
-              aPagar.length === 0
-                ? "No vence nada en los próximos 7 días."
-                : `${aPagar.length} ${aPagar.length === 1 ? "comprobante" : "comprobantes"} vencidos o por vencer`
+              lesDebemos.length === 0
+                ? "No le debemos nada a ningún proveedor."
+                : `${lesDebemos.length} ${lesDebemos.length === 1 ? "proveedor" : "proveedores"} · ${formatMoney(deudaPesos)}${
+                    deudaDolares.isZero() ? "" : ` + ${formatMoney(deudaDolares, "USD")}`
+                  }`
             }
-            href="/compras?pago=sin_pagar"
-            alerta={aPagar.some((d) => d.dueDate! < hoy)}
+            href="/proveedores?saldo=deuda"
           >
-            {[...aPagar]
-              .sort((a, b) => a.dueDate!.getTime() - b.dueDate!.getTime())
-              .slice(0, 5)
-              .map((d) => (
-                <Renglon
-                  key={d.id}
-                  izquierda={`${d.account.entity.name} · #${d.number}`}
-                  debajo={`${d.dueDate! < hoy ? "Venció" : "Vence"} el ${formatFecha(d.dueDate!)}`}
-                  derecha={formatMoney(d.pending, d.currency)}
-                />
-              ))}
-          </Tarjeta>
-        )}
-
-        {cartera && (
-          <Tarjeta
-            titulo="Cheques para depositar"
-            resumen={
-              chequesParaDepositar.length === 0
-                ? "Ningún cheque se cobra esta semana."
-                : `${chequesParaDepositar.length} ${chequesParaDepositar.length === 1 ? "cheque" : "cheques"} · ${formatMoney(
-                    sumDecimals(chequesParaDepositar.map((c) => c.amount))
-                  )}`
-            }
-            href="/tesoreria/cheques"
-          >
-            {chequesParaDepositar.slice(0, 5).map((c) => (
-              <Renglon
-                key={c.id}
-                izquierda={`#${c.numero}${c.banco ? ` · ${c.banco}` : ""}`}
-                debajo={`${c.recibidoEn?.account.entity.name ?? c.cambiadoA ?? ""}${
-                  c.fechaCobro ? ` · desde el ${formatFecha(c.fechaCobro)}` : ""
-                }`}
-                derecha={formatMoney(c.amount)}
-              />
+            {lesDebemos.slice(0, 6).map((f) => (
+              <Renglon key={f.entity.id} izquierda={f.entity.name} derecha={formatMoney(f.total, f.entity.moneda)} />
             ))}
           </Tarjeta>
         )}
 
-        {(cajaChica || tesorerias) && (
+
+        {(cajaChica || tesorerias || cartera) && (
           <Tarjeta titulo="Plata" href={tesorerias ? "/tesoreria" : "/caja-chica"}>
             {tesorerias?.map((t) => (
               <Renglon key={t.id} izquierda={t.name} derecha={formatMoney(t.saldo)} />
             ))}
             {!tesorerias && cajaChica && (
               <Renglon izquierda={cajaChica.name} debajo="Efectivo del cajón" derecha={formatMoney(cajaChica.saldo)} />
+            )}
+            {cartera && (
+              <Renglon
+                izquierda="Cheques en cartera"
+                debajo={`${cartera.length} ${cartera.length === 1 ? "cheque" : "cheques"}${
+                  chequesParaDepositar.length > 0
+                    ? ` · ${chequesParaDepositar.length} para depositar`
+                    : ""
+                }`}
+                derecha={formatMoney(sumDecimals(cartera.map((c) => c.amount)))}
+                href="/tesoreria/cheques"
+              />
             )}
           </Tarjeta>
         )}
@@ -307,11 +302,30 @@ function Tarjeta({
   );
 }
 
-function Renglon({ izquierda, debajo, derecha }: { izquierda: string; debajo?: string; derecha: string }) {
+function Renglon({
+  izquierda,
+  debajo,
+  derecha,
+  href,
+}: {
+  izquierda: string;
+  debajo?: string;
+  derecha: string;
+  /** Si el renglón lleva a otra pantalla que la de su tarjeta: los cheques adentro de Plata. */
+  href?: string;
+}) {
   return (
     <div className="flex items-start justify-between gap-3 py-1.5 text-sm">
       <div className="min-w-0">
-        <p className="truncate">{izquierda}</p>
+        <p className="truncate">
+          {href ? (
+            <Link href={href} className="underline-offset-2 hover:underline">
+              {izquierda}
+            </Link>
+          ) : (
+            izquierda
+          )}
+        </p>
         {debajo && <p className="truncate text-xs text-foreground/50">{debajo}</p>}
       </div>
       <p className="shrink-0 text-right tabular-nums">{derecha}</p>
