@@ -117,6 +117,40 @@ export async function getAccountBalance(accountId: string): Promise<Prisma.Decim
   return pendingTotal.minus(unallocatedTotal);
 }
 
+/**
+ * El saldo de muchas cuentas a la vez, con dos consultas en total y no dos por cuenta. Es la misma
+ * cuenta que `getAccountBalance`. Hacía falta para los listados: el de proveedores pedía 72 saldos
+ * juntos, y con el Inicio sumado se terminaban las conexiones a la base y la pantalla no cargaba.
+ */
+export async function getAccountBalances(accountIds: string[]): Promise<Map<string, Prisma.Decimal>> {
+  const [documents, payments] = await Promise.all([
+    prisma.document.findMany({
+      where: { accountId: { in: accountIds } },
+      select: {
+        accountId: true,
+        type: true,
+        totalAmount: true,
+        remitoLinks: { select: { amount: true } },
+        allocations: { select: { amount: true } },
+      },
+    }),
+    prisma.payment.findMany({
+      where: { accountId: { in: accountIds } },
+      select: { accountId: true, amount: true, allocations: { select: { amount: true } } },
+    }),
+  ]);
+  const saldos = new Map(accountIds.map((id) => [id, ZERO]));
+  for (const doc of documents) {
+    const pendiente = getDocumentEffect(doc).minus(sumDecimals(doc.allocations.map((a) => a.amount)));
+    saldos.set(doc.accountId, saldos.get(doc.accountId)!.plus(pendiente));
+  }
+  for (const p of payments) {
+    const sinImputar = p.amount.minus(sumDecimals(p.allocations.map((a) => a.amount)));
+    saldos.set(p.accountId, saldos.get(p.accountId)!.minus(sinImputar));
+  }
+  return saldos;
+}
+
 export type PendingDocument = DocumentWithRelations & { pending: Prisma.Decimal };
 
 export async function getPendingDocuments(
@@ -448,18 +482,15 @@ export async function getEntitySaldos(typeFilter?: EntityType[]) {
     include: { accounts: true },
   });
 
-  const rows = await Promise.all(
-    entities.map(async (entity) => {
-      const blanco = entity.accounts.find((a) => a.circuit === "BLANCO");
-      const negro = entity.accounts.find((a) => a.circuit === "NEGRO");
-      const [blancoSaldo, negroSaldo] = await Promise.all([
-        blanco ? getAccountBalance(blanco.id) : null,
-        negro ? getAccountBalance(negro.id) : null,
-      ]);
-      const total = (blancoSaldo?.toNumber() ?? 0) + (negroSaldo?.toNumber() ?? 0);
-      return { entity, blancoSaldo, negroSaldo, total };
-    })
-  );
+  const saldos = await getAccountBalances(entities.flatMap((e) => e.accounts.map((a) => a.id)));
+  const rows = entities.map((entity) => {
+    const blanco = entity.accounts.find((a) => a.circuit === "BLANCO");
+    const negro = entity.accounts.find((a) => a.circuit === "NEGRO");
+    const blancoSaldo = blanco ? (saldos.get(blanco.id) ?? null) : null;
+    const negroSaldo = negro ? (saldos.get(negro.id) ?? null) : null;
+    const total = (blancoSaldo?.toNumber() ?? 0) + (negroSaldo?.toNumber() ?? 0);
+    return { entity, blancoSaldo, negroSaldo, total };
+  });
 
   // Alfabético, que es como se busca a alguien en una lista. Con `localeCompare("es")` para que la
   // ñ y los acentos caigan donde corresponde, y no después de la z como haría un orden por bytes.
