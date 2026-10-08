@@ -1,6 +1,7 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
 import { parseNumeroEscrito, ZERO } from "@/lib/money";
+import { hoyComoFecha } from "@/lib/period";
 
 /** Marca el AJUSTE que representa el saldo con el que arrancó la cuenta. */
 export const NUMERO_SALDO_INICIAL = "SALDO-INICIAL";
@@ -42,7 +43,8 @@ export async function aplicarSaldoInicial(
   if (existente) {
     await tx.document.update({
       where: { id: existente.id },
-      data: { netAmount: amount, totalAmount: amount, currency },
+      // Vencido desde que se cargó: es deuda de antes de la app (ver getVencidosReport).
+      data: { netAmount: amount, totalAmount: amount, currency, dueDate: existente.dueDate ?? hoyComoFecha(existente.date) },
     });
     return;
   }
@@ -53,6 +55,7 @@ export async function aplicarSaldoInicial(
       type: "AJUSTE",
       number: NUMERO_SALDO_INICIAL,
       date: new Date(),
+      dueDate: hoyComoFecha(),
       currency,
       netAmount: amount,
       totalAmount: amount,

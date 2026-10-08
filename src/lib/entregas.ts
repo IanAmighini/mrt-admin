@@ -174,3 +174,161 @@ export async function getDestinatarios(entityId: string) {
     select: { id: true, nombre: true, taxId: true },
   });
 }
+
+/** Un renglón de lo que llevó un viaje: una línea de producto de uno de sus remitos. */
+export type RenglonDeViaje = {
+  id: string;
+  fecha: Date;
+  vencimiento: Date | null;
+  remito: string;
+  /** Una devolución resta: sus renglones van en negativo. */
+  devolucion: boolean;
+  circuito: "BLANCO" | "NEGRO";
+  marca: { name: string; oilType: string };
+  formato: string;
+  pallets: number;
+  cajas: number;
+  botellas: number;
+  unidades: number;
+  precioUnitario: Prisma.Decimal | null;
+  importe: Prisma.Decimal;
+};
+
+export type CuadroDeViaje = {
+  id: string | null;
+  nombre: string;
+  destino: string | null;
+  fecha: Date | null;
+  remitos: string[];
+  renglones: RenglonDeViaje[];
+  movimientos: MovimientoDeEntrega[];
+  total: Prisma.Decimal;
+  cobrado: Prisma.Decimal;
+  saldo: Prisma.Decimal;
+};
+
+/**
+ * Todos los viajes (o partes) de una cuenta, cada uno con su cuadro: lo que llevó, renglón por
+ * renglón, y al lado la deuda, los cobros y el saldo corrido. Es la planilla de liquidación de
+ * camiones que se armaba a mano, uno abajo del otro.
+ *
+ * Al final va lo que no tiene viaje —el saldo inicial, un cobro que todavía no se asignó—, para
+ * que la suma de los cuadros dé el saldo de la cuenta.
+ */
+export async function getCuadrosDeViajes(entityId: string): Promise<CuadroDeViaje[]> {
+  const [entregas, sueltosDocs, sueltosPagos] = await Promise.all([
+    prisma.entrega.findMany({ where: { entityId }, orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] }),
+    prisma.document.findMany({
+      where: { account: { entityId }, entregaId: null },
+      select: { ...DOC_SELECT, lines: { include: { product: true } } },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    }),
+    prisma.payment.findMany({
+      where: { account: { entityId }, entregaId: null },
+      select: PAY_SELECT,
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
+  const docsPorViaje = await prisma.document.findMany({
+    where: { entregaId: { in: entregas.map((e) => e.id) } },
+    select: { ...DOC_SELECT, lines: { include: { product: true } } },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+  const pagosPorViaje = await prisma.payment.findMany({
+    where: { entregaId: { in: entregas.map((e) => e.id) } },
+    select: PAY_SELECT,
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+
+  type DocConLineas = (typeof docsPorViaje)[number];
+  function cuadro(
+    base: { id: string | null; nombre: string; destino: string | null; fecha: Date | null },
+    docs: DocConLineas[],
+    pagos: EntregaPago[]
+  ): CuadroDeViaje {
+    const renglones: RenglonDeViaje[] = docs.flatMap((doc) =>
+      doc.lines.map((l) => {
+        const bpp = l.product.boxesPerPallet ?? 0;
+        const upb = l.product.unitsPerBox ?? 0;
+        let pallets = l.pallets ?? 0;
+        let cajas = l.cajas ?? 0;
+        if (l.pallets === null || l.cajas === null) {
+          const q = l.quantity.toNumber();
+          pallets = Math.floor(q);
+          cajas = bpp ? Math.round((q - pallets) * bpp) : 0;
+        }
+        const botellas = l.botellas ?? 0;
+        const unidades = (pallets * bpp + cajas) * upb + botellas;
+        const devolucion = doc.type === "NOTA_CREDITO";
+        const signo = devolucion ? -1 : 1;
+        return {
+          id: l.id,
+          fecha: doc.date,
+          vencimiento: doc.dueDate,
+          remito: doc.number,
+          devolucion,
+          circuito: doc.account.circuit,
+          marca: { name: l.product.name, oilType: l.product.oilType },
+          formato: l.product.presentation,
+          pallets,
+          cajas,
+          botellas,
+          unidades,
+          precioUnitario: unidades > 0 ? l.subtotal.dividedBy(unidades) : null,
+          importe: l.subtotal.times(signo),
+        };
+      })
+    );
+
+    const filas: Omit<MovimientoDeEntrega, "saldo">[] = [
+      ...docs.map((doc) => ({
+        id: doc.id,
+        fecha: doc.date,
+        detalle: doc.destinatario ? doc.destinatario.nombre : (doc.reason ?? ""),
+        circuito: doc.account.circuit,
+        monto: getDocumentEffect(doc),
+        tipo: "COMPROBANTE" as const,
+        documento: doc,
+      })),
+      ...pagos.map((pago) => ({
+        id: pago.id,
+        fecha: pago.date,
+        detalle: pago.reference ?? "",
+        circuito: pago.account.circuit,
+        monto: toDecimal(pago.amount).negated(),
+        tipo: "PAGO" as const,
+        pago,
+      })),
+    ]
+      .filter((f) => !f.monto.isZero())
+      .sort((a, b) => a.fecha.getTime() - b.fecha.getTime());
+    let corrido = ZERO;
+    const movimientos = filas.map((f) => {
+      corrido = corrido.plus(f.monto);
+      return { ...f, saldo: corrido };
+    });
+
+    const total = sumDecimals(docs.map((d) => getDocumentEffect(d)));
+    const cobrado = sumDecimals(pagos.map((p) => toDecimal(p.amount)));
+    return {
+      ...base,
+      remitos: [...new Set(docs.filter((d) => d.lines.length > 0 && d.type !== "NOTA_CREDITO").map((d) => d.number))],
+      renglones,
+      movimientos,
+      total,
+      cobrado,
+      saldo: total.minus(cobrado),
+    };
+  }
+
+  const cuadros = entregas.map((e) =>
+    cuadro(
+      { id: e.id, nombre: e.nombre, destino: e.destino, fecha: e.fecha },
+      docsPorViaje.filter((d) => d.entregaId === e.id),
+      pagosPorViaje.filter((p) => p.entregaId === e.id)
+    )
+  );
+  const sinAsignar = cuadro({ id: null, nombre: "Sin asignar", destino: null, fecha: null }, sueltosDocs, sueltosPagos);
+  if (sinAsignar.movimientos.length > 0) cuadros.push(sinAsignar);
+  return cuadros;
+}

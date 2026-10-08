@@ -57,6 +57,14 @@ export function ViajesPanel({
         <div className="flex items-center gap-2">
           <Truck size={16} className="text-foreground/60" />
           <h2 className="text-sm font-semibold">{plural}</h2>
+          {viajes.length > 0 && (
+            <Link
+              href={`/cuentas-corrientes/${entitySlug}/viajes`}
+              className="text-xs text-foreground/60 underline underline-offset-2 hover:text-foreground"
+            >
+              Ver {genero.articulo === "la" ? "todas juntas" : "todos juntos"}
+            </Link>
+          )}
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">

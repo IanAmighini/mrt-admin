@@ -16,6 +16,7 @@ import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
 import { hoyComoFecha, monthPeriod, periodLastDay, type Period } from "@/lib/period";
+import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 
 export const REPORT_KEYS = [
   "remitos-vencidos",
@@ -59,7 +60,9 @@ function addByCurrency(map: Map<Currency, Prisma.Decimal>, currency: Currency, a
 // 1. Comprobantes vencidos impagos (remitos y facturas de clientes) — "a hoy", no lleva período
 // ---------------------------------------------------------------------------
 
-export const VENCIDO_BUCKETS = ["1-15", "16-30", "31-60", "60+"] as const;
+/** "Saldo inicial" va aparte: es deuda de antes de la app, vencida desde quién sabe cuándo, y
+ * contarla en días desde la fecha en que se cargó la haría parecer de la semana pasada. */
+export const VENCIDO_BUCKETS = ["1-15", "16-30", "31-60", "60+", "Saldo inicial"] as const;
 export type VencidoBucket = (typeof VENCIDO_BUCKETS)[number];
 
 function bucketDe(dias: number): VencidoBucket {
@@ -80,6 +83,8 @@ export type VencidoRow = {
   dueDate: Date;
   diasAtraso: number;
   bucket: VencidoBucket;
+  /** Deuda de antes de la app: se muestra como tal, sin días de atraso. */
+  saldoInicial: boolean;
   currency: Currency;
   total: Prisma.Decimal;
   pendiente: Prisma.Decimal;
@@ -111,8 +116,10 @@ export async function getVencidosReport(options?: {
 
   const rows: VencidoRow[] = [];
   for (const doc of vencimientos) {
-    // Vencido recién cuando el día del vencimiento pasó entero: el que vence hoy todavía no.
-    if (!doc.dueDate || doc.dueDate >= hoyComoFecha(asOf)) continue;
+    // El saldo inicial es deuda vieja: está vencido desde que se cargó, sin esperar a nadie.
+    const saldoInicial = doc.type === "AJUSTE" && doc.number.startsWith(NUMERO_SALDO_INICIAL);
+    // El resto, vencido recién cuando el día del vencimiento pasó entero: el que vence hoy todavía no.
+    if (!doc.dueDate || (!saldoInicial && doc.dueDate >= hoyComoFecha(asOf))) continue;
     // Lo que nos deben: los comprobantes de proveedores vencidos son otra cosa (lo que debemos).
     if (doc.account.entity.type !== "CLIENTE" && doc.account.entity.type !== "AMBOS") continue;
     if (options?.circuit && doc.account.circuit !== options.circuit) continue;
@@ -128,14 +135,16 @@ export async function getVencidosReport(options?: {
       date: doc.date,
       dueDate: doc.dueDate,
       diasAtraso,
-      bucket: bucketDe(diasAtraso),
+      bucket: saldoInicial ? "Saldo inicial" : bucketDe(diasAtraso),
+      saldoInicial,
       currency: doc.currency,
       total: doc.totalAmount,
       pendiente: doc.pending,
     });
   }
 
-  rows.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+  // Lo más viejo arriba: el saldo inicial primero, después por vencimiento.
+  rows.sort((a, b) => Number(b.saldoInicial) - Number(a.saldoInicial) || a.dueDate.getTime() - b.dueDate.getTime());
 
   const totalPendiente = new Map<Currency, Prisma.Decimal>();
   const porClienteMap = new Map<string, { entityName: string; entitySlug: string; count: number; pendiente: Prisma.Decimal }>();

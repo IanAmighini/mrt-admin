@@ -186,8 +186,12 @@ export default async function InicioPage() {
             {vencidosClientes.slice(0, 5).map((d) => (
               <Renglon
                 key={d.documentId}
-                izquierda={`${d.entityName} · #${d.number}`}
-                debajo={`Venció el ${formatFecha(d.dueDate)} · ${d.diasAtraso} ${d.diasAtraso === 1 ? "día" : "días"}`}
+                izquierda={d.saldoInicial ? `${d.entityName} · saldo inicial` : `${d.entityName} · #${d.number}`}
+                debajo={
+                  d.saldoInicial
+                    ? "Deuda anterior a la app"
+                    : `Venció el ${formatFecha(d.dueDate)} · ${d.diasAtraso} ${d.diasAtraso === 1 ? "día" : "días"}`
+                }
                 derecha={formatMoney(d.pendiente, d.currency)}
                 href={`/cuentas-corrientes/${d.entitySlug}`}
               />

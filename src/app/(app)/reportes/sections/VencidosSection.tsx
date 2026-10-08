@@ -92,13 +92,13 @@ export async function VencidosSection({ circuit }: { circuit?: Circuit }) {
                     </Link>
                   </td>
                   <td className="py-2 pr-4">
-                    {DOCUMENT_TYPE_LABELS[row.type]} #{row.number}
+                    {row.saldoInicial ? "Saldo inicial" : `${DOCUMENT_TYPE_LABELS[row.type]} #${row.number}`}
                   </td>
                   <td className="py-2 pr-4">{CIRCUIT_LABELS[row.circuit]}</td>
                   <td className="py-2 pr-4 text-red-600 dark:text-red-400 whitespace-nowrap">
-                    {formatFecha(row.dueDate)}
+                    {row.saldoInicial ? "Anterior a la app" : formatFecha(row.dueDate)}
                   </td>
-                  <td className="py-2 pr-4 whitespace-nowrap">{row.diasAtraso} días</td>
+                  <td className="py-2 pr-4 whitespace-nowrap">{row.saldoInicial ? "—" : `${row.diasAtraso} días`}</td>
                   <td className="py-2 pr-4 font-medium">{formatMoney(row.pendiente, row.currency)}</td>
                 </tr>
               ))}
