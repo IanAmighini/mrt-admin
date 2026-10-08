@@ -1,6 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
+import { reimputarEntidades } from "@/lib/imputacion";
 import { parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
@@ -305,6 +306,7 @@ export async function venderInsumo(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(account.entityId);
   revalidatePath(`/stock/${item.slug}`);
   revalidatePath("/stock");
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);

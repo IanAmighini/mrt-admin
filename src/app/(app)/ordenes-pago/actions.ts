@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { parseFecha } from "@/lib/period";
+import { hoyEnInput, parseFecha } from "@/lib/period";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
@@ -24,9 +24,8 @@ export async function crearOrdenPago(formData: FormData) {
   const paymentIds = formData.getAll("paymentId").map(String).filter(Boolean);
   if (paymentIds.length === 0) throw new UserError("Elegí al menos un pago.");
 
-  const fechaRaw = String(formData.get("date") || "").trim();
-  if (!fechaRaw) throw new UserError("Falta la fecha.");
-  const date = parseFecha(fechaRaw);
+  // El día en que se genera, en hora argentina: es el papel de hoy, no una fecha que se elige.
+  const date = parseFecha(hoyEnInput());
   const notes = String(formData.get("notes") || "").trim() || null;
 
   const pagos = await prisma.payment.findMany({

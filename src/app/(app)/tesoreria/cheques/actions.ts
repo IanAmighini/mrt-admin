@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { reimputarEntidades } from "@/lib/imputacion";
 import { formatFecha, parseFecha } from "@/lib/period";
 import { Prisma, type ChequeEstado } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
@@ -270,6 +271,7 @@ export async function rechazarCheque(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(cheque.entregadoEn?.account.entityId, cheque.recibidoEn?.account.entityId);
   for (const slug of [
     cheque.entregadoEn?.account.entity.slug,
     cheque.recibidoEn?.account.entity.slug,

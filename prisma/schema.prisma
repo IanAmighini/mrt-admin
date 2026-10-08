@@ -338,15 +338,19 @@ model Document {
   contraparte      Document?                 @relation("PaseEntreCajas", fields: [contraparteId], references: [id], onDelete: Cascade)
   contraparteDe    Document?                 @relation("PaseEntreCajas")
 
-  remitoLinks      DocumentLink[]      @relation("RemitoLinks")
-  facturaLinks     DocumentLink[]      @relation("FacturaLinks")
-  allocations      PaymentAllocation[]
-  lines            DocumentLine[]
-  purchaseLines    PurchaseLine[]
-  itemMovements    ItemMovement[]
-  taxes            DocumentTax[]
+  remitoLinks       DocumentLink[]      @relation("RemitoLinks")
+  facturaLinks      DocumentLink[]      @relation("FacturaLinks")
+  allocations       PaymentAllocation[]
+  /// Lo que este comprobante (una nota de crédito, una devolución, un ajuste en contra) canceló
+  /// de otros, y lo que otros créditos cancelaron de éste. Ver `lib/imputacion.ts`.
+  creditosAplicados CreditAllocation[]  @relation("CreditoAplicado")
+  creditosRecibidos CreditAllocation[]  @relation("CreditoRecibido")
+  lines             DocumentLine[]
+  purchaseLines     PurchaseLine[]
+  itemMovements     ItemMovement[]
+  taxes             DocumentTax[]
   /// Los cheques que entraron con este movimiento, cuando es un cambio por efectivo.
-  chequesDelCambio Cheque[]            @relation("ChequeCambiado")
+  chequesDelCambio  Cheque[]            @relation("ChequeCambiado")
 
   @@index([accountId])
   @@index([destinatarioId])
@@ -588,6 +592,24 @@ model OrdenPago {
   createdAt   DateTime  @default(now())
 
   @@index([entityId])
+}
+
+/**
+ * Un crédito que no es plata —una nota de crédito, una devolución, un ajuste en contra— cancelando
+ * un comprobante, igual que un pago lo hace con `PaymentAllocation`. Sin esto el crédito bajaba el
+ * saldo pero la factura seguía "sin pagar" y figuraba vencida. Lo arma y lo rehace entero
+ * `reimputarCuenta`; nadie lo escribe a mano.
+ */
+model CreditAllocation {
+  id         String   @id @default(cuid())
+  creditoId  String
+  credito    Document @relation("CreditoAplicado", fields: [creditoId], references: [id], onDelete: Cascade)
+  documentId String
+  document   Document @relation("CreditoRecibido", fields: [documentId], references: [id], onDelete: Cascade)
+  amount     Decimal  @db.Decimal(14, 2)
+
+  @@index([creditoId])
+  @@index([documentId])
 }
 
 model PaymentAllocation {

@@ -1,6 +1,7 @@
 "use server";
 
 import { UserError } from "@/lib/user-error";
+import { reimputarEntidades } from "@/lib/imputacion";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -214,6 +215,8 @@ export async function updateEntity(formData: FormData) {
     cambios: diffDeCampos(fotoDeLaEntidad(previa), fotoDeLaEntidad(entity), CAMPOS_DE_LA_ENTIDAD),
   });
 
+  // El saldo inicial pudo cambiar, y con él a qué comprobantes cancelan los cobros.
+  await reimputarEntidades(entityId);
   revalidatePath("/clientes");
   revalidatePath("/proveedores");
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);

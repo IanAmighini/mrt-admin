@@ -28,6 +28,8 @@ export type DocumentWithRelations = Prisma.DocumentGetPayload<{
   include: {
     remitoLinks: { include: { factura: { select: { id: true; number: true; date: true } } } };
     allocations: true;
+    creditosAplicados: true;
+    creditosRecibidos: true;
     lines: { include: { product: true } };
     purchaseLines: { include: { item: true } };
     taxes: true;
@@ -38,6 +40,9 @@ const DOCUMENT_QUERY_INCLUDE = {
   // Con la factura adentro: una compra necesita poder mostrar cuál la cubre, no sólo que lo está.
   remitoLinks: { include: { factura: { select: { id: true, number: true, date: true } } } },
   allocations: true,
+  // Las notas de crédito y devoluciones que cancelan este comprobante, o que este cancela.
+  creditosAplicados: true,
+  creditosRecibidos: true,
   lines: { include: { product: true } },
   purchaseLines: { include: { item: true } },
   // El desglose impositivo de un GASTO: lo necesita el formulario de edición para prellenarse.
@@ -83,10 +88,19 @@ export function getDocumentEffect(
   }
 }
 
-export function getDocumentPending(document: DocumentWithRelations): Prisma.Decimal {
+/**
+ * Lo que falta cancelar de un comprobante: su efecto, menos lo que le imputaron los cobros y los
+ * créditos (`reimputarCuenta`). En un crédito —una nota de crédito— es negativo, y lo que ya
+ * canceló de otros lo acerca a cero: lo que queda es crédito todavía sin usar.
+ */
+export function getDocumentPending(
+  document: Pick<DocumentWithRelations, "type" | "totalAmount" | "remitoLinks" | "allocations" | "creditosAplicados" | "creditosRecibidos">
+): Prisma.Decimal {
   const effect = getDocumentEffect(document);
-  const allocated = sumDecimals(document.allocations.map((a) => a.amount));
-  return effect.minus(allocated);
+  const pagado = sumDecimals(document.allocations.map((a) => a.amount));
+  const recibido = sumDecimals(document.creditosRecibidos.map((a) => a.amount));
+  const aplicado = sumDecimals(document.creditosAplicados.map((a) => a.amount));
+  return effect.minus(pagado).minus(recibido).plus(aplicado);
 }
 
 export async function getAccountDocuments(accountId: string) {

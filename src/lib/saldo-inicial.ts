@@ -1,7 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
-import { formatMoney, parseNumeroEscrito, sumDecimals, ZERO } from "@/lib/money";
-import { UserError } from "@/lib/user-error";
+import { parseNumeroEscrito, ZERO } from "@/lib/money";
 
 /** Marca el AJUSTE que representa el saldo con el que arrancó la cuenta. */
 export const NUMERO_SALDO_INICIAL = "SALDO-INICIAL";
@@ -10,9 +9,8 @@ export const NUMERO_SALDO_INICIAL = "SALDO-INICIAL";
  * Deja el saldo inicial de una cuenta en lo que dice el formulario: lo crea, lo corrige o lo borra.
  * Es un solo AJUSTE por cuenta, así que editarlo no toca ningún otro movimiento.
  *
- * Se niega a tocarlo si tiene pagos imputados encima por menos de lo que quedaría: el pendiente del
- * documento es `monto - imputado`, y bajarlo por debajo de lo ya imputado lo deja en negativo, que
- * es un saldo que no existe.
+ * Los cobros que tenía imputados no lo traban: quien lo llama rehace las imputaciones de la cuenta
+ * después (`reimputarEntidades`), y lo que sobre pasa a cancelar lo siguiente.
  */
 export async function aplicarSaldoInicial(
   tx: Prisma.TransactionClient,
@@ -22,7 +20,6 @@ export async function aplicarSaldoInicial(
 ) {
   const existente = await tx.document.findFirst({
     where: { accountId, type: "AJUSTE", number: NUMERO_SALDO_INICIAL },
-    include: { allocations: true },
   });
   // En la moneda de la cuenta. Se guardaba siempre en pesos, y en la de Cristian —que se lleva en
   // dólares— el saldo inicial quedó marcado como pesos: el número era de dólares, pero un pago en
@@ -32,26 +29,14 @@ export async function aplicarSaldoInicial(
     select: { entity: { select: { moneda: true } } },
   });
   const currency = cuenta?.entity.moneda ?? "ARS";
-  const imputado = sumDecimals(existente?.allocations.map((a) => a.amount) ?? []);
   const amount = raw.trim() ? parseNumeroEscrito(raw, "saldo inicial") : ZERO;
 
   if (amount.isZero()) {
     if (!existente) return;
-    if (!imputado.isZero()) {
-      throw new UserError(
-        `No se puede borrar el saldo inicial: tiene ${formatMoney(imputado)} de pagos imputados. Desimputalos primero desde la cuenta corriente.`
-      );
-    }
+    // Lo que tenía imputado se suelta; la reimputación lo vuelve a repartir.
+    await tx.paymentAllocation.deleteMany({ where: { documentId: existente.id } });
     await tx.document.delete({ where: { id: existente.id } });
     return;
-  }
-
-  // Sin imputaciones no hay nada que proteger, y un saldo negativo (a favor) es legítimo: sin el
-  // `!imputado.isZero()` la comparación contra cero lo rechazaba.
-  if (existente && !imputado.isZero() && amount.lessThan(imputado)) {
-    throw new UserError(
-      `El saldo inicial no puede quedar en menos de ${formatMoney(imputado)}, que es lo que ya tiene imputado en pagos.`
-    );
   }
 
   if (existente) {

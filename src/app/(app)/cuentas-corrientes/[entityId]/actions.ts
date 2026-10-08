@@ -39,6 +39,7 @@ import { aLaMonedaDeLaCuenta, convertirMontos, leerCotizacion, monedaEscrita } f
 import type { AuditAction } from "@prisma/client";
 import { proximoNumeroDeCaja } from "@/lib/caja";
 import { proximoNumeroDeDevolucion } from "@/lib/devoluciones";
+import { reimputarEntidades } from "@/lib/imputacion";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
 
@@ -323,6 +324,7 @@ export async function updateDocument(formData: FormData) {
     ),
   });
 
+  await reimputarEntidades(account.entityId);
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
 }
 
@@ -372,6 +374,7 @@ export async function deleteDocument(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(document.account.entityId);
   revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
 }
 
@@ -505,6 +508,7 @@ export async function createDocumentForEntity(formData: FormData) {
     ),
   });
 
+  await reimputarEntidades(account.entityId);
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
 }
 
@@ -1238,6 +1242,7 @@ export async function crearDevolucion(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(entityId);
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);
   revalidatePath("/stock");
   revalidatePath("/produccion");
@@ -1416,6 +1421,7 @@ async function createRemitoCore(
     });
   }, { timeout: 20000 });
 
+  await reimputarEntidades(entity.id);
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);
   revalidatePath("/entregas");
   revalidatePath("/dashboard-clientes");
@@ -1468,6 +1474,7 @@ export async function deleteRemito(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(document.account.entityId);
   revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
   revalidatePath("/entregas");
   revalidatePath("/dashboard-clientes");
@@ -1858,6 +1865,7 @@ async function createCompraCore(
     });
   });
 
+  await reimputarEntidades(entity.id);
   revalidatePath(`/cuentas-corrientes/${entity.slug}`);
   revalidatePath("/stock");
   revalidatePath("/compras");
@@ -1924,6 +1932,7 @@ export async function deleteCompra(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(document.account.entityId);
   revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
   revalidatePath("/stock");
   revalidatePath("/compras");
@@ -2068,6 +2077,7 @@ export async function createFactura(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(account.entityId);
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
 }
 
@@ -2150,6 +2160,7 @@ export async function updateFactura(formData: FormData) {
     ),
   });
 
+  await reimputarEntidades(factura.account.entityId);
   revalidatePath(`/cuentas-corrientes/${factura.account.entity.slug}`);
 }
 
@@ -2180,6 +2191,7 @@ export async function deleteFactura(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(factura.account.entityId);
   revalidatePath(`/cuentas-corrientes/${factura.account.entity.slug}`);
 }
 
@@ -2326,6 +2338,12 @@ async function applyPaymentDestino(params: {
     numeroOperacion: string | null;
   };
   entity: { id: string; name: string };
+  /**
+   * Al editar un cobro directo: la orden de pago en la que estaba el pago del proveedor que se
+   * reemplaza. El pago nuevo vuelve a esa orden si es del mismo proveedor y la misma cuenta; si no,
+   * la orden se quedaba sin pagos (así quedó vacía la 0003).
+   */
+  heredarOrden?: { ordenPagoId: string; accountId: string } | null;
   /** Si este pago es un cobro (entra plata, ej. desde la página/ficha de clientes) o un pago a
    * proveedor (sale plata) — viene explícito del form en vez de derivarse de entity.type porque
    * una entidad AMBOS puede recibir cobros y pagos según desde qué página se cargue. */
@@ -2386,6 +2404,8 @@ async function applyPaymentDestino(params: {
             ? `Cobro directo de ${entity.name}`
             : `Cobro directo de ${entity.name} (${CIRCUIT_LABELS[payment.circuit]})`,
         linkedPaymentId: payment.id,
+        ordenPagoId:
+          params.heredarOrden && params.heredarOrden.accountId === proveedorAccount.id ? params.heredarOrden.ordenPagoId : null,
         createdById: userId,
       },
     });
@@ -2622,6 +2642,7 @@ export async function createPaymentForEntity(formData: FormData) {
     ),
   });
 
+  await reimputarEntidades(entityId, proveedorId);
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
   revalidatePath("/pagos-clientes");
   revalidatePath("/pagos-proveedores");
@@ -2646,6 +2667,16 @@ export async function deletePayment(formData: FormData) {
         include: { account: { include: { entity: true } } },
       })
     : null;
+
+  // Un pago que está en una orden de pago es parte de un papel que ya se firmó: borrarlo dejaba la
+  // orden sin pagos. Primero se anula la orden.
+  const enOrden = payment.ordenPagoId ?? linkedPayment?.ordenPagoId;
+  if (enOrden) {
+    const orden = await prisma.ordenPago.findUnique({ where: { id: enOrden }, select: { numero: true } });
+    throw new UserError(
+      `Este pago está en la orden de pago N° ${String(orden?.numero ?? "").padStart(4, "0")}. Anulá la orden primero (desde Órdenes de pago) y después borrá el pago.`
+    );
+  }
 
   // Las cajas donde este pago dejó plata: borrar un cobro se la saca, y eso puede dejarlas en rojo.
   const cajasDelPago = await prisma.document.findMany({
@@ -2693,6 +2724,7 @@ export async function deletePayment(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(payment.account.entityId, linkedPayment?.account.entityId);
   revalidatePath(`/cuentas-corrientes/${payment.account.entity.slug}`);
   if (linkedPayment) revalidatePath(`/cuentas-corrientes/${linkedPayment.account.entity.slug}`);
   revalidatePath("/pagos-clientes");
@@ -2883,6 +2915,8 @@ export async function updatePayment(formData: FormData) {
     destino,
     proveedorId,
     proveedorCircuit,
+    heredarOrden:
+      oldLinkedPayment?.ordenPagoId ? { ordenPagoId: oldLinkedPayment.ordenPagoId, accountId: oldLinkedPayment.accountId } : null,
   });
 
   await logAudit(prisma, {
@@ -2910,6 +2944,7 @@ export async function updatePayment(formData: FormData) {
     ),
   });
 
+  await reimputarEntidades(entityId, proveedorId, oldLinkedPayment?.account.entityId);
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
   if (oldLinkedPayment) revalidatePath(`/cuentas-corrientes/${oldLinkedPayment.account.entity.slug}`);
   revalidatePath("/pagos-clientes");
@@ -2957,6 +2992,7 @@ export async function moveRemitoToBlanco(formData: FormData) {
     ],
   });
 
+  await reimputarEntidades(document.account.entityId);
   revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
 }
 
@@ -3097,6 +3133,7 @@ export async function createGasto(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(g.account.entityId);
   revalidatePath(`/cuentas-corrientes/${g.account.entity.slug}`);
 }
 
@@ -3177,6 +3214,7 @@ export async function updateGasto(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(g.account.entityId);
   revalidatePath(`/cuentas-corrientes/${g.account.entity.slug}`);
 }
 
@@ -3206,6 +3244,7 @@ export async function deleteGasto(formData: FormData) {
     });
   });
 
+  await reimputarEntidades(gasto.account.entityId);
   revalidatePath(`/cuentas-corrientes/${gasto.account.entity.slug}`);
 }
 

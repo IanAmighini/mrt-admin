@@ -78,19 +78,12 @@ export function OrdenPagoFields({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="date">
-                Fecha de la orden
-              </label>
-              <input id="date" type="date" name="date" required className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="notes">
-                Observaciones (opcional)
-              </label>
-              <input id="notes" name="notes" className={inputClass} />
-            </div>
+          {/* Sin fecha para elegir: la orden lleva el día en que se genera. */}
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="notes">
+              Observaciones (opcional)
+            </label>
+            <input id="notes" name="notes" className={inputClass} />
           </div>
 
           <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
