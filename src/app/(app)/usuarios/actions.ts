@@ -68,6 +68,8 @@ export async function updateUser(formData: FormData) {
     .trim()
     .toLowerCase();
   const role = String(formData.get("role") || "") as UserRole;
+  // Opcional: para cuando alguien se olvidó la suya. Vacío deja la que tiene.
+  const nuevaContrasena = String(formData.get("password") || "");
 
   if (!id || !name || !email) {
     throw new UserError("Faltan datos obligatorios.");
@@ -76,11 +78,18 @@ export async function updateUser(formData: FormData) {
     throw new UserError("Rol inválido.");
   }
 
+  if (nuevaContrasena && nuevaContrasena.length < 8) {
+    throw new UserError("La contraseña debe tener al menos 8 caracteres.");
+  }
+
   const antes = await prisma.user.findUnique({ where: { id } });
   if (!antes) throw new UserError("El usuario ya no existe.");
 
   try {
-    await prisma.user.update({ where: { id }, data: { name, email, role } });
+    await prisma.user.update({
+      where: { id },
+      data: { name, email, role, ...(nuevaContrasena ? { passwordHash: await hashPassword(nuevaContrasena) } : {}) },
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       throw new UserError("Ya existe un usuario con ese email.");
@@ -94,11 +103,15 @@ export async function updateUser(formData: FormData) {
     entityType: "Usuario",
     entityId: id,
     summary: `${name} (${email})`,
-    cambios: diffDeCampos(
-      { name: antes.name, email: antes.email, rol: ROLE_LABELS[antes.role] },
-      { name, email, rol: ROLE_LABELS[role] },
-      CAMPOS_DEL_USUARIO
-    ),
+    cambios: [
+      ...diffDeCampos(
+        { name: antes.name, email: antes.email, rol: ROLE_LABELS[antes.role] },
+        { name, email, rol: ROLE_LABELS[role] },
+        CAMPOS_DEL_USUARIO
+      ),
+      // Que se cambió, nunca cuál es.
+      ...(nuevaContrasena ? [{ campo: "Contrase\u00f1a", antes: null, despues: "cambiada" }] : []),
+    ],
   });
 
   revalidatePath("/usuarios");

@@ -187,6 +187,20 @@ export default async function UsuariosPage({
                             ))}
                           </select>
                         </div>
+                        <div className="space-y-1">
+                          <label className="text-sm" htmlFor={`password-${u.id}`}>
+                            Contraseña nueva
+                          </label>
+                          <input
+                            id={`password-${u.id}`}
+                            name="password"
+                            type="password"
+                            minLength={8}
+                            autoComplete="new-password"
+                            placeholder="Dejar vacío para no cambiarla"
+                            className={inputClass}
+                          />
+                        </div>
                       </div>
                       <button
                         type="submit"

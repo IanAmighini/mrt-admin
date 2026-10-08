@@ -2,13 +2,14 @@
 
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { Pencil, Plus, X, type LucideIcon } from "lucide-react";
+import { KeyRound, Pencil, Plus, X, type LucideIcon } from "lucide-react";
 import { buttonClass, type PesoDeBoton } from "./ui/Button";
 import { useEnvioUnico } from "./useEnvioUnico";
 
 const TRIGGER_ICONS: Record<string, LucideIcon> = {
   plus: Plus,
   edit: Pencil,
+  key: KeyRound,
 };
 
 export function FormModal({

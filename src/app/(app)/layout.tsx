@@ -6,6 +6,11 @@ import { SearchPalette } from "@/components/SearchPalette";
 import { signOut } from "@/auth";
 import { cookies } from "next/headers";
 import { COOKIE_HUBO_SESION } from "@/lib/sesion";
+import { FormModal } from "@/components/Modal";
+import { cambiarMiContrasena } from "./cuenta/actions";
+
+const inputClass =
+  "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 
 export default async function AppLayout({
   children,
@@ -33,6 +38,33 @@ export default async function AppLayout({
             paleta sobrevive a la navegación sin volver a registrarlo. */}
         <div className="flex items-center gap-1">
           <SearchPalette />
+          <FormModal triggerLabel="Cambiar contraseña" title="Cambiar mi contraseña" action={cambiarMiContrasena} soloIcono iconName="key" maxWidthClass="max-w-sm">
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="pass-actual">
+                Contraseña actual
+              </label>
+              <input id="pass-actual" name="actual" type="password" required autoComplete="current-password" className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="pass-nueva">
+                Contraseña nueva
+              </label>
+              <input id="pass-nueva" name="nueva" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
+              <p className="text-xs text-foreground/50">Al menos 8 caracteres.</p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="pass-repetida">
+                Repetí la nueva
+              </label>
+              <input id="pass-repetida" name="repetida" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
+            </div>
+            <button
+              type="submit"
+              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+            >
+              Cambiar contraseña
+            </button>
+          </FormModal>
           <form
             action={async () => {
               "use server";
