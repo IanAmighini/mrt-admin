@@ -250,7 +250,9 @@ export default async function ItemDetailPage({
         >
           <h2 className="text-sm font-semibold">Nuevo movimiento</h2>
           <input type="hidden" name="itemId" value={item.id} />
-          <div className="grid grid-cols-2 gap-3">
+          {/* "Efecto" sólo dice algo en un ajuste, una merma o una venta: un ingreso siempre suma. Con
+              Ingreso elegido se esconde, sin JavaScript: la regla de abajo mira la opción marcada. */}
+          <div className="grid grid-cols-2 gap-3 [&:has(#type_option[value=INGRESO]:checked)_.sin-ingreso]:hidden">
             <div className="space-y-1">
               <label className="text-sm" htmlFor="type">
                 Tipo
@@ -292,9 +294,9 @@ export default async function ItemDetailPage({
                 className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
               />
             </div>
-            <div className="space-y-1">
+            <div className="sin-ingreso space-y-1">
               <label className="text-sm" htmlFor="effect">
-                Efecto (Ajuste / Merma)
+                Efecto
               </label>
               <select
                 id="effect"
