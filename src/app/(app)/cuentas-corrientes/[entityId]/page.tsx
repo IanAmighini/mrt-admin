@@ -41,6 +41,7 @@ import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { ViajesPanel } from "@/components/ViajesPanel";
 import { getDestinatarios, getEntregasDeEntidad, getEntregasParaElegir } from "@/lib/entregas";
 import { getDeudaPreformas, getPreformasOrdenadas } from "@/lib/preformas";
+import { proximoNumeroDeDevolucion as proximoNumeroDevolucion } from "@/lib/devoluciones";
 
 export default async function EntityLedgerPage({
   params,
@@ -136,6 +137,7 @@ export default async function EntityLedgerPage({
     viajes,
     destinatarios,
     viajesParaElegir,
+    proximoNumeroDeDevolucion,
   ] = await Promise.all([
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
@@ -169,6 +171,7 @@ export default async function EntityLedgerPage({
     entity.llevaViajes ? getEntregasDeEntidad(entity.id) : Promise.resolve([]),
     entity.llevaViajes ? getDestinatarios(entity.id) : Promise.resolve([]),
     entity.llevaViajes ? getEntregasParaElegir(entity.id) : Promise.resolve([]),
+    isCliente ? proximoNumeroDevolucion() : Promise.resolve(""),
   ]);
 
   const hayPanelIzquierdo = isCliente || recentCompras.length > 0 || entity.llevaViajes;
@@ -318,6 +321,7 @@ export default async function EntityLedgerPage({
             isCliente
               ? {
                   products,
+                  proximoNumero: proximoNumeroDeDevolucion,
                   priceMapByCircuit: {
                     BLANCO: Object.fromEntries(
                       Array.from(blancoPrices, ([id, pr]) => [id, { amount: pr.amount.toNumber(), currency: pr.currency }])

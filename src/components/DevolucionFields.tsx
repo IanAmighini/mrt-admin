@@ -6,6 +6,7 @@ import { hoyEnInput } from "@/lib/period";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { CIRCUIT_LABELS } from "@/lib/labels";
+import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
 
 type Circuit = "BLANCO" | "NEGRO";
 type PriceMap = Record<
@@ -84,11 +85,20 @@ export function DevolucionFields({
   products,
   priceMapByCircuit,
   moneda = "ARS",
+  proximoNumero,
+  viajes,
+  destinatarios,
+  rotuloSubcuenta,
 }: {
   entityId: string;
   products: ProductoDevolvible[];
   priceMapByCircuit: PriceMap;
   moneda?: Currency;
+  /** El número que le va a tocar, para mostrarlo: lo asigna el servidor al guardar. */
+  proximoNumero: string;
+  viajes?: ViajeOption[];
+  destinatarios?: DestinatarioOption[];
+  rotuloSubcuenta?: string;
 }) {
   const [circuit, setCircuit] = useState<Circuit>("BLANCO");
   const [cotizacion, setCotizacion] = useState("");
@@ -156,8 +166,8 @@ export function DevolucionFields({
       <input type="hidden" name="entityId" value={entityId} />
       <p className="text-xs text-foreground/50">
         Lo que vuelve sano entra al stock y lo roto se da de baja. Al cliente se
-        le hace una nota de crédito por todo lo devuelto, al precio de cada
-        línea: si no se le reconoce algo, poné el precio en 0.
+        le descuenta de la cuenta todo lo devuelto, al precio de cada línea: si
+        no se le reconoce algo, poné el precio en 0.
       </p>
 
       <fieldset className="space-y-1">
@@ -186,15 +196,12 @@ export function DevolucionFields({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="space-y-1">
-          <label className="text-sm" htmlFor="dev-number">
-            Número de la nota de crédito
-          </label>
-          <input
-            id="dev-number"
-            name="number"
-            required
-            className={inputClass}
-          />
+          <p className="text-sm">Número</p>
+          {/* Se numera sola al guardar. Lo que se muestra es el que le toca ahora: si alguien carga
+              otra devolución antes, a esta le toca el siguiente. */}
+          <p className="rounded-lg border border-foreground/10 bg-foreground/[0.03] px-3 py-2 text-sm text-foreground/70">
+            {proximoNumero} <span className="text-xs text-foreground/50">(automático)</span>
+          </p>
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="dev-date">
@@ -237,6 +244,13 @@ export function DevolucionFields({
           className={inputClass}
         />
       </div>
+
+      <ViajeFields
+        viajes={viajes}
+        destinatarios={destinatarios}
+        rotulo={rotuloSubcuenta}
+        ayudaViaje="Lo devuelto se descuenta del saldo de lo elegido acá, no del resto de la cuenta. El destinatario es a nombre de quién sale el papel."
+      />
 
       <div className="space-y-3">
         <p className="text-sm font-medium">Lo que volvió</p>
@@ -480,7 +494,7 @@ export function DevolucionFields({
           + Agregar línea
         </button>
         <p className="border-t border-foreground/10 pt-2 text-sm font-semibold tabular-nums">
-          Nota de crédito en la {CIRCUIT_LABELS[circuit]}:{" "}
+          A descontarle en la {CIRCUIT_LABELS[circuit]}:{" "}
           {formatMoney(total, moneda)}
           {circuit === "BLANCO" && (
             <span className="font-normal text-foreground/60"> + IVA</span>

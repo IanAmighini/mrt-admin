@@ -38,6 +38,7 @@ import { cajaDelProducto, enteroNoNegativo } from "@/lib/cajas";
 import { aLaMonedaDeLaCuenta, convertirMontos, leerCotizacion, monedaEscrita } from "@/lib/moneda";
 import type { AuditAction } from "@prisma/client";
 import { proximoNumeroDeCaja } from "@/lib/caja";
+import { proximoNumeroDeDevolucion } from "@/lib/devoluciones";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
 
@@ -1119,11 +1120,11 @@ export async function crearDevolucion(formData: FormData) {
   const entity = await prisma.entity.findUnique({ where: { id: entityId } });
   if (!entity) throw new UserError("El cliente ya no existe.");
 
-  const number = String(formData.get("number") || "").trim();
-  if (!number) throw new UserError("Falta el número de la nota de crédito.");
   const date = parseFormDate(formData.get("date"));
   const reason = String(formData.get("reason") || "").trim();
   if (!reason) throw new UserError("Escribí por qué se devolvió: es lo que va a explicar la nota de crédito.");
+  // El viaje al que vuelve: el crédito baja el saldo de ese camión y no el del resto de la cuenta.
+  const { destinatarioId, entregaId } = await leerDestinatarioYEntrega(formData, entityId);
 
   const currency: Currency = entity.moneda;
   const exchangeRate = leerCotizacion(formData.get("exchangeRate"));
@@ -1136,7 +1137,11 @@ export async function crearDevolucion(formData: FormData) {
   for (const l of lines) porCircuito.set(l.circuit, [...(porCircuito.get(l.circuit) ?? []), l]);
 
   let total = toDecimal(0);
+  let number = "";
   await prisma.$transaction(async (tx) => {
+    // Se numera sola, adentro de la transacción: dos devoluciones cargadas a la vez no se pisan
+    // el número leyendo el mismo "último".
+    number = await proximoNumeroDeDevolucion(tx);
     for (const [circuit, circuitLines] of porCircuito) {
       const account = accounts.find((a) => a.circuit === circuit);
       if (!account) throw new UserError(`No se encontró la ${CIRCUIT_LABELS[circuit]} de este cliente.`);
@@ -1161,6 +1166,8 @@ export async function crearDevolucion(formData: FormData) {
           ivaAmount,
           totalAmount,
           reason: `Devolución — ${reason}`,
+          entregaId,
+          destinatarioId,
           createdById: user.id,
         },
       });
@@ -1192,7 +1199,7 @@ export async function crearDevolucion(formData: FormData) {
           line: l,
           documentLineId: documentLine.id,
           date,
-          motivo: `Devolución NC ${number}`,
+          motivo: `Devolución ${number}`,
           userId: user.id,
         });
       }
@@ -1207,9 +1214,18 @@ export async function crearDevolucion(formData: FormData) {
       action: "CREATE",
       entityType: "Devolución",
       entityId,
-      summary: `NC ${number} — ${entity.name} — ${formatMoney(total, currency)}`,
+      summary: `Devolución ${number} — ${entity.name} — ${formatMoney(total, currency)}`,
       cambios: [
         { campo: "Motivo", antes: null, despues: reason },
+        ...(entregaId
+          ? [
+              {
+                campo: "Viaje",
+                antes: null,
+                despues: (await tx.entrega.findUnique({ where: { id: entregaId }, select: { nombre: true } }))?.nombre ?? null,
+              },
+            ]
+          : []),
         {
           campo: "Lo devuelto",
           antes: null,

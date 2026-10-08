@@ -80,6 +80,7 @@ export function CuentaCorrientePanel({
   devolucion?: {
     products: Product[];
     priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
+    proximoNumero: string;
   };
 }) {
   const isTreasury = entityType === "TESORERIA";
@@ -179,6 +180,10 @@ export function CuentaCorrientePanel({
                   }))}
                   priceMapByCircuit={devolucion.priceMapByCircuit}
                   moneda={moneda}
+                  proximoNumero={devolucion.proximoNumero}
+                  viajes={viajes}
+                  destinatarios={destinatarios}
+                  rotuloSubcuenta={rotuloSubcuenta}
                 />
               </FormModal>
             )}

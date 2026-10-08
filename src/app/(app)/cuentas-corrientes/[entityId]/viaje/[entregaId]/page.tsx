@@ -91,12 +91,17 @@ export default async function ViajePage({
                     {doc ? (
                       <>
                         <span className="font-medium">
-                          {DOCUMENT_TYPE_LABELS[doc.type]} #{doc.number}
+                          {esDevolucion(doc) ? "Devolución" : DOCUMENT_TYPE_LABELS[doc.type]} #{doc.number}
                         </span>
                         {doc.destinatario && (
                           <span className="text-foreground/60"> — {doc.destinatario.nombre}</span>
                         )}
-                        {doc.reason && <span className="text-foreground/40"> · {doc.reason}</span>}
+                        {doc.reason && (
+                          <span className="text-foreground/40">
+                            {" "}
+                            · {esDevolucion(doc) ? doc.reason.replace(/^Devolución — /, "") : doc.reason}
+                          </span>
+                        )}
                       </>
                     ) : (
                       <>
@@ -150,3 +155,7 @@ function Tarjeta({ label, valor, destacado }: { label: string; valor: string; de
     </div>
   );
 }
+
+/** Una nota de crédito con mercadería, que es como la llaman: el motivo lo deja dicho al crearla. */
+const esDevolucion = (doc: { type: string; reason: string | null }) =>
+  doc.type === "NOTA_CREDITO" && Boolean(doc.reason?.startsWith("Devolución — "));
