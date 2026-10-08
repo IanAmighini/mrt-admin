@@ -23,6 +23,17 @@ type Row = {
 
 export type FilaInicial = Omit<Row, "key">;
 
+type Reemplazable = "TAPAS" | "CAJAS" | "ETIQUETAS" | "ACEITE";
+
+/**
+ * Lo que dice la receta de cada marca × formato (clave `marcaId|formatoId`), para mostrar el
+ * insumo con nombre en lugar de "el de la receta". `falta` es por qué todavía no se puede armar.
+ */
+export type Predeterminados = Record<
+  string,
+  { falta: string | null } & Partial<Record<Reemplazable, { id: string; name: string }>>
+>;
+
 const filaVacia = (key: number): Row => ({
   key,
   marcaId: "",
@@ -45,6 +56,7 @@ export function ProductionLinesFields({
   cajas,
   etiquetas,
   aceites,
+  predeterminados,
   defaultRows,
 }: {
   marcas: MarcaInfo[];
@@ -53,6 +65,7 @@ export function ProductionLinesFields({
   cajas: ItemInfo[];
   etiquetas: ItemInfo[];
   aceites: ItemInfo[];
+  predeterminados: Predeterminados;
   /** Al editar: los ítems que ya tiene la carga. Sin esto el formulario abre vacío y hay que
    * volver a tipear todo, con el agregado de que al guardar reemplaza lo que había. */
   defaultRows?: FilaInicial[];
@@ -157,77 +170,66 @@ export function ProductionLinesFields({
               <p className="mt-0.5 text-xs text-foreground/40">Sin pallet. 0 si no se hicieron.</p>
             </div>
           </div>
-          {/* Se completan solo si se usó algo distinto a la receta: las tres tapas de 29mm son
-              intercambiables, cuando se acaba la caja de la marca se usa la Lisa, y a veces se
-              etiqueta con las de papel en vez de las autoadhesivas, y si se termina el girasol se
-              completa con Alto Oleico. Siempre se renderizan, aunque estén vacías, porque el
-              servidor aparea las filas por posición. */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div>
-              <label className="text-xs text-foreground/60">Tapa usada</label>
-              <select
-                name="tapaUsadaItemId"
-                value={row.tapaUsadaItemId}
-                onChange={(e) => updateRow(row.key, { tapaUsadaItemId: e.target.value })}
-                className={inputClass}
-              >
-                <option value="">— la de la receta —</option>
-                {tapas.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-foreground/60">Caja usada</label>
-              <select
-                name="cajaUsadaItemId"
-                value={row.cajaUsadaItemId}
-                onChange={(e) => updateRow(row.key, { cajaUsadaItemId: e.target.value })}
-                className={inputClass}
-              >
-                <option value="">— la de la receta —</option>
-                {cajas.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-foreground/60">Etiqueta usada</label>
-              <select
-                name="etiquetaUsadaItemId"
-                value={row.etiquetaUsadaItemId}
-                onChange={(e) => updateRow(row.key, { etiquetaUsadaItemId: e.target.value })}
-                className={inputClass}
-              >
-                <option value="">— la de la receta —</option>
-                {etiquetas.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-foreground/60">Aceite usado</label>
-              <select
-                name="aceiteUsadoItemId"
-                value={row.aceiteUsadoItemId}
-                onChange={(e) => updateRow(row.key, { aceiteUsadoItemId: e.target.value })}
-                className={inputClass}
-              >
-                <option value="">— el de la receta —</option>
-                {aceites.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
+          {(() => {
+            const receta = row.marcaId && row.formatoId ? predeterminados[`${row.marcaId}|${row.formatoId}`] : undefined;
+            const select = (
+              etiqueta: string,
+              name: keyof Row,
+              categoria: Reemplazable,
+              opciones: ItemInfo[],
+              femenino: boolean
+            ) => {
+              const pred = receta?.[categoria];
+              return (
+                <div>
+                  <label className="text-xs text-foreground/60">{etiqueta}</label>
+                  <select
+                    name={name}
+                    value={row[name] as string}
+                    onChange={(e) => updateRow(row.key, { [name]: e.target.value })}
+                    className={inputClass}
+                  >
+                    <option value="">
+                      {pred
+                        ? `${pred.name} (${femenino ? "predeterminada" : "predeterminado"})`
+                        : receta && !receta.falta
+                          ? "— no lleva —"
+                          : femenino
+                            ? "— la de la receta —"
+                            : "— el de la receta —"}
+                    </option>
+                    {opciones
+                      .filter((o) => o.id !== pred?.id)
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              );
+            };
+            return (
+              <>
+                {/* Se cambian solo si se usó algo distinto a la receta: las tres tapas de 29mm son
+                    intercambiables, cuando se acaba la caja de la marca se usa la Lisa, a veces se
+                    etiqueta con las de papel en vez de las autoadhesivas, y si se termina el girasol
+                    se completa con Alto Oleico. Siempre se renderizan, aunque queden en lo
+                    predeterminado, porque el servidor aparea las filas por posición. */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {select("Tapa", "tapaUsadaItemId", "TAPAS", tapas, true)}
+                  {select("Caja", "cajaUsadaItemId", "CAJAS", cajas, true)}
+                  {select("Etiqueta", "etiquetaUsadaItemId", "ETIQUETAS", etiquetas, true)}
+                  {select("Aceite", "aceiteUsadoItemId", "ACEITE", aceites, false)}
+                </div>
+                {receta?.falta && (
+                  <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                    {receta.falta}
+                  </p>
+                )}
+              </>
+            );
+          })()}
         </div>
       ))}
       <button

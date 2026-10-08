@@ -34,7 +34,10 @@ export default async function CatalogoPage() {
         </Link>
         <h1 className="mt-2 text-xl font-semibold">Catálogo</h1>
         <p className="text-sm text-foreground/60">
-          Marcas y formatos de pallet reutilizables al cargar producción.
+          Marcas y formatos de pallet reutilizables al cargar producción.{" "}
+          <Link href="/produccion/recetas" className="underline underline-offset-2">
+            Ver las recetas →
+          </Link>
         </p>
       </div>
 

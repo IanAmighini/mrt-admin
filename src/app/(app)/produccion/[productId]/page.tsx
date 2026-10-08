@@ -14,10 +14,15 @@ import { formatFecha, hoyEnInput } from "@/lib/period";
 import {
   createProductMovement,
   deleteRecipeLine,
-  generateRecipeFromPresentation,
+  restaurarRecetaAutomatica,
   updateProduct,
+  updateRecipeLine,
   upsertRecipeLine,
 } from "./actions";
+import { FormModal } from "@/components/Modal";
+import { DeleteButton } from "@/components/DeleteButton";
+import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
+import { ordenarLineas } from "@/lib/recetas";
 import { APILADA } from "@/components/ui/Table";
 
 export default async function ProductDetailPage({
@@ -30,6 +35,7 @@ export default async function ProductDetailPage({
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
   // El ajuste de stock es solo de Admin: ver createProductMovement.
   const canAdjust = user.role === "ADMIN";
+  const canEditReceta = user.role === "ADMIN";
 
   const product = await findBySlugOrId(
     () =>
@@ -98,6 +104,8 @@ export default async function ProductDetailPage({
     return items.filter((item) => item.category === category && item.llevaStock);
   }
 
+  const receta = ordenarLineas(product.recipe.map((r) => ({ ...r, categoria: r.item.category, nombre: r.item.name })));
+
   return (
     <div className="space-y-8">
       <div>
@@ -136,6 +144,130 @@ export default async function ProductDetailPage({
           </div>
         </div>
       </div>
+
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Receta por pallet</h2>
+            <p className="text-sm text-foreground/60">
+              Lo que se descuenta de insumos por cada pallet que se carga en Producción.
+              {!canEditReceta && " Sólo el admin la puede cambiar."}
+            </p>
+          </div>
+          {canEditReceta && (
+            <div className="flex flex-wrap items-center gap-2">
+              <FormModal triggerLabel="Agregar insumo" title="Agregar insumo a la receta" action={upsertRecipeLine} peso="secundario">
+                <input type="hidden" name="productId" value={product.id} />
+                <Field label="Insumo">
+                  <select name="itemId" required defaultValue="" className={selectClass}>
+                    <option value="" disabled>
+                      — Elegí un insumo —
+                    </option>
+                    {SUPPLIER_CATEGORY_ORDER.map((categoria) => {
+                      const deCategoria = itemsPorCategoria(categoria);
+                      if (deCategoria.length === 0) return null;
+                      return (
+                        <optgroup key={categoria} label={SUPPLIER_CATEGORY_LABELS[categoria]}>
+                          {deCategoria.map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                </Field>
+                <Field label="Cantidad por pallet">
+                  <input name="quantityPerUnit" required inputMode="decimal" className={selectClass} />
+                </Field>
+                <p className="text-xs text-foreground/50">Si el insumo ya está en la receta, se le cambia la cantidad.</p>
+                <button type="submit" className={botonPrimario}>
+                  Agregar
+                </button>
+              </FormModal>
+              <BotonConError
+                action={restaurarRecetaAutomatica}
+                hidden={{ productId: product.id }}
+                className="rounded-lg px-4 py-2 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
+              >
+                Volver a la automática
+              </BotonConError>
+            </div>
+          )}
+        </div>
+        <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
+          <table className={`w-full text-sm ${APILADA} max-sm:[&_tr]:px-4`}>
+            <thead>
+              <tr className="border-b border-foreground/10 text-left text-foreground/60">
+                <th className="py-2 px-4">Qué</th>
+                <th className="py-2 px-4">Insumo</th>
+                <th className="py-2 px-4 text-right">Por pallet</th>
+                {canEditReceta && <th className="py-2 px-4"></th>}
+              </tr>
+            </thead>
+            <tbody>
+              {receta.map((line) => (
+                <tr key={line.id} className="border-b border-foreground/5 last:border-0">
+                  <td className="py-2 px-4 text-foreground/60">{SUPPLIER_CATEGORY_LABELS[line.item.category]}</td>
+                  <td className="py-2 px-4 font-medium">{line.item.name}</td>
+                  <td className="py-2 px-4 text-right tabular-nums">{formatQuantity(line.quantityPerUnit, line.item.unit)}</td>
+                  {canEditReceta && (
+                    <td className="py-2 px-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <FormModal
+                          triggerLabel="Cambiar"
+                          soloIcono
+                          iconName="edit"
+                          title={`Cambiar ${line.item.name}`}
+                          action={updateRecipeLine}
+                        >
+                          <input type="hidden" name="recipeItemId" value={line.id} />
+                          <Field label="Insumo">
+                            <select name="itemId" required defaultValue={line.itemId} className={selectClass}>
+                              {itemsPorCategoria(line.item.category).map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label={`Cantidad por pallet (${line.item.unit})`}>
+                            <input
+                              name="quantityPerUnit"
+                              required
+                              inputMode="decimal"
+                              defaultValue={formatNumeroExacto(line.quantityPerUnit)}
+                              className={selectClass}
+                            />
+                          </Field>
+                          <button type="submit" className={botonPrimario}>
+                            Guardar
+                          </button>
+                        </FormModal>
+                        <DeleteButton
+                          action={deleteRecipeLine}
+                          hiddenName="recipeItemId"
+                          hiddenValue={line.id}
+                          nombre={`${line.item.name} de la receta`}
+                          consecuencia="Las próximas producciones de este producto no lo van a descontar."
+                        />
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              ))}
+              {receta.length === 0 && (
+                <tr>
+                  <td colSpan={canEditReceta ? 4 : 3} className="py-6 text-center text-foreground/40">
+                    Todavía no tiene receta: se arma sola la primera vez que se produce.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       {canEdit && (
         <FormConError
@@ -221,173 +353,6 @@ export default async function ProductDetailPage({
           </div>
         </FormConError>
       )}
-
-      {canEdit && product.boxesPerPallet && product.unitsPerBox && (
-        <FormConError
-          action={generateRecipeFromPresentation}
-          submitLabel="Generar receta"
-          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
-        >
-          <h2 className="text-sm font-semibold">Generar receta desde presentación</h2>
-          <p className="text-xs text-foreground/50">
-            Calcula automáticamente la cantidad de cada insumo por pallet armado a partir de
-            cajas/botellas/capacidad y la eficiencia de llenado. Dejá en blanco los insumos que
-            no apliquen.
-          </p>
-          <input type="hidden" name="productId" value={product.id} />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Pallet de madera">
-              <select name="woodPalletItemId" defaultValue="" className={selectClass}>
-                <option value="">— No aplica —</option>
-                {itemsPorCategoria("PALLET_NORMALIZADO").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Botella / bidón">
-              <select name="bottleItemId" defaultValue="" className={selectClass}>
-                <option value="">— No aplica —</option>
-                {itemsPorCategoria("ENVASES").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Tapa">
-              <select name="capItemId" defaultValue="" className={selectClass}>
-                <option value="">— No aplica —</option>
-                {itemsPorCategoria("TAPAS").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Etiqueta">
-              <select name="labelItemId" defaultValue="" className={selectClass}>
-                <option value="">— No aplica —</option>
-                {itemsPorCategoria("ETIQUETAS").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Caja">
-              <select name="boxItemId" defaultValue="" className={selectClass}>
-                <option value="">— No aplica —</option>
-                {itemsPorCategoria("CAJAS").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Aceite">
-              <select name="oilItemId" defaultValue="" className={selectClass}>
-                <option value="">— No aplica —</option>
-                {itemsPorCategoria("ACEITE").map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-        </FormConError>
-      )}
-
-      {canEdit && (
-        <FormConError
-          action={upsertRecipeLine}
-          submitLabel="Guardar"
-          className="grid max-w-xl gap-3 rounded-xl border border-foreground/10 bg-background shadow-sm p-4"
-        >
-          <h2 className="text-sm font-semibold">Agregar / actualizar insumo de la receta</h2>
-          <input type="hidden" name="productId" value={product.id} />
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="itemId">
-                Insumo
-              </label>
-              <select
-                id="itemId"
-                name="itemId"
-                required
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              >
-                {items.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name} ({item.unit})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="quantityPerUnit">
-                Cantidad por unidad de producto
-              </label>
-              <input
-                id="quantityPerUnit"
-                name="quantityPerUnit"
-                required
-                inputMode="decimal"
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              />
-            </div>
-          </div>
-          <p className="text-xs text-foreground/50">
-            &quot;Unidad de producto&quot; acá es 1 pallet armado (así se carga la producción
-            diaria de este producto).
-          </p>
-        </FormConError>
-      )}
-
-      <div>
-        <h2 className="text-sm font-semibold mb-2">Receta (BOM)</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                <th className="py-2 pr-4">Insumo</th>
-                <th className="py-2 pr-4">Cantidad por unidad</th>
-                {canEdit && <th className="py-2 pr-4"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {product.recipe.map((line) => (
-                <tr key={line.id} className="border-b border-foreground/5">
-                  <td className="py-2 pr-4">{line.item.name}</td>
-                  <td className="py-2 pr-4">
-                    {formatQuantity(line.quantityPerUnit, line.item.unit)}
-                  </td>
-                  {canEdit && (
-                    <td className="py-2 pr-4">
-                      <BotonConError
-                        action={deleteRecipeLine}
-                        hidden={{ recipeItemId: line.id, productId: product.id }}
-                        className="text-xs underline underline-offset-2"
-                      >
-                        Quitar
-                      </BotonConError>
-                    </td>
-                  )}
-                </tr>
-              ))}
-              {product.recipe.length === 0 && (
-                <tr>
-                  <td colSpan={canEdit ? 3 : 2} className="py-4 text-center text-foreground/40">
-                    Este producto todavía no tiene receta cargada.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       {canAdjust && (
         <FormConError
@@ -495,3 +460,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const selectClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
+
+const botonPrimario =
+  "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";

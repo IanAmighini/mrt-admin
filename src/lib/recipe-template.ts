@@ -65,6 +65,29 @@ function ml(value: Prisma.Decimal | number): number {
   return Math.round(Number(value));
 }
 
+type ItemDeReceta = { id: string; name: string; category: SupplierCategory; unit: string };
+
+/** Los nombres de insumo que puede llegar a usar la receta automática de una marca y un formato. */
+export function nombresDeLaPlantilla(marca: MarcaInfo, formato: FormatoInfo): string[] {
+  const capacidad = ml(formato.bottleCapacityMl);
+  const tramo = tramoDeCaja(capacidad);
+  const otraMedida = ETIQUETA_DE_OTRA_MEDIDA[`${marca.name} ${marca.oilType}`]?.[capacidad];
+  return [
+    "Pallet de madera",
+    `Envase ${capacidad}ml`,
+    tapaPorBoca(capacidad),
+    `Caja ${marca.name} ${formato.unitsPerBox}x${tramo}`,
+    `Caja Lisa ${formato.unitsPerBox}x${tramo}`,
+    `Aceite ${marca.oilType}`,
+    ...(marca.usaEtiqueta
+      ? [
+          `Etiqueta ${marca.name} ${marca.oilType} ${capacidad}ml`,
+          ...(otraMedida ? [`Etiqueta ${marca.name} ${marca.oilType} ${otraMedida}ml`] : []),
+        ]
+      : []),
+  ];
+}
+
 /**
  * Arma la receta de un producto a partir de su marca y su formato, sin que nadie la cargue a mano.
  *
@@ -76,13 +99,16 @@ function ml(value: Prisma.Decimal | number): number {
  * Si falta un insumo obligatorio **tira error en vez de saltearlo**: una receta incompleta no da
  * ningún aviso al envasar, simplemente no descuenta ese insumo, y el faltante recién aparece
  * cuando alguien cuenta el stock físico.
+ *
+ * No toca la base: recibe los insumos ya leídos, así se puede calcular la de todas las
+ * combinaciones de una vez para mostrarla antes de producir. `buildRecipeTemplate` es la que los lee.
  */
-export async function buildRecipeTemplate(
-  tx: Tx,
+export function plantillaDeReceta(
   marca: MarcaInfo,
   formato: FormatoInfo,
-  oilFillEfficiencyPercent: Prisma.Decimal | number
-): Promise<RecipeTemplateLine[]> {
+  oilFillEfficiencyPercent: Prisma.Decimal | number,
+  porNombre: Map<string, ItemDeReceta>
+): RecipeTemplateLine[] {
   const capacidad = ml(formato.bottleCapacityMl);
   const unitsPerPallet = formato.boxesPerPallet * formato.unitsPerBox;
   const tramo = tramoDeCaja(capacidad);
@@ -92,25 +118,6 @@ export async function buildRecipeTemplate(
   const etiquetaPropia = `Etiqueta ${marca.name} ${marca.oilType} ${capacidad}ml`;
   const otraMedida = ETIQUETA_DE_OTRA_MEDIDA[`${marca.name} ${marca.oilType}`]?.[capacidad];
   const etiquetaPrestada = otraMedida ? `Etiqueta ${marca.name} ${marca.oilType} ${otraMedida}ml` : null;
-
-  const nombres = [
-    "Pallet de madera",
-    `Envase ${capacidad}ml`,
-    tapaPorBoca(capacidad),
-    cajaDeMarca,
-    cajaLisa,
-    `Aceite ${marca.oilType}`,
-    ...(marca.usaEtiqueta ? [etiquetaPropia, ...(etiquetaPrestada ? [etiquetaPrestada] : [])] : []),
-  ];
-
-  const items = await tx.item.findMany({
-    // `llevaStock` acota a los que se pueden consumir: si alguien nombrara igual a un consumible
-    // que no lleva stock, la receta anotaría un consumo que no descuenta de ningún lado. Al no
-    // encontrarlo, `exigir()` avisa con nombre en vez de dejarlo pasar.
-    where: { name: { in: nombres }, llevaStock: true },
-    select: { id: true, name: true, category: true },
-  });
-  const porNombre = new Map(items.map((i) => [i.name, i]));
 
   const producto = `${marca.name} ${marca.oilType} ${formato.presentation}`;
   function exigir(nombre: string, categoria: SupplierCategory) {
@@ -155,4 +162,26 @@ export async function buildRecipeTemplate(
   }
 
   return lines;
+}
+
+/** Los insumos que se pueden poner en una receta, por nombre. */
+export async function insumosDeRecetaPorNombre(tx: Tx, nombres?: string[]): Promise<Map<string, ItemDeReceta>> {
+  const items = await tx.item.findMany({
+    // `llevaStock` acota a los que se pueden consumir: si alguien nombrara igual a un consumible
+    // que no lleva stock, la receta anotaría un consumo que no descuenta de ningún lado. Al no
+    // encontrarlo, `exigir()` avisa con nombre en vez de dejarlo pasar.
+    where: { ...(nombres ? { name: { in: nombres } } : {}), llevaStock: true },
+    select: { id: true, name: true, category: true, unit: true },
+  });
+  return new Map(items.map((i) => [i.name, i]));
+}
+
+export async function buildRecipeTemplate(
+  tx: Tx,
+  marca: MarcaInfo,
+  formato: FormatoInfo,
+  oilFillEfficiencyPercent: Prisma.Decimal | number
+): Promise<RecipeTemplateLine[]> {
+  const porNombre = await insumosDeRecetaPorNombre(tx, nombresDeLaPlantilla(marca, formato));
+  return plantillaDeReceta(marca, formato, oilFillEfficiencyPercent, porNombre);
 }

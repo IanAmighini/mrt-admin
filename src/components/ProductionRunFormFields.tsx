@@ -1,4 +1,4 @@
-import { ProductionLinesFields, type FilaInicial } from "@/app/(app)/produccion/ProductionLinesFields";
+import { ProductionLinesFields, type FilaInicial, type Predeterminados } from "@/app/(app)/produccion/ProductionLinesFields";
 import { ArmadoLinesFields, type FilaDeArmado } from "@/app/(app)/produccion/ArmadoLinesFields";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
@@ -12,6 +12,7 @@ export function ProductionRunFormFields({
   cajas,
   etiquetas,
   aceites,
+  predeterminados,
   editingRunId,
   defaultValues,
   defaultRows,
@@ -23,6 +24,7 @@ export function ProductionRunFormFields({
   cajas: ItemInfo[];
   etiquetas: ItemInfo[];
   aceites: ItemInfo[];
+  predeterminados: Predeterminados;
   /** Si viene, el formulario edita esta carga en vez de crear una nueva. */
   editingRunId?: string;
   defaultValues?: { date?: string; notes?: string };
@@ -60,6 +62,7 @@ export function ProductionRunFormFields({
         cajas={cajas}
         etiquetas={etiquetas}
         aceites={aceites}
+        predeterminados={predeterminados}
         defaultRows={defaultRows}
       />
       <ArmadoLinesFields marcas={marcas} formatos={formatos} defaultRows={defaultArmados} />

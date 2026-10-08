@@ -10,12 +10,14 @@ import { ProductionRunFormFields } from "@/components/ProductionRunFormFields";
 import { OilEfficiencyFields } from "@/components/OilEfficiencyFields";
 import { createProductionRun, deleteProductionRun, updateProductionRun, updateOilEfficiency } from "./actions";
 import { formatFecha, toDateInputValue } from "@/lib/period";
+import { getRecetasPorCombinacion } from "@/lib/recetas";
+import type { Predeterminados } from "./ProductionLinesFields";
 
 export default async function ProduccionPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [runs, oilFillEfficiencyPercent, marcas, formatos, tapas, cajas, etiquetas, aceites] = await Promise.all([
+  const [runs, oilFillEfficiencyPercent, marcas, formatos, tapas, cajas, etiquetas, aceites, recetas] = await Promise.all([
     prisma.productionRun.findMany({
       orderBy: { date: "desc" },
       include: {
@@ -60,7 +62,26 @@ export default async function ProduccionPage() {
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
+    canEdit ? getRecetasPorCombinacion() : null,
   ]);
+
+  // Qué dice la receta de cada combinación, para que el formulario muestre "Tapa Negra
+  // (predeterminada)" en vez de "la de la receta".
+  const predeterminados: Predeterminados = {};
+  for (const [clave, receta] of recetas ?? []) {
+    const deCategoria = (c: string) => {
+      const enReceta = receta.lineas.filter((l) => l.categoria === c);
+      // Con dos de la misma categoría no hay una predeterminada: el servidor tampoco deja elegir.
+      return enReceta.length === 1 ? { id: enReceta[0].itemId, name: enReceta[0].nombre } : undefined;
+    };
+    predeterminados[clave] = {
+      falta: receta.falta,
+      TAPAS: deCategoria("TAPAS"),
+      CAJAS: deCategoria("CAJAS"),
+      ETIQUETAS: deCategoria("ETIQUETAS"),
+      ACEITE: deCategoria("ACEITE"),
+    };
+  }
 
   // Qué insumo se usó de cada categoría reemplazable, comparando contra la receta: si lo que se
   // consumió no es lo que la receta dice, fue un reemplazo y hay que dejarlo elegido al editar.
@@ -158,12 +179,14 @@ export default async function ProduccionPage() {
         <div>
           <h1 className="text-xl font-semibold mb-1">Producción</h1>
           <p className="text-sm text-foreground/60">Historial de producción diaria.</p>
-          <Link
-            href="/produccion/catalogo"
-            className="mt-1 inline-block text-sm underline underline-offset-2"
-          >
-            Ver catálogo (marcas, formatos) →
-          </Link>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            <Link href="/produccion/recetas" className="underline underline-offset-2">
+              Recetas →
+            </Link>
+            <Link href="/produccion/catalogo" className="underline underline-offset-2">
+              Catálogo (marcas, formatos) →
+            </Link>
+          </div>
         </div>
         {canEdit && (
           <div className="flex flex-wrap gap-2">
@@ -171,7 +194,7 @@ export default async function ProduccionPage() {
               triggerLabel="Nueva producción"
               title="Cargar producción"
               action={createProductionRun}
-              maxWidthClass="max-w-2xl"
+              maxWidthClass="max-w-3xl"
             >
               <ProductionRunFormFields
                 marcas={marcas}
@@ -180,6 +203,7 @@ export default async function ProduccionPage() {
                 cajas={cajas}
                 etiquetas={etiquetas}
                 aceites={aceites}
+                predeterminados={predeterminados}
               />
             </FormModal>
             <FormModal
@@ -228,7 +252,7 @@ export default async function ProduccionPage() {
                       soloIcono
                       title="Editar carga de producción"
                       action={updateProductionRun}
-                      maxWidthClass="max-w-2xl"
+                      maxWidthClass="max-w-3xl"
                       iconName="edit"
                     >
                       <ProductionRunFormFields
@@ -238,6 +262,7 @@ export default async function ProduccionPage() {
                         cajas={cajas}
                         etiquetas={etiquetas}
                         aceites={aceites}
+                        predeterminados={predeterminados}
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
                         defaultRows={filasDe(run)}

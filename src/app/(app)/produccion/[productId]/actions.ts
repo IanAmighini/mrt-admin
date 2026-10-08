@@ -3,7 +3,7 @@
 import { UserError } from "@/lib/user-error";
 import { parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
-import type { ProductMovementType, SupplierCategory } from "@prisma/client";
+import type { ProductMovementType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { formatQuantity, parseNumeroEscrito, toDecimal } from "@/lib/money";
@@ -12,7 +12,7 @@ import { PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { getSetting } from "@/lib/settings";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { cajaDelProducto, enteroNoNegativo } from "@/lib/cajas";
-import { litrosPorPallet } from "@/lib/recipe-template";
+import { buildRecipeTemplate } from "@/lib/recipe-template";
 
 function parseOptionalInt(value: FormDataEntryValue | null): number | null {
   const str = String(value || "").trim();
@@ -77,126 +77,112 @@ export async function updateProduct(formData: FormData) {
   revalidatePath("/produccion");
 }
 
-export async function generateRecipeFromPresentation(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+/**
+ * Las recetas las toca sólo el admin: lo que dicen es lo que se descuenta de insumos en cada
+ * producción, y un cambio equivocado no avisa nada — aparece semanas después contando el stock.
+ */
+const QUIEN_EDITA_RECETAS = ["ADMIN"] as const;
+
+/**
+ * Vuelve la receta a la que se arma sola desde la marca y el formato, descartando lo que se le
+ * haya cambiado a mano. Para cuando se tocó de más, o cuando se cargó una etiqueta propia que antes
+ * no existía y la receta seguía con la prestada.
+ */
+export async function restaurarRecetaAutomatica(formData: FormData) {
+  const user = await requireRole([...QUIEN_EDITA_RECETAS]);
 
   const productId = String(formData.get("productId") || "");
-  if (!productId) throw new UserError("Falta el producto.");
-
-  const product = await prisma.product.findUnique({ where: { id: productId } });
+  const product = await prisma.product.findUnique({
+    where: { id: productId },
+    include: { recipe: { include: { item: true } } },
+  });
   if (!product) throw new UserError("El producto ya no existe.");
-  if (!product.boxesPerPallet || !product.unitsPerBox) {
-    throw new UserError(
-      "Este producto no tiene cargado cajas por pallet / botellas por caja — completalo en 'Editar producto'."
-    );
-  }
 
-  const unitsPerPallet = product.boxesPerPallet * product.unitsPerBox;
+  const [marca, formato] = await Promise.all([
+    prisma.marca.findUnique({ where: { name_oilType: { name: product.name, oilType: product.oilType } } }),
+    prisma.formato.findUnique({ where: { presentation: product.presentation } }),
+  ]);
+  if (!marca) throw new UserError(`No está la marca ${product.name} ${product.oilType} en el catálogo.`);
+  if (!formato) throw new UserError(`No está el formato ${product.presentation} en el catálogo.`);
 
-  const woodPalletItemId = String(formData.get("woodPalletItemId") || "");
-  const bottleItemId = String(formData.get("bottleItemId") || "");
-  const capItemId = String(formData.get("capItemId") || "");
-  const labelItemId = String(formData.get("labelItemId") || "");
-  const boxItemId = String(formData.get("boxItemId") || "");
-  const oilItemId = String(formData.get("oilItemId") || "");
-
-  // Cada rol del generador se corresponde con una categoría de insumo. Validarlo importa porque el
-  // resto de la app decide por categoría: cuál es la tapa de la receta, qué se puede reemplazar al
-  // producir, y qué líneas limpia el deleteMany de más abajo.
-  const ROLES: { itemId: string; category: SupplierCategory; label: string }[] = [
-    { itemId: woodPalletItemId, category: "PALLET_NORMALIZADO", label: "Pallet" },
-    { itemId: bottleItemId, category: "ENVASES", label: "Envase" },
-    { itemId: capItemId, category: "TAPAS", label: "Tapa" },
-    { itemId: labelItemId, category: "ETIQUETAS", label: "Etiqueta" },
-    { itemId: boxItemId, category: "CAJAS", label: "Caja" },
-    { itemId: oilItemId, category: "ACEITE", label: "Aceite" },
-  ];
-  const elegidos = ROLES.filter((r) => r.itemId);
-  const itemsElegidos = await prisma.item.findMany({
-    where: { id: { in: elegidos.map((r) => r.itemId) } },
-    select: { id: true, name: true, category: true },
-  });
-  for (const rol of elegidos) {
-    const item = itemsElegidos.find((i) => i.id === rol.itemId);
-    if (!item) throw new UserError(`El insumo elegido para ${rol.label} ya no existe.`);
-    if (item.category !== rol.category) {
-      throw new UserError(`"${item.name}" no es un insumo de ${rol.label.toLowerCase()}.`);
-    }
-  }
-
-  const lines: { itemId: string; quantityPerUnit: ReturnType<typeof toDecimal> }[] = [];
-
-  if (woodPalletItemId) {
-    lines.push({ itemId: woodPalletItemId, quantityPerUnit: toDecimal(1) });
-  }
-  for (const itemId of [bottleItemId, capItemId, labelItemId]) {
-    if (itemId) {
-      lines.push({ itemId, quantityPerUnit: toDecimal(unitsPerPallet) });
-    }
-  }
-  if (boxItemId) {
-    lines.push({ itemId: boxItemId, quantityPerUnit: toDecimal(product.boxesPerPallet) });
-  }
-  if (oilItemId) {
-    if (!product.bottleCapacityMl) {
-      throw new UserError(
-        "Este producto no tiene cargada la capacidad de la botella — completala en 'Editar producto'."
-      );
-    }
-    const efficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
-    lines.push({
-      itemId: oilItemId,
-      quantityPerUnit: litrosPorPallet(unitsPerPallet, product.bottleCapacityMl, efficiencyPercent),
-    });
-  }
-
-  if (lines.length === 0) {
-    throw new UserError("Elegí al menos un insumo para generar la receta.");
-  }
-
-  await prisma.$transaction(async (tx) => {
-    // Antes solo se hacía upsert, así que regenerar la receta con otra tapa dejaba las dos y
-    // producir consumía ambas. Se limpia lo anterior, pero **solo de las categorías que se
-    // completaron**: un rol vacío tiene que seguir significando "no toques", no "borrá". Excluir
-    // los recién elegidos lo hace idempotente.
-    await tx.recipeItem.deleteMany({
-      where: {
-        productId,
-        item: { category: { in: elegidos.map((r) => r.category) } },
-        itemId: { notIn: lines.map((l) => l.itemId) },
-      },
-    });
-
-    for (const line of lines) {
-      await tx.recipeItem.upsert({
-        where: { productId_itemId: { productId, itemId: line.itemId } },
-        update: { quantityPerUnit: line.quantityPerUnit },
-        create: { productId, itemId: line.itemId, quantityPerUnit: line.quantityPerUnit },
-      });
-    }
+  const efficiencyPercent = toDecimal(await getSetting("oilFillEfficiencyPercent", "100"));
+  const nueva = await prisma.$transaction(async (tx) => {
+    const lineas = await buildRecipeTemplate(tx, marca, formato, efficiencyPercent);
+    await tx.recipeItem.deleteMany({ where: { productId } });
+    await tx.recipeItem.createMany({ data: lineas.map((l) => ({ ...l, productId })) });
+    return tx.recipeItem.findMany({ where: { productId }, include: { item: true } });
   });
 
-  const nombresDeInsumo = new Map(itemsElegidos.map((i) => [i.id, i.name]));
+  const antes = new Map(product.recipe.map((r) => [r.item.name, r.quantityPerUnit.toString()]));
+  const despues = new Map(nueva.map((r) => [r.item.name, r.quantityPerUnit.toString()]));
+  const cambios = [...new Set([...antes.keys(), ...despues.keys()])]
+    .filter((nombre) => antes.get(nombre) !== despues.get(nombre))
+    .map((nombre) => ({ campo: nombre, antes: antes.get(nombre) ?? null, despues: despues.get(nombre) ?? null }));
 
   await logAudit(prisma, {
     userId: user.id,
     action: "UPDATE",
     entityType: "Receta",
     entityId: productId,
-    summary: `Receta de ${product.name} ${product.oilType} generada automáticamente — ${lines.length} insumo(s)`,
-    cambios: lines.map((l) => ({
-      campo: `${nombresDeInsumo.get(l.itemId) ?? "Insumo"} por unidad`,
-      antes: null,
-      despues: l.quantityPerUnit.toString(),
-    })),
+    summary: `Receta de ${formatProductBrandLabel(product)} ${product.presentation} vuelta a la automática`,
+    cambios,
   });
 
   revalidatePath(`/produccion/${product.slug}`);
   revalidatePath("/produccion");
 }
 
+/** Cambia una línea de la receta: otro insumo, otra cantidad, o las dos. */
+export async function updateRecipeLine(formData: FormData) {
+  const user = await requireRole([...QUIEN_EDITA_RECETAS]);
+
+  const recipeItemId = String(formData.get("recipeItemId") || "");
+  const itemId = String(formData.get("itemId") || "");
+  const cantidadRaw = String(formData.get("quantityPerUnit") || "").trim();
+  if (!recipeItemId || !itemId) throw new UserError("Faltan datos.");
+  if (!cantidadRaw) throw new UserError("Falta la cantidad por pallet.");
+  const quantityPerUnit = parseNumeroEscrito(cantidadRaw, "cantidad por pallet");
+  if (!quantityPerUnit.greaterThan(0)) throw new UserError("La cantidad por pallet tiene que ser mayor a cero.");
+
+  const linea = await prisma.recipeItem.findUnique({
+    where: { id: recipeItemId },
+    include: { item: true, product: { select: { id: true, slug: true } } },
+  });
+  if (!linea) throw new UserError("Esa línea de la receta ya no existe.");
+  const item = await prisma.item.findUnique({ where: { id: itemId } });
+  if (!item) throw new UserError("El insumo elegido ya no existe.");
+  if (!item.llevaStock) {
+    throw new UserError(`"${item.name}" no lleva stock: ponerlo en la receta anotaría un consumo que no descuenta de ningún lado.`);
+  }
+  if (itemId !== linea.itemId) {
+    const repetido = await prisma.recipeItem.findUnique({
+      where: { productId_itemId: { productId: linea.productId, itemId } },
+    });
+    if (repetido) throw new UserError(`"${item.name}" ya está en la receta: cambiá esa línea en vez de esta.`);
+  }
+
+  await prisma.recipeItem.update({ where: { id: recipeItemId }, data: { itemId, quantityPerUnit } });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Receta",
+    entityId: linea.productId,
+    summary: itemId === linea.itemId ? `${item.name} — ${cantidadRaw} por pallet` : `${linea.item.name} → ${item.name}`,
+    cambios: [
+      ...(itemId !== linea.itemId ? [{ campo: "Insumo", antes: linea.item.name, despues: item.name }] : []),
+      ...(!quantityPerUnit.equals(linea.quantityPerUnit)
+        ? [{ campo: `${item.name} por pallet`, antes: linea.quantityPerUnit.toString(), despues: quantityPerUnit.toString() }]
+        : []),
+    ],
+  });
+
+  revalidatePath(`/produccion/${linea.product.slug}`);
+  revalidatePath("/produccion");
+}
+
 export async function upsertRecipeLine(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole([...QUIEN_EDITA_RECETAS]);
 
   const productId = String(formData.get("productId") || "");
   const itemId = String(formData.get("itemId") || "");
@@ -214,6 +200,10 @@ export async function upsertRecipeLine(formData: FormData) {
     prisma.item.findUnique({ where: { id: itemId } }),
     prisma.product.findUnique({ where: { id: productId }, select: { slug: true } }),
   ]);
+  if (!item) throw new UserError("El insumo elegido ya no existe.");
+  if (!item.llevaStock) {
+    throw new UserError(`"${item.name}" no lleva stock: ponerlo en la receta anotaría un consumo que no descuenta de ningún lado.`);
+  }
 
   // Lo que había antes para ese insumo, que es lo único que cambia: si no existía, es un alta.
   const anterior = await prisma.recipeItem.findUnique({
@@ -247,19 +237,16 @@ export async function upsertRecipeLine(formData: FormData) {
 }
 
 export async function deleteRecipeLine(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  const user = await requireRole([...QUIEN_EDITA_RECETAS]);
 
   const recipeItemId = String(formData.get("recipeItemId") || "");
-  const productId = String(formData.get("productId") || "");
   if (!recipeItemId) throw new UserError("Falta el ítem de receta.");
 
-  const [recipeItem, product] = await Promise.all([
-    prisma.recipeItem.findUnique({
-      where: { id: recipeItemId },
-      include: { item: true },
-    }),
-    prisma.product.findUnique({ where: { id: productId }, select: { slug: true } }),
-  ]);
+  const recipeItem = await prisma.recipeItem.findUnique({
+    where: { id: recipeItemId },
+    include: { item: true, product: { select: { slug: true } } },
+  });
+  if (!recipeItem) throw new UserError("Esa línea de la receta ya no existe.");
 
   await prisma.recipeItem.delete({ where: { id: recipeItemId } });
 
@@ -267,20 +254,18 @@ export async function deleteRecipeLine(formData: FormData) {
     userId: user.id,
     action: "DELETE",
     entityType: "Receta",
-    entityId: productId,
-    summary: recipeItem ? recipeItem.item.name : "Ítem de receta",
-    cambios: recipeItem
-      ? [
-          {
-            campo: `${recipeItem.item.name} por unidad`,
-            antes: recipeItem.quantityPerUnit.toString(),
-            despues: null,
-          },
-        ]
-      : undefined,
+    entityId: recipeItem.productId,
+    summary: recipeItem.item.name,
+    cambios: [
+      {
+        campo: `${recipeItem.item.name} por pallet`,
+        antes: recipeItem.quantityPerUnit.toString(),
+        despues: null,
+      },
+    ],
   });
 
-  revalidatePath(`/produccion/${product?.slug ?? productId}`);
+  revalidatePath(`/produccion/${recipeItem.product.slug}`);
   revalidatePath("/produccion");
 }
 
