@@ -9,6 +9,7 @@ import {
   type Circuit,
   type Currency,
   type DocumentType,
+  type EstadoDevolucion,
   type ExpenseCategory,
   type PaymentMethod,
   type RetentionKind,
@@ -22,6 +23,7 @@ import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
 import {
   CIRCUIT_LABELS,
   DOCUMENT_TYPE_LABELS,
+  ESTADO_DEVOLUCION_LABELS,
   EXPENSE_CATEGORY_LABELS,
   PAYMENT_METHOD_LABELS,
   RETENTION_KIND_LABELS,
@@ -756,6 +758,8 @@ async function leerLineasDeProducto(formData: FormData, currency: Currency, exch
   const productIds = formData.getAll("lineProductId").map(String);
   const quantities = formData.getAll("lineQuantity").map(String);
   const cajasPorLinea = formData.getAll("lineCajas").map(String);
+  // Sólo las devoluciones las mandan: un cliente puede devolver botellas sin caja.
+  const botellasPorLinea = formData.getAll("lineBotellas").map(String);
   const unitPrices = formData.getAll("lineUnitPrice").map(String);
   const circuits = formData.getAll("lineCircuit").map(String);
   const preciosBotella = formData.getAll("linePrecioBotella").map(String);
@@ -764,6 +768,7 @@ async function leerLineasDeProducto(formData: FormData, currency: Currency, exch
     ["precio por botella", preciosBotella],
     ["precio por botella en U$S", preciosBotellaUsd],
     ["cajas sueltas", cajasPorLinea],
+    ["botellas sueltas", botellasPorLinea],
   ] as const) {
     if (arr.length > 0 && arr.length !== productIds.length) {
       throw new UserError(`El formulario llegó incompleto (${nombre}) — recargá la página y volvé a cargarlo.`);
@@ -785,6 +790,7 @@ async function leerLineasDeProducto(formData: FormData, currency: Currency, exch
     // ---- cantidades
     let pallets: number | null = null;
     let cajas: number | null = null;
+    let botellas = 0;
     let quantity: Prisma.Decimal;
     if (conCajas) {
       // Opcionales: la fila vacía que queda al tocar "+ Agregar línea" se descarta abajo. Un número
@@ -794,9 +800,17 @@ async function leerLineasDeProducto(formData: FormData, currency: Currency, exch
       if (c0 > 0 && !bpp) {
         throw new UserError(`${nombre} no tiene cargadas las cajas por pallet, así que no se pueden entregar cajas sueltas.`);
       }
+      const b0 = enteroNoNegativo(parseNumeroOpcional(botellasPorLinea[i] ?? "", "botellas"), `${nombre}, botellas`);
+      if (b0 > 0 && (!bpp || !upb)) {
+        throw new UserError(`${nombre} no tiene cargadas las cajas por pallet y las botellas por caja, así que no se pueden contar botellas sueltas.`);
+      }
       pallets = p0;
       cajas = c0;
-      quantity = toDecimal(p0).plus(c0 > 0 ? toDecimal(c0).dividedBy(bpp!) : 0).toDecimalPlaces(3);
+      botellas = b0;
+      quantity = toDecimal(p0)
+        .plus(c0 > 0 ? toDecimal(c0).dividedBy(bpp!) : 0)
+        .plus(b0 > 0 ? toDecimal(b0).dividedBy(bpp! * upb!) : 0)
+        .toDecimalPlaces(3);
     } else {
       quantity = parseNumeroOpcional(quantities[i] ?? "", "cantidad");
     }
@@ -823,7 +837,18 @@ async function leerLineasDeProducto(formData: FormData, currency: Currency, exch
     if (!porBotella) {
       // Un formulario viejo, que todavía manda el precio del pallet ya calculado.
       const unitPrice = parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario");
-      return { productId, circuit, pallets, cajas, quantity, unitPrice, precioBotellaUsd, subtotal: quantity.times(unitPrice).toDecimalPlaces(2) };
+      return {
+        indice: i,
+        productId,
+        circuit,
+        pallets,
+        cajas,
+        botellas,
+        quantity,
+        unitPrice,
+        precioBotellaUsd,
+        subtotal: quantity.times(unitPrice).toDecimalPlaces(2),
+      };
     }
     if (!bpp || !upb) {
       throw new UserError(
@@ -833,16 +858,18 @@ async function leerLineasDeProducto(formData: FormData, currency: Currency, exch
     const unitPrice = porBotella.times(bpp * upb).toDecimalPlaces(2);
     // El subtotal sale de las botellas, no de `quantity` × precio: el equivalente en pallets de unas
     // cajas sueltas (48 de 105 = 0,457…) se redondea, y correría el importe.
-    const botellas = conCajas ? (pallets! * bpp + cajas!) * upb : quantity.times(bpp * upb);
+    const totalBotellas = conCajas ? (pallets! * bpp + cajas!) * upb + botellas : quantity.times(bpp * upb);
     return {
+      indice: i,
       productId,
       circuit,
       pallets,
       cajas,
+      botellas,
       quantity,
       unitPrice,
       precioBotellaUsd,
-      subtotal: porBotella.times(botellas).toDecimalPlaces(2),
+      subtotal: porBotella.times(totalBotellas).toDecimalPlaces(2),
     };
   })
     // Sin exigir precio > 0: una línea sin cargo es legítima (una muestra) y descartarla en
@@ -927,6 +954,156 @@ async function moverStockDeLinea(
   });
 }
 
+type LineaDeProducto = Awaited<ReturnType<typeof leerLineasDeProducto>>[number];
+type EstadoDeLinea = {
+  estado: EstadoDevolucion;
+  cajasRotas: number | null;
+  botellasSanas: number | null;
+  palletsRearmados: boolean | null;
+};
+type LineaDevuelta = LineaDeProducto & { estado: EstadoDeLinea; bpp: number; upb: number };
+
+/**
+ * En qué estado volvió cada línea. Los campos se aparean por posición con las líneas del
+ * formulario —`indice`—, porque las vacías se descartan al leerlas.
+ */
+async function leerEstadosDeDevolucion(formData: FormData, lines: LineaDeProducto[]): Promise<LineaDevuelta[]> {
+  const estados = formData.getAll("lineEstado").map(String);
+  const cajasRotas = formData.getAll("lineCajasRotas").map(String);
+  const botellasSanas = formData.getAll("lineBotellasSanas").map(String);
+  const destinos = formData.getAll("linePalletsDestino").map(String);
+  const productos = new Map(
+    (await prisma.product.findMany({ where: { id: { in: lines.map((l) => l.productId) } } })).map((p) => [p.id, p])
+  );
+
+  return lines.map((l) => {
+    const p = productos.get(l.productId)!;
+    const nombre = `${p.name} ${p.oilType} ${p.presentation}`;
+    if (l.pallets === null || l.cajas === null) {
+      throw new UserError("El formulario llegó incompleto — recargá la página y volvé a cargar la devolución.");
+    }
+    const bpp = p.boxesPerPallet ?? 0;
+    const upb = p.unitsPerBox ?? 0;
+    const estado = (estados[l.indice] || "SANO") as EstadoDevolucion;
+    if (!["SANO", "CON_ROTURAS", "NO_SIRVE"].includes(estado)) throw new UserError(`${nombre}: estado inválido.`);
+    if (estado !== "CON_ROTURAS") {
+      return { ...l, bpp, upb, estado: { estado, cajasRotas: null, botellasSanas: null, palletsRearmados: null } };
+    }
+
+    if (!bpp || !upb) {
+      throw new UserError(`${nombre} no tiene cargadas las cajas por pallet y las botellas por caja: no se pueden contar las roturas.`);
+    }
+    const rotas = enteroNoNegativo(parseNumeroOpcional(cajasRotas[l.indice] ?? "", "cajas rotas"), `${nombre}, cajas rotas`);
+    const sanas = enteroNoNegativo(parseNumeroOpcional(botellasSanas[l.indice] ?? "", "botellas sanas"), `${nombre}, botellas sanas`);
+    const cajasQueVinieron = l.pallets * bpp + l.cajas;
+    if (rotas === 0 && sanas === l.botellas) {
+      throw new UserError(`${nombre}: si vino con roturas, cargá cuántas cajas no sirven o cuántas botellas quedaron sanas.`);
+    }
+    if (rotas > cajasQueVinieron) {
+      throw new UserError(`${nombre}: hay ${rotas} cajas rotas pero volvieron ${cajasQueVinieron} cajas.`);
+    }
+    // Las sanas salen de las botellas que vinieron sueltas y de las cajas rotas que se abrieron.
+    if (sanas > rotas * upb + l.botellas) {
+      throw new UserError(
+        `${nombre}: ${sanas} botellas sanas son más de las que hay entre las cajas rotas y las botellas sueltas (${rotas * upb + l.botellas}).`
+      );
+    }
+    const destino = destinos[l.indice];
+    if (l.pallets > 0 && destino !== "REARMADO" && destino !== "DESARMADO") {
+      throw new UserError(`${nombre}: elegí si los pallets se volvieron a armar o se desarmaron.`);
+    }
+    return {
+      ...l,
+      bpp,
+      upb,
+      estado: {
+        estado,
+        cajasRotas: rotas,
+        botellasSanas: sanas,
+        palletsRearmados: l.pallets > 0 ? destino === "REARMADO" : null,
+      },
+    };
+  });
+}
+
+/** Lo devuelto en palabras, para Actividad: "1 pallet + 3 cajas, con roturas: 2 cajas rotas…". */
+function describirDevuelto(l: LineaDevuelta) {
+  const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+  const partes = [
+    l.pallets ? plural(l.pallets, "pallet", "pallets") : null,
+    l.cajas ? plural(l.cajas, "caja", "cajas") : null,
+    l.botellas ? plural(l.botellas, "botella", "botellas") : null,
+  ].filter(Boolean);
+  const { estado, cajasRotas, botellasSanas, palletsRearmados } = l.estado;
+  let detalle = ESTADO_DEVOLUCION_LABELS[estado].toLowerCase();
+  if (estado === "CON_ROTURAS") {
+    detalle += `: ${plural(cajasRotas ?? 0, "caja rota", "cajas rotas")}, ${plural(botellasSanas ?? 0, "botella sana", "botellas sanas")} sueltas`;
+    if (palletsRearmados !== null) detalle += palletsRearmados ? ", pallets rearmados con cajas del stock" : ", pallets desarmados";
+  }
+  return `${partes.join(" + ")} (${detalle})`;
+}
+
+/**
+ * Lo que una línea de devolución le hace al stock, según cómo volvió. Todo cuelga de la línea:
+ * borrar la nota de crédito lo deshace entero.
+ *
+ * - **Sano**: los pallets, las cajas y las botellas vuelven tal como vinieron.
+ * - **Con roturas**: vuelve lo que vino y las cajas rotas se dan de baja como merma. Si había
+ *   pallets, o se rearmaron —el pallet vuelve completo y las cajas que reemplazaron a las rotas
+ *   salen de las sueltas— o se desarmaron y todo queda en cajas sueltas. Las botellas sanas quedan
+ *   sueltas, para juntarlas en cajas.
+ * - **No sirve nada**: no entra nada. La nota de crédito se hace igual: eso lo decide el precio.
+ */
+async function moverStockDeDevolucion(
+  tx: Prisma.TransactionClient,
+  params: { line: LineaDevuelta; documentLineId: string; date: Date; motivo: string; userId: string }
+) {
+  const { line, documentLineId, date, motivo, userId } = params;
+  const { estado, cajasRotas, botellasSanas, palletsRearmados } = line.estado;
+  if (estado === "NO_SIRVE") return;
+
+  const pallets = line.pallets ?? 0;
+  const cajas = line.cajas ?? 0;
+  const base = { date, documentLineId, createdById: userId };
+  if (pallets > 0) {
+    await tx.productMovement.create({
+      data: { ...base, productId: line.productId, quantity: pallets, type: "DEVOLUCION", reason: motivo },
+    });
+  }
+
+  const botellas = estado === "SANO" ? line.botellas : (botellasSanas ?? 0);
+  const rotas = estado === "CON_ROTURAS" ? (cajasRotas ?? 0) : 0;
+  const desarmar = estado === "CON_ROTURAS" && pallets > 0 && palletsRearmados === false;
+  if (cajas === 0 && botellas === 0 && rotas === 0 && !desarmar) return;
+
+  const product = await tx.product.findUniqueOrThrow({ where: { id: line.productId } });
+  const cajaId = await cajaDelProducto(tx, product);
+
+  if (desarmar) {
+    const motivoDesarmado = `Desarmado de lo devuelto con roturas — ${motivo}`;
+    await tx.productMovement.create({
+      data: { ...base, productId: line.productId, quantity: -pallets, type: "DESARMADO", reason: motivoDesarmado },
+    });
+    await tx.cajaMovement.create({
+      data: { ...base, cajaId, quantity: pallets * line.bpp, type: "DESARMADO", reason: motivoDesarmado },
+    });
+  }
+  if (cajas > 0 || botellas > 0) {
+    await tx.cajaMovement.create({ data: { ...base, cajaId, quantity: cajas, botellas, type: "DEVOLUCION", reason: motivo } });
+  }
+  if (rotas > 0) {
+    await tx.cajaMovement.create({
+      data: {
+        ...base,
+        cajaId,
+        quantity: -rotas,
+        type: "MERMA",
+        reason: `Cajas rotas — ${motivo}${pallets > 0 && palletsRearmados ? " (reemplazadas al rearmar el pallet)" : ""}`,
+      },
+    });
+  }
+}
+
 /**
  * Un cliente devuelve mercadería: vuelve al stock y se le hace una nota de crédito por lo que vale.
  *
@@ -950,8 +1127,9 @@ export async function crearDevolucion(formData: FormData) {
 
   const currency: Currency = entity.moneda;
   const exchangeRate = leerCotizacion(formData.get("exchangeRate"));
-  const lines = await leerLineasDeProducto(formData, currency, exchangeRate);
-  if (lines.length === 0) throw new UserError("Cargá al menos una línea con lo que se devolvió.");
+  const lineasLeidas = await leerLineasDeProducto(formData, currency, exchangeRate);
+  if (lineasLeidas.length === 0) throw new UserError("Cargá al menos una línea con lo que se devolvió.");
+  const lines = await leerEstadosDeDevolucion(formData, lineasLeidas);
 
   const accounts = await prisma.account.findMany({ where: { entityId } });
   const porCircuito = new Map<"BLANCO" | "NEGRO", typeof lines>();
@@ -1000,17 +1178,21 @@ export async function crearDevolucion(formData: FormData) {
             quantity: l.quantity,
             pallets: l.pallets,
             cajas: l.cajas,
+            botellas: l.botellas,
             unitPrice: l.unitPrice,
             precioBotellaUsd: l.precioBotellaUsd,
             subtotal: l.subtotal,
+            estadoDevolucion: l.estado.estado,
+            cajasRotas: l.estado.cajasRotas,
+            botellasSanas: l.estado.botellasSanas,
+            palletsRearmados: l.estado.palletsRearmados,
           },
         });
-        await moverStockDeLinea(tx, {
+        await moverStockDeDevolucion(tx, {
           line: l,
           documentLineId: documentLine.id,
           date,
           motivo: `Devolución NC ${number}`,
-          tipo: "DEVOLUCION",
           userId: user.id,
         });
       }
@@ -1032,12 +1214,7 @@ export async function crearDevolucion(formData: FormData) {
           campo: "Lo devuelto",
           antes: null,
           despues: lines
-            .map((l) => {
-              const nombre = nombres.get(l.productId) ?? "?";
-              if (l.pallets === null) return `${nombre} × ${formatNumeroExacto(l.quantity)} pallets`;
-              const partes = [l.pallets > 0 ? `${l.pallets} pallets` : null, l.cajas ? `${l.cajas} cajas` : null].filter(Boolean);
-              return `${nombre} × ${partes.join(" + ")}`;
-            })
+            .map((l) => `${nombres.get(l.productId) ?? "?"} × ${describirDevuelto(l)}`)
             .join("\n"),
         },
         { campo: "Nota de crédito", antes: null, despues: formatMoney(total, currency) },

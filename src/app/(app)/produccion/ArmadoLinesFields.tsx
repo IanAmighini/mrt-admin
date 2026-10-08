@@ -10,7 +10,7 @@ type Row = {
   key: number;
   marcaId: string;
   formatoId: string;
-  accion: "ARMADO" | "DESARMADO";
+  accion: "ARMADO" | "DESARMADO" | "CAJAS_DE_BOTELLAS";
   pallets: string;
 };
 
@@ -50,14 +50,14 @@ export function ArmadoLinesFields({
   return (
     <div className="space-y-2">
       <div>
-        <p className="text-sm font-medium">Armado y desarmado de pallets</p>
+        <p className="text-sm font-medium">Armado y desarmado</p>
         <p className="text-xs text-foreground/50">
-          Con cajas que ya estaban hechas. No descuenta insumos: sólo pasa cajas de sueltas a pallet, o
-          al revés.
+          Con cajas que ya estaban hechas: pasa cajas de sueltas a pallet, o al revés, sin descontar insumos.
+          Las cajas armadas con botellas sueltas (las sanas de una devolución) descuentan sólo la caja de cartón.
         </p>
       </div>
       {rows.map((row) => (
-        <div key={row.key} className="grid grid-cols-[1fr_1fr_auto_5rem_auto] items-end gap-2">
+        <div key={row.key} className="grid grid-cols-[1fr_1fr_auto_4.5rem_auto] items-end gap-2">
           <div>
             <label className="text-xs text-foreground/60">Marca</label>
             <select
@@ -98,12 +98,13 @@ export function ArmadoLinesFields({
               onChange={(e) => updateRow(row.key, { accion: e.target.value as Row["accion"] })}
               className={inputClass}
             >
-              <option value="ARMADO">Se armó</option>
-              <option value="DESARMADO">Se desarmó</option>
+              <option value="ARMADO">Se armó pallet</option>
+              <option value="DESARMADO">Se desarmó pallet</option>
+              <option value="CAJAS_DE_BOTELLAS">Cajas con botellas sueltas</option>
             </select>
           </div>
           <div>
-            <label className="text-xs text-foreground/60">Pallets</label>
+            <label className="text-xs text-foreground/60">{row.accion === "CAJAS_DE_BOTELLAS" ? "Cajas" : "Pallets"}</label>
             <input
               name="armadoPallets"
               value={row.pallets}

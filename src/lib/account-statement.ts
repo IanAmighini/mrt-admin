@@ -7,6 +7,7 @@ import {
   CIRCUIT_LABELS,
   DOCUMENT_TYPE_LABELS,
   PAYMENT_METHOD_LABELS,
+  ESTADO_DEVOLUCION_LABELS,
   TREASURY_MOVEMENT_CATEGORY_LABELS,
 } from "@/lib/labels";
 import { formatProductBrandLabel } from "@/lib/product-label";
@@ -72,7 +73,18 @@ export function documentSubtitle(
               perPallet > 0
                 ? `${formatMoney(l.unitPrice.dividedBy(perPallet), doc.currency)}/bot.`
                 : `${formatMoney(l.unitPrice, doc.currency)}/pallet`;
-            return `${formatProductBrandLabel(l.product)} — ${l.product.presentation} — ${formatQuantity(l.quantity, "pallets")} — ${priceLabel}`;
+            // En una devolución se dice lo que volvió de verdad y en qué estado: "2,083 pallets" no
+            // dice que vinieron 2 pallets y 3 cajas, ni que eran botellas rotas.
+            const cantidad = l.estadoDevolucion
+              ? [
+                  l.pallets ? `${l.pallets} ${l.pallets === 1 ? "pallet" : "pallets"}` : null,
+                  l.cajas ? `${l.cajas} ${l.cajas === 1 ? "caja" : "cajas"}` : null,
+                  l.botellas ? `${l.botellas} ${l.botellas === 1 ? "botella" : "botellas"}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" + ") + ` (${ESTADO_DEVOLUCION_LABELS[l.estadoDevolucion].toLowerCase()})`
+              : formatQuantity(l.quantity, "pallets");
+            return `${formatProductBrandLabel(l.product)} — ${l.product.presentation} — ${cantidad} — ${priceLabel}`;
           })
           .join(" · ")
       : doc.purchaseLines.length > 0

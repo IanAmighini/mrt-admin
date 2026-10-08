@@ -58,6 +58,15 @@ export async function getStockDeCajas(db: Cliente = prisma): Promise<Map<string,
 }
 
 /**
+ * Las botellas sueltas de cada caja: las sanas de las devoluciones con roturas, que se juntan hasta
+ * completar cajas. Sólo las que tienen alguna.
+ */
+export async function getBotellasSueltas(db: Cliente = prisma): Promise<Map<string, number>> {
+  const filas = await db.cajaMovement.groupBy({ by: ["cajaId"], _sum: { botellas: true } });
+  return new Map(filas.filter((f) => (f._sum.botellas ?? 0) !== 0).map((f) => [f.cajaId, f._sum.botellas ?? 0]));
+}
+
+/**
  * Lo que va en una caja suelta y no en un pallet: todo lo de la receta menos el pallet de madera y
  * el stretch, que son del pallet. La receta está escrita por pallet, así que cada renglón se divide
  * por las cajas que lleva.

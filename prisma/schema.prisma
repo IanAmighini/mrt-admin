@@ -373,13 +373,13 @@ model DocumentTax {
 }
 
 model DocumentLine {
-  id         String   @id @default(cuid())
-  documentId String
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  productId  String
-  product    Product  @relation(fields: [productId], references: [id])
-  quantity   Decimal  @db.Decimal(14, 3)
-  unitPrice  Decimal  @db.Decimal(14, 2)
+  id               String   @id @default(cuid())
+  documentId       String
+  document         Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id])
+  quantity         Decimal  @db.Decimal(14, 3)
+  unitPrice        Decimal  @db.Decimal(14, 2)
   /// El precio por botella en U$S que se pactó, cuando el cliente paga en dólares (La Campechana).
   /// `unitPrice` es esto × cotización × botellas por pallet, en la moneda de la cuenta; se guarda el
   /// original porque es el número con el que se controla, y la cotización ya queda en el remito.
@@ -387,9 +387,20 @@ model DocumentLine {
   /// Pallets enteros y cajas sueltas de la línea. `quantity` es su equivalente en pallets, que es
   /// con lo que se suma en los reportes; estos dos son lo que se movió del stock. Vacíos en las
   /// líneas de antes de que hubiera cajas sueltas.
-  pallets    Int?
-  cajas      Int?
-  subtotal   Decimal  @db.Decimal(14, 2)
+  pallets          Int?
+  cajas            Int?
+  /// Botellas sueltas, sin caja: sólo en devoluciones, que es lo único que llega así.
+  botellas         Int?
+  subtotal         Decimal  @db.Decimal(14, 2)
+
+  /// En una devolución, en qué estado volvió. Vacío en remitos y en las devoluciones de antes.
+  estadoDevolucion EstadoDevolucion?
+  /// Con roturas: cuántas cajas no sirven como caja (rotas, o abiertas para sacar las sanas).
+  cajasRotas       Int?
+  /// Con roturas: las botellas sanas que quedan sueltas, de las que vinieron así y de las cajas rotas.
+  botellasSanas    Int?
+  /// Con roturas y pallets: si el pallet se volvió a armar con cajas del stock (true) o se desarmó.
+  palletsRearmados Boolean?
 
   productMovements ProductMovement[]
   cajaMovements    CajaMovement[]
@@ -398,26 +409,36 @@ model DocumentLine {
   @@index([productId])
 }
 
+/// Cómo volvió lo que devolvió un cliente: decide qué entra al stock.
+enum EstadoDevolucion {
+  /// Todo sano: los pallets, las cajas y las botellas vuelven al stock tal como vinieron.
+  SANO
+  /// Una parte rota: las cajas rotas se dan de baja y las botellas sanas quedan sueltas.
+  CON_ROTURAS
+  /// No sirve nada: no entra nada al stock, y la nota de crédito se hace igual.
+  NO_SIRVE
+}
+
 model PurchaseLine {
-  id           String   @id @default(cuid())
-  documentId   String
-  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  itemId       String
-  item         Item     @relation(fields: [itemId], references: [id])
-  quantity     Decimal  @db.Decimal(14, 3)
+  id             String   @id @default(cuid())
+  documentId     String
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  itemId         String
+  item           Item     @relation(fields: [itemId], references: [id])
+  quantity       Decimal  @db.Decimal(14, 3)
   /// Cuatro decimales y no dos: cuando el precio se pacta en U$S, 0,1483 x 1.481,50 = 219,7065 y
   /// redondear a 219,71 corre el total del remito varios pesos.
-  unitPrice    Decimal  @db.Decimal(14, 4)
+  unitPrice      Decimal  @db.Decimal(14, 4)
   /// Precio pactado en U$S por unidad, cuando lo hay. `unitPrice` es este por la cotización del
   /// remito; se guarda el original porque es el que no se mueve y con el que se controla la cuenta.
-  unitPriceUsd Decimal? @db.Decimal(14, 6)
+  unitPriceUsd   Decimal? @db.Decimal(14, 6)
   /// Aceite: los kilos del ticket de balanza. La cantidad son los litros que dan (kilos ÷ 0,91); se
   /// guardan los kilos porque son el dato del papel, y los litros son una cuenta.
   kilos          Decimal? @db.Decimal(14, 3)
   /// Aceite: el precio pactado en U$S por tonelada. El subtotal sale de kilos ÷ 1000 × esto, y no
   /// de litros × precio por litro: por litro habría que redondear y el total se correría.
   precioTonelada Decimal? @db.Decimal(14, 4)
-  subtotal     Decimal  @db.Decimal(14, 2)
+  subtotal       Decimal  @db.Decimal(14, 2)
 
   @@index([documentId])
   @@index([itemId])
@@ -436,59 +457,59 @@ model DocumentLink {
 }
 
 model Payment {
-  id            String         @id @default(cuid())
-  accountId     String
-  account       Account        @relation(fields: [accountId], references: [id])
-  date          DateTime
+  id              String         @id @default(cuid())
+  accountId       String
+  account         Account        @relation(fields: [accountId], references: [id])
+  date            DateTime
   /// En la moneda de la cuenta. Si la cuenta va en dólares, esto son dólares.
-  amount        Decimal        @db.Decimal(14, 2)
-  currency      Currency       @default(ARS)
+  amount          Decimal        @db.Decimal(14, 2)
+  currency        Currency       @default(ARS)
   /// Con qué cotización se pagó, cuando el pago se hizo en pesos contra una cuenta en dólares.
   /// Guardarla es lo que deja reconstruir cuántos pesos salieron del banco.
-  exchangeRate  Decimal?       @db.Decimal(12, 4)
+  exchangeRate    Decimal?       @db.Decimal(12, 4)
   /// Los pesos que de verdad salieron, cuando la cuenta va en dólares. Es un dato, no una cuenta:
   /// reconstruirlo como `amount × exchangeRate` no da lo mismo, porque los dólares se guardan
   /// redondeados a dos decimales y ahí se pierden unos pesos. La caja tiene que decir lo que
   /// realmente se movió.
-  amountArs     Decimal?       @db.Decimal(14, 2)
-  method        PaymentMethod
+  amountArs       Decimal?       @db.Decimal(14, 2)
+  method          PaymentMethod
   /// Solo cuando `method` es RETENCION: contra qué impuesto se imputa.
-  retentionKind RetentionKind?
-  reference     String?
+  retentionKind   RetentionKind?
+  reference       String?
   /// El número que da el banco a una transferencia (operación, código de identificación o
   /// referencia, según el banco). Si el cobro va directo a un proveedor, pasa a su pago y sale en
   /// la orden de pago.
   numeroOperacion String?
-  createdById   String
-  createdBy     User           @relation(fields: [createdById], references: [id])
-  createdAt     DateTime       @default(now())
+  createdById     String
+  createdBy       User           @relation(fields: [createdById], references: [id])
+  createdAt       DateTime       @default(now())
 
   /**
    * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.
    */
-  treasuryId      String?
-  treasury        Entity?    @relation(fields: [treasuryId], references: [id])
+  treasuryId        String?
+  treasury          Entity?    @relation(fields: [treasuryId], references: [id])
   /// El cheque que entró con este cobro.
   chequeRecibido    Cheque?    @relation("ChequeRecibido")
   /// Los cheques que salieron con este pago. Pueden ser varios: a un proveedor se le pagan $2.000.000
   /// con tres echeqs de la cartera, y se carga como un solo pago.
   chequesEntregados Cheque[]   @relation("ChequeEntregado")
   /// La orden de pago que documenta este pago, si se generó.
-  ordenPagoId     String?
-  ordenPago       OrdenPago? @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
+  ordenPagoId       String?
+  ordenPago         OrdenPago? @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
   /**
    * Cuando un cobro se asignó "directo a un proveedor", conecta el Payment del cobro con el
    * Payment del pago generado en la cuenta del proveedor (y viceversa). Sin relation formal a
    * propósito — el borrado en cascada de la pareja se maneja a mano en la acción.
    */
-  linkedPaymentId String?
+  linkedPaymentId   String?
   /**
    * El viaje contra el que se imputa este pago. Un pago con viaje sólo cancela comprobantes de
    * ESE viaje, y uno sin viaje sólo cancela los que tampoco lo tienen: es lo que evita que el
    * pago del camión 4 se coma lo que quedaba del camión 3.
    */
-  entregaId       String?
-  entrega         Entrega?   @relation(fields: [entregaId], references: [id])
+  entregaId         String?
+  entrega           Entrega?   @relation(fields: [entregaId], references: [id])
 
   allocations      PaymentAllocation[]
   treasuryDocument Document?           @relation("PaymentTreasuryDocument")
@@ -732,7 +753,6 @@ enum ProductMovementType {
 
 /**
  * Una caja de producto terminado: marca, aceite, ml y botellas por caja.
- *
  * Es la unidad de las cajas sueltas. Las de los distintos formatos de pallet de una misma marca y
  * botella son la misma caja: las 21 que sobran de desarmar un pallet de 105 sirven para armar uno de
  * 84. Por eso las cajas sueltas se cuentan acá y no por producto.
@@ -768,6 +788,9 @@ model CajaMovement {
   caja             Caja             @relation(fields: [cajaId], references: [id])
   date             DateTime
   quantity         Int
+  /// Botellas sueltas, sin caja, con signo: las sanas de una devolución, que se juntan hasta
+  /// completar cajas. Son de la caja y no del formato, como las cajas sueltas.
+  botellas         Int              @default(0)
   type             CajaMovementType
   reason           String
   productionLineId String?
@@ -793,6 +816,9 @@ enum ProductionLineTipo {
   ARMADO
   /// Pallets desarmados en cajas sueltas. No mueve insumos.
   DESARMADO
+  /// Cajas armadas con botellas sueltas (las sanas de una devolución). Consume sólo la caja de
+  /// cartón: las botellas ya estaban envasadas.
+  CAJAS_DE_BOTELLAS
 }
 
 model ProductMovement {
@@ -828,13 +854,13 @@ model ProductionRun {
 }
 
 model ProductionLine {
-  id              String        @id @default(cuid())
+  id              String             @id @default(cuid())
   productionRunId String
-  productionRun   ProductionRun @relation(fields: [productionRunId], references: [id], onDelete: Cascade)
+  productionRun   ProductionRun      @relation(fields: [productionRunId], references: [id], onDelete: Cascade)
   productId       String
-  product         Product       @relation(fields: [productId], references: [id])
+  product         Product            @relation(fields: [productId], references: [id])
   /// Pallets, salvo en una línea de cajas sueltas, donde son cajas.
-  quantity        Decimal       @db.Decimal(14, 3)
+  quantity        Decimal            @db.Decimal(14, 3)
   tipo            ProductionLineTipo @default(PALLETS)
 
   itemMovements    ItemMovement[]

@@ -139,11 +139,11 @@ export default async function ProduccionPage() {
 
   function armadosDe(run: (typeof runs)[number]) {
     return run.lines
-      .filter((l) => l.tipo === "ARMADO" || l.tipo === "DESARMADO")
+      .filter((l) => l.tipo === "ARMADO" || l.tipo === "DESARMADO" || l.tipo === "CAJAS_DE_BOTELLAS")
       .map((l) => ({
         marcaId: marcaIdDe(l.product),
         formatoId: formatoIdDe(l.product),
-        accion: l.tipo as "ARMADO" | "DESARMADO",
+        accion: l.tipo as "ARMADO" | "DESARMADO" | "CAJAS_DE_BOTELLAS",
         pallets: formatNumeroExacto(l.quantity),
       }));
   }
@@ -307,7 +307,9 @@ export default async function ProduccionPage() {
                     >
                       {line.tipo === "CAJAS"
                         ? `+${formatQuantity(qty)} ${qty === 1 ? "caja suelta" : "cajas sueltas"}`
-                        : line.tipo === "ARMADO"
+                        : line.tipo === "CAJAS_DE_BOTELLAS"
+                          ? `+${formatQuantity(qty)} ${qty === 1 ? "caja armada" : "cajas armadas"} con botellas sueltas`
+                          : line.tipo === "ARMADO"
                           ? `armado: ${formatQuantity(qty)} ${qty === 1 ? "pallet" : "pallets"}`
                           : line.tipo === "DESARMADO"
                             ? `desarmado: ${formatQuantity(qty)} ${qty === 1 ? "pallet" : "pallets"}`

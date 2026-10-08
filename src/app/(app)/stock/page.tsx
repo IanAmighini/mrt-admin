@@ -4,7 +4,7 @@ import { Archive, Droplet, HelpCircle, Layers, PackageOpen, Scissors, Tag, type 
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
-import { getStockDeCajas } from "@/lib/cajas";
+import { getBotellasSueltas, getStockDeCajas } from "@/lib/cajas";
 import { formatQuantity } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
 import { formatPallets } from "@/lib/product-label";
@@ -42,7 +42,7 @@ export default async function StockPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [items, stocks, products, productStocks, cajas, stockDeCajas] = await Promise.all([
+  const [items, stocks, products, productStocks, cajas, stockDeCajas, botellasSueltas] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getAllItemStocks(),
     prisma.product.findMany({
@@ -51,12 +51,13 @@ export default async function StockPage({
     getAllProductStocks(),
     prisma.caja.findMany({ orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }] }),
     getStockDeCajas(),
+    getBotellasSueltas(),
   ]);
 
   const searchTerm = q?.trim().toLowerCase();
   const cajasRows = cajas
-    .map((caja) => ({ caja, sueltas: stockDeCajas.get(caja.id) ?? 0 }))
-    .filter(({ sueltas }) => sueltas !== 0)
+    .map((caja) => ({ caja, sueltas: stockDeCajas.get(caja.id) ?? 0, botellas: botellasSueltas.get(caja.id) ?? 0 }))
+    .filter(({ sueltas, botellas }) => sueltas !== 0 || botellas !== 0)
     .filter(
       ({ caja }) =>
         !searchTerm || caja.name.toLowerCase().includes(searchTerm) || caja.oilType.toLowerCase().includes(searchTerm)
@@ -67,6 +68,7 @@ export default async function StockPage({
   const verProducto = !ver || ver === "producto";
   const verCategoria = ver && ver !== "producto" ? (ver as SupplierCategory) : null;
   const hayFiltro = Boolean(searchTerm || ver || soloBajoMinimo);
+  const hayBotellas = cajasRows.some((r) => r.botellas !== 0);
   const stockRows = (verProducto ? products : [])
     .map((product) => ({ product, stock: productStocks.get(product.id) ?? 0 }))
     .filter(({ stock }) => Number(stock) !== 0)
@@ -201,12 +203,17 @@ export default async function StockPage({
                 <Th className="pl-4">Marca</Th>
                 <Th secundaria>Tipo de aceite</Th>
                 <Th>Caja</Th>
-                <Th align="derecha" className="pr-4">
+                <Th align="derecha" className={hayBotellas ? "" : "pr-4"}>
                   Sueltas
                 </Th>
+                {hayBotellas && (
+                  <Th align="derecha" className="pr-4">
+                    Botellas sueltas
+                  </Th>
+                )}
               </Thead>
               <tbody>
-                {cajasRows.map(({ caja, sueltas }) => (
+                {cajasRows.map(({ caja, sueltas, botellas }) => (
                   <Tr key={caja.id}>
                     <Td className="pl-4">
                       {caja.name}
@@ -216,9 +223,14 @@ export default async function StockPage({
                     <Td>
                       {caja.unitsPerBox}x{formatQuantity(caja.bottleCapacityMl)}
                     </Td>
-                    <Td numero className={`pr-4 font-medium ${sueltas < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                    <Td numero className={`${hayBotellas ? "" : "pr-4"} font-medium ${sueltas < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                       {formatQuantity(sueltas)} {Math.abs(sueltas) === 1 ? "caja" : "cajas"}
                     </Td>
+                    {hayBotellas && (
+                      <Td numero className={`pr-4 ${botellas < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                        {botellas !== 0 ? `${formatQuantity(botellas)} ${Math.abs(botellas) === 1 ? "botella" : "botellas"}` : "—"}
+                      </Td>
+                    )}
                   </Tr>
                 ))}
               </tbody>

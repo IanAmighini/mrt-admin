@@ -40,7 +40,13 @@ async function fotoDeLaProduccion(tx: Prisma.TransactionClient, runId: string) {
     include: { lines: { include: { product: { select: { name: true, presentation: true } } } } },
   });
   if (!run) return null;
-  const QUE: Record<string, string> = { PALLETS: "pallets", CAJAS: "cajas sueltas", ARMADO: "pallets armados", DESARMADO: "pallets desarmados" };
+  const QUE: Record<string, string> = {
+    PALLETS: "pallets",
+    CAJAS: "cajas sueltas",
+    ARMADO: "pallets armados",
+    DESARMADO: "pallets desarmados",
+    CAJAS_DE_BOTELLAS: "cajas armadas con botellas sueltas",
+  };
   return {
     date: run.date,
     notes: run.notes,
@@ -119,6 +125,60 @@ async function consumirInsumos(
         createdById: params.userId,
       };
     }),
+  });
+}
+
+/**
+ * Cajas armadas con botellas sueltas: las sanas que volvieron de una devolución con roturas, que se
+ * juntan hasta completar cajas. Las botellas ya estaban envasadas y etiquetadas, así que lo único
+ * que se gasta es la caja de cartón —la de la receta—.
+ */
+async function armarCajasConBotellas(
+  tx: Prisma.TransactionClient,
+  a: {
+    marcaId: string;
+    formatoId: string;
+    cajas: number;
+    runId: string;
+    date: Date;
+    dateLabel: string;
+    oilFillEfficiencyPercent: Prisma.Decimal;
+    userId: string;
+  }
+) {
+  const product = await resolveOrCreateProduct(tx, a.marcaId, a.formatoId, a.oilFillEfficiencyPercent);
+  const nombre = `${product.name} ${product.oilType} ${product.presentation}`;
+  if (!product.boxesPerPallet || !product.unitsPerBox) {
+    throw new UserError(`${nombre} no tiene cargadas las cajas por pallet y las botellas por caja.`);
+  }
+  const carton = product.recipe.filter((r) => r.item.category === "CAJAS");
+  if (carton.length !== 1) {
+    throw new UserError(`${nombre} tiene que tener una sola caja en la receta para saber qué caja de cartón descontar.`);
+  }
+  const cajaId = await cajaDelProducto(tx, product);
+  const productionLine = await tx.productionLine.create({
+    data: { productionRunId: a.runId, productId: product.id, quantity: a.cajas, tipo: "CAJAS_DE_BOTELLAS" },
+  });
+  const motivo = `Cajas armadas con botellas sueltas del ${a.dateLabel}`;
+  await tx.cajaMovement.create({
+    data: {
+      cajaId,
+      date: a.date,
+      quantity: a.cajas,
+      botellas: -a.cajas * product.unitsPerBox,
+      type: "ARMADO",
+      reason: motivo,
+      productionLineId: productionLine.id,
+      createdById: a.userId,
+    },
+  });
+  await consumirInsumos(tx, {
+    filas: [{ itemId: carton[0].itemId, item: carton[0].item, cantidad: new Prisma.Decimal(a.cajas) }],
+    reemplazoPorCategoria: {},
+    productionLineId: productionLine.id,
+    date: a.date,
+    motivo,
+    userId: a.userId,
   });
 }
 
@@ -203,15 +263,24 @@ async function createProductionRunCore(
       fila: i + 1,
       marcaId,
       formatoId: armFormatoIds[i] || "",
-      accion: armAcciones[i] === "DESARMADO" ? ("DESARMADO" as const) : ("ARMADO" as const),
+      accion:
+        armAcciones[i] === "DESARMADO"
+          ? ("DESARMADO" as const)
+          : armAcciones[i] === "CAJAS_DE_BOTELLAS"
+            ? ("CAJAS_DE_BOTELLAS" as const)
+            : ("ARMADO" as const),
       palletsRaw: (armPallets[i] ?? "").trim(),
     }))
     .filter((a) => a.marcaId || a.formatoId || a.palletsRaw)
     .map((a) => {
       if (!a.marcaId || !a.formatoId || !a.palletsRaw) {
-        throw new UserError(`Armado ${a.fila}: elegí la marca, el formato y cuántos pallets.`);
+        throw new UserError(
+          `Armado ${a.fila}: elegí la marca, el formato y cuántos ${a.accion === "CAJAS_DE_BOTELLAS" ? "cajas" : "pallets"}.`
+        );
       }
-      return { ...a, pallets: enteroNoNegativo(parseNumeroEscrito(a.palletsRaw, "pallets"), `Armado ${a.fila}, pallets`) };
+      const que = a.accion === "CAJAS_DE_BOTELLAS" ? "cajas" : "pallets";
+      // `pallets` es la cantidad de la fila: pallets al armar o desarmar, cajas al juntar botellas.
+      return { ...a, pallets: enteroNoNegativo(parseNumeroEscrito(a.palletsRaw, que), `Armado ${a.fila}, ${que}`) };
     })
     .filter((a) => a.pallets > 0);
 
@@ -355,6 +424,10 @@ async function createProductionRunCore(
     // que no hay aceite ni envases que descontar ni que devolver. Antes se cargaba como producción
     // con pallets negativos, y eso devolvía al stock insumos que nunca se desenvasaron.
     for (const a of armados) {
+      if (a.accion === "CAJAS_DE_BOTELLAS") {
+        await armarCajasConBotellas(tx, { ...a, cajas: a.pallets, runId: run.id, date, dateLabel, oilFillEfficiencyPercent, userId: user.id });
+        continue;
+      }
       // Armar y desarmar no consumen insumos: no hace falta que el producto tenga receta.
       const product = await resolveOrCreateProduct(tx, a.marcaId, a.formatoId, oilFillEfficiencyPercent, {
         recetaOpcional: true,

@@ -1,4 +1,5 @@
 import type { CajaMovementType,
+  EstadoDevolucion,
   ChequeEstado,
   Circuit,
   Currency,
@@ -225,4 +226,11 @@ export const PEDIDO_STATUS_COLORS: Record<PedidoStatus, string> = {
   EN_COLA: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   COMPLETADO: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
   ENTREGADO: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
+};
+
+/** Cómo volvió lo devuelto. El texto es el que se elige en el formulario de devolución. */
+export const ESTADO_DEVOLUCION_LABELS: Record<EstadoDevolucion, string> = {
+  SANO: "Sano",
+  CON_ROTURAS: "Con roturas",
+  NO_SIRVE: "No sirve nada",
 };

@@ -68,6 +68,7 @@ export default async function ProductDetailPage({
       : null,
   ]);
   const sueltas = caja ? caja.movimientos.reduce((a, m) => a + m.quantity, 0) : 0;
+  const botellasSueltas = caja ? caja.movimientos.reduce((a, m) => a + m.botellas, 0) : 0;
 
   // El kardex junta los pallets de este formato y las cajas sueltas de su caja: son el mismo
   // producto, y un desarmado se ve como las dos mitades de lo mismo, en el mismo día.
@@ -88,8 +89,17 @@ export default async function ProductDetailPage({
       date: m.date,
       createdAt: m.createdAt,
       tipo: `${CAJA_MOVEMENT_TYPE_LABELS[m.type]} · cajas sueltas`,
-      cantidad: `${m.quantity > 0 ? "+" : ""}${formatQuantity(m.quantity)} ${Math.abs(m.quantity) === 1 ? "caja" : "cajas"}`,
-      negativo: m.quantity < 0,
+      cantidad: [
+        m.quantity !== 0 || m.botellas === 0
+          ? `${m.quantity > 0 ? "+" : ""}${formatQuantity(m.quantity)} ${Math.abs(m.quantity) === 1 ? "caja" : "cajas"}`
+          : null,
+        m.botellas !== 0
+          ? `${m.botellas > 0 ? "+" : ""}${formatQuantity(m.botellas)} ${Math.abs(m.botellas) === 1 ? "botella" : "botellas"}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", "),
+      negativo: m.quantity < 0 || (m.quantity === 0 && m.botellas < 0),
       motivo: m.reason,
       usuario: m.createdBy.name,
     })),
@@ -133,6 +143,12 @@ export default async function ProductDetailPage({
             {caja && (
               <p className="text-sm text-foreground/60">
                 + {formatQuantity(sueltas)} {sueltas === 1 ? "caja suelta" : "cajas sueltas"}
+                {botellasSueltas !== 0 && (
+                  <>
+                    {" "}
+                    + {formatQuantity(botellasSueltas)} {botellasSueltas === 1 ? "botella suelta" : "botellas sueltas"}
+                  </>
+                )}
                 {caja.products.length > 1 && (
                   <span className="block text-xs text-foreground/40">
                     de la caja {caja.unitsPerBox}x{formatQuantity(caja.bottleCapacityMl)}, compartidas con{" "}

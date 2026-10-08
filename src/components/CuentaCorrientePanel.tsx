@@ -169,7 +169,14 @@ export function CuentaCorrientePanel({
               >
                 <DevolucionFields
                   entityId={entityId}
-                  products={devolucion.products}
+                  products={devolucion.products.map((p) => ({
+                    id: p.id,
+                    name: p.name,
+                    oilType: p.oilType,
+                    presentation: p.presentation,
+                    boxesPerPallet: p.boxesPerPallet,
+                    unitsPerBox: p.unitsPerBox,
+                  }))}
                   priceMapByCircuit={devolucion.priceMapByCircuit}
                   moneda={moneda}
                 />
