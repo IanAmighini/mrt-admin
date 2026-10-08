@@ -474,8 +474,8 @@ export function DevolucionFields({
 
               {botellas > 0 && (
                 <p className="text-xs text-foreground/60 tabular-nums">
-                  {botellas} botellas{upb > 0 && ` (${upb} por caja)`} · nota de
-                  crédito{" "}
+                  {botellas} botellas{upb > 0 && ` (${upb} por caja)`} · se le
+                  descuenta{" "}
                   {formatMoney(botellas * precioEnLaCuenta(row), moneda)}
                   {circuit === "BLANCO" && " + IVA"}
                 </p>
