@@ -4,6 +4,7 @@ import type { PedidoPendiente } from "@/lib/pedidos";
 import { RemitoLinesFields } from "./RemitoLinesFields";
 import { PedidoLinkChecklist } from "./PedidoLinkChecklist";
 import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
+import { hoyEnInput } from "@/lib/period";
 
 type PriceMap = Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>>;
 
@@ -62,7 +63,7 @@ export function RemitoFormFields({
           <input name="number" required defaultValue={defaultValues?.number} className={inputClass} />
         </Field>
         <Field label="Fecha">
-          <input type="date" name="date" required defaultValue={defaultValues?.date} className={inputClass} />
+          <input type="date" name="date" required defaultValue={defaultValues?.date ?? hoyEnInput()} className={inputClass} />
         </Field>
         <Field label="Vencimiento (opcional)">
           <input type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />

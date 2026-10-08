@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatFecha } from "@/lib/period";
+import { formatFecha, hoyEnInput } from "@/lib/period";
 import { notFound, redirect } from "next/navigation";
 import type { Account, Product } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -498,7 +498,7 @@ function PricesSection({
                   </select>
                 </Field>
                 <Field label="Vigente desde">
-                  <input type="date" name="validFrom" required className={inputClass} />
+                  <input type="date" name="validFrom" required defaultValue={hoyEnInput()} className={inputClass} />
                 </Field>
               </div>
             </FormConError>

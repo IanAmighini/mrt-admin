@@ -98,6 +98,22 @@ export function hoyEnInput(): string {
   }).format(new Date());
 }
 
+/**
+ * El día de hoy en Argentina, como se guardan las fechas: la medianoche UTC de ese día. Es contra
+ * lo que se compara un vencimiento: vence el 8/10 → está vencido recién el 9/10, cuando el día del
+ * vencimiento ya pasó entero. Comparar contra `new Date()` lo daba por vencido el mismo 8/10 apenas
+ * pasada la medianoche.
+ */
+export function hoyComoFecha(referencia: Date = new Date()): Date {
+  const dia = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(referencia);
+  return parseFecha(dia);
+}
+
 /** Semana corriente, de lunes a lunes (el domingo cuenta como último día de la semana). */
 export function weekPeriod(reference: Date = new Date()): Period {
   const start = startOfDay(reference);

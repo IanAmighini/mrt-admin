@@ -1,5 +1,6 @@
 import { ProductionLinesFields, type FilaInicial, type Predeterminados } from "@/app/(app)/produccion/ProductionLinesFields";
 import { ArmadoLinesFields, type FilaDeArmado } from "@/app/(app)/produccion/ArmadoLinesFields";
+import { hoyEnInput } from "@/lib/period";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
@@ -51,7 +52,7 @@ export function ProductionRunFormFields({
           type="date"
           name="date"
           required
-          defaultValue={defaultValues?.date}
+          defaultValue={defaultValues?.date ?? hoyEnInput()}
           className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
         />
       </div>

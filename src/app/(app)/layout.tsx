@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { navEntriesForRole, ROLE_LABELS } from "@/lib/nav";
 import { SidebarNav } from "@/components/SidebarNav";
 import { SearchPalette } from "@/components/SearchPalette";
+import { AbrirCalendario } from "@/components/AbrirCalendario";
 import { signOut } from "@/auth";
 import { cookies } from "next/headers";
 import { COOKIE_HUBO_SESION } from "@/lib/sesion";
@@ -22,6 +23,7 @@ export default async function AppLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <AbrirCalendario />
       <div className="h-1 bg-primary" />
       <header className="flex items-center justify-between border-b border-foreground/10 bg-background px-6 py-3.5 shadow-sm">
         <div className="flex items-center gap-3">

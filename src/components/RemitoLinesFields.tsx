@@ -137,9 +137,9 @@ export function RemitoLinesFields({
         return (
           <div
             key={row.key}
-            className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
+            className="grid grid-cols-6 items-end gap-2 rounded-lg md:grid-cols-12 border border-foreground/10 bg-foreground/[0.02] p-2"
           >
-            <div className="col-span-3 min-w-0">
+            <div className="col-span-6 min-w-0 md:col-span-3">
               <label className="text-xs text-foreground/60">Producto</label>
               <select
                 name="lineProductId"
@@ -155,7 +155,7 @@ export function RemitoLinesFields({
                 ))}
               </select>
             </div>
-            <div className="col-span-1 min-w-0">
+            <div className="col-span-2 min-w-0 md:col-span-1">
               <label className="text-xs text-foreground/60">Pallets</label>
               <input
                 name="lineQuantity"
@@ -166,7 +166,7 @@ export function RemitoLinesFields({
                 className={inputClass}
               />
             </div>
-            <div className="col-span-1 min-w-0">
+            <div className="col-span-2 min-w-0 md:col-span-1">
               <label className="text-xs text-foreground/60">Cajas</label>
               <input
                 name="lineCajas"
@@ -178,7 +178,7 @@ export function RemitoLinesFields({
               />
               {botellas > 0 && <p className="text-xs text-foreground/40">{botellas} botellas</p>}
             </div>
-            <div className="col-span-2 min-w-0">
+            <div className="col-span-2 min-w-0 md:col-span-2">
               <label className="text-xs text-foreground/60">
                 {enPesos ? "$/bot." : enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
               </label>
@@ -195,7 +195,7 @@ export function RemitoLinesFields({
                 </p>
               )}
             </div>
-            <div className="col-span-2 min-w-0">
+            <div className="col-span-3 min-w-0 md:col-span-2">
               <label className="text-xs text-foreground/60">Cuenta</label>
               <select
                 name="lineCircuit"
@@ -207,11 +207,11 @@ export function RemitoLinesFields({
                 <option value="NEGRO">Cuenta 2 (s/factura)</option>
               </select>
             </div>
-            <div className="col-span-2 min-w-0">
+            <div className="col-span-2 min-w-0 md:col-span-2">
               <label className="text-xs text-foreground/60">Subtotal</label>
               <p className="px-2 py-2 text-sm tabular-nums">{formatMoney(subtotal, moneda)}</p>
             </div>
-            <div className="col-span-1 min-w-0">
+            <div className="col-span-1 min-w-0 text-right md:text-left">
               {rows.length > 1 && (
                 <button
                   type="button"
@@ -233,9 +233,9 @@ export function RemitoLinesFields({
       <button type="button" onClick={addRow} className="text-sm underline underline-offset-2">
         + Agregar línea
       </button>
-      <div className="flex gap-4 border-t border-foreground/10 pt-2 text-sm">
-        <span>Total Blanco: {formatMoney(totals.BLANCO, moneda)}</span>
-        <span>Total Negro: {formatMoney(totals.NEGRO, moneda)}</span>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-foreground/10 pt-2 text-sm">
+        <span>Total Cuenta 1: {formatMoney(totals.BLANCO, moneda)}</span>
+        <span>Total Cuenta 2: {formatMoney(totals.NEGRO, moneda)}</span>
         <span className="font-semibold">Total: {formatMoney(totals.total, moneda)}</span>
       </div>
     </div>

@@ -23,6 +23,7 @@ import {
 } from "./ImpuestosFields";
 import { useEnvioUnico } from "./useEnvioUnico";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
+import { hoyEnInput } from "@/lib/period";
 
 type Circuit = "BLANCO" | "NEGRO";
 
@@ -310,7 +311,7 @@ export function NuevaCompraFields({
             <label className="text-sm" htmlFor="date">
               Fecha *
             </label>
-            <input id="date" type="date" name="date" required defaultValue={defaultValues?.date} className={inputClass} />
+            <input id="date" type="date" name="date" required defaultValue={defaultValues?.date ?? hoyEnInput()} className={inputClass} />
           </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="dueDate">

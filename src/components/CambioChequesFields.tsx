@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Entity } from "@prisma/client";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
+import { hoyEnInput } from "@/lib/period";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-1 text-sm";
 const submitClass =
@@ -42,7 +43,7 @@ export function CambioChequesFields({ treasuries }: { treasuries: Entity[] }) {
           <label className="text-sm" htmlFor="date">
             Fecha
           </label>
-          <input id="date" type="date" name="date" required className={inputClass} />
+          <input id="date" type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
         </div>
       </div>
 

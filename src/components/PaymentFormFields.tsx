@@ -8,6 +8,7 @@ import { ViajeFields, type ViajeOption } from "./ViajeFields";
 import { formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib/money";
 import { PaymentDestinoField } from "./PaymentDestinoField";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
+import { hoyEnInput } from "@/lib/period";
 
 /** Lo mínimo de un cheque para poder elegirlo; ya serializado, porque esto corre en el navegador. */
 export type ChequeEnCartera = {
@@ -195,7 +196,7 @@ export function PaymentFormFields({
           <label className="text-sm" htmlFor="date">
             Fecha
           </label>
-          <input id="date" type="date" name="date" required className={inputClass} />
+          <input id="date" type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="amount">

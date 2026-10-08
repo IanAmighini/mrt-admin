@@ -1,6 +1,7 @@
 import type { Entity } from "@prisma/client";
 import { PedidoLinesFields, type FilaDePedido } from "./PedidoLinesFields";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
+import { hoyEnInput } from "@/lib/period";
 
 type MarcaInfo = { id: string; name: string; oilType: string };
 type FormatoInfo = { id: string; presentation: string };
@@ -54,7 +55,7 @@ export function PedidoFormFields({
             type="date"
             name="date"
             required
-            defaultValue={defaultValues?.date}
+            defaultValue={defaultValues?.date ?? hoyEnInput()}
             className={inputClass}
           />
         </Field>

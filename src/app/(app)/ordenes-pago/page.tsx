@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, sumDecimals } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { formatNumeroOP } from "@/lib/orden-pago";
+import { APILADA } from "@/components/ui/Table";
 
 export default async function OrdenesPagoPage() {
   await requireRole(["ADMIN", "SOLO_LECTURA", "SECRETARIA"]);
@@ -25,7 +26,7 @@ export default async function OrdenesPagoPage() {
       </div>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className={`w-full text-sm ${APILADA}`}>
           <thead>
             <tr className="border-b border-foreground/10 text-left text-foreground/60">
               <th className="py-2 pr-4">N°</th>
@@ -48,7 +49,7 @@ export default async function OrdenesPagoPage() {
                 <td className="py-2 pr-4 text-foreground/60">
                   {Array.from(new Set(o.payments.map((p) => PAYMENT_METHOD_LABELS[p.method]))).join(" + ")}
                 </td>
-                <td className="py-2 pr-4 text-right tabular-nums">
+                <td className="py-2 pr-4 text-right tabular-nums whitespace-nowrap">
                   {formatMoney(sumDecimals(o.payments.map((p) => p.amount)))}
                 </td>
               </tr>

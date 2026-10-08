@@ -17,7 +17,7 @@ import { getInsumosMinimoReport } from "@/lib/reports";
 import { getCajaChica } from "@/lib/caja";
 import { circuitoDeTesoreria } from "@/lib/pagos";
 import { formatMoney, formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
-import { formatFecha } from "@/lib/period";
+import { formatFecha, hoyComoFecha } from "@/lib/period";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { buttonClass } from "@/components/ui/Button";
 
@@ -87,7 +87,7 @@ export default async function InicioPage() {
   // Lo que nos deben y ya venció.
   const vencidosClientes = (vencimientos ?? []).filter(
     (d) =>
-      (d.account.entity.type === "CLIENTE" || d.account.entity.type === "AMBOS") && d.dueDate && d.dueDate < hoy
+      (d.account.entity.type === "CLIENTE" || d.account.entity.type === "AMBOS") && d.dueDate && d.dueDate < hoyComoFecha()
   );
   // Lo que les debemos a los proveedores, por saldo y no por vencimiento: a Cristian se le paga por
   // adelantado, así que sus compras figuraban "por vencer" aunque la cuenta esté a favor nuestro. La

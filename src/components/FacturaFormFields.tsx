@@ -5,6 +5,7 @@ import type { Currency } from "@prisma/client";
 import { MonedaEscritaFields } from "./MonedaEscritaFields";
 import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
 import { DEFAULT_IVA_RATE, formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib/money";
+import { hoyEnInput } from "@/lib/period";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const smallInputClass = "w-28 rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-1 text-xs";
@@ -96,7 +97,7 @@ export function FacturaFormFields({
           <label className="text-sm" htmlFor="date">
             Fecha
           </label>
-          <input id="date" type="date" name="date" required className={inputClass} />
+          <input id="date" type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="dueDate">

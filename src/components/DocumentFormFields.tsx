@@ -13,6 +13,7 @@ import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
 import { computeGastoTotals, filasDesdeValores } from "@/lib/impuestos";
 import { ImpuestosFields, impuestosIniciales, type ImpuestosValores } from "./ImpuestosFields";
 import { ViajeFields, type DestinatarioOption, type ViajeOption } from "./ViajeFields";
+import { hoyEnInput } from "@/lib/period";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
@@ -168,7 +169,7 @@ export function DocumentFormFields({
           <label className="text-sm" htmlFor="date">
             Fecha
           </label>
-          <input id="date" type="date" name="date" required defaultValue={defaultValues?.date} className={inputClass} />
+          <input id="date" type="date" name="date" required defaultValue={defaultValues?.date ?? hoyEnInput()} className={inputClass} />
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="dueDate">

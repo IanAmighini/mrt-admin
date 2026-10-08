@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
 :root {
+  /* Los controles del navegador —el calendario de las fechas, las flechas de los desplegables, las
+     barras de scroll— se dibujan según esto. Sin el "dark" de abajo, en modo oscuro el ícono del
+     calendario quedaba negro sobre fondo negro. */
+  color-scheme: light;
   --background: #ffffff;
   --foreground: #171717;
   --primary: #e9d200;
@@ -20,9 +24,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    color-scheme: dark;
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+/* Todo el campo de fecha abre el calendario (ver AbrirCalendario), así que se ve como algo para tocar. */
+input[type="date"] {
+  cursor: pointer;
 }
 
 body {

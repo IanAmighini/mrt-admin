@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
+import { hoyEnInput } from "@/lib/period";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
@@ -51,7 +52,7 @@ export function RechazoChequeFields({
         <label className="text-sm" htmlFor="date">
           Fecha del rechazo
         </label>
-        <input id="date" type="date" name="date" required className={inputClass} />
+        <input id="date" type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
       </div>
 
       {aQuien && (

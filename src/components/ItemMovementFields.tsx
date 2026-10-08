@@ -1,4 +1,5 @@
 import { KilosALitros } from "./KilosALitros";
+import { hoyEnInput } from "@/lib/period";
 
 type ItemInfo = { id: string; name: string; unit: string };
 
@@ -43,7 +44,7 @@ export function ItemMovementFields({
           <label className="text-sm" htmlFor={`date-${type}`}>
             Fecha
           </label>
-          <input id={`date-${type}`} type="date" name="date" required className={inputClass} />
+          <input id={`date-${type}`} type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor={`quantity-${type}`}>

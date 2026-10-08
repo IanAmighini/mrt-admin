@@ -8,6 +8,7 @@ import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { desarmadosPorLinea, type StockParaPlan } from "@/lib/plan-de-entrega";
 import { useEnvioUnico } from "./useEnvioUnico";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
+import { hoyEnInput } from "@/lib/period";
 
 const IVA_RATE = 21;
 
@@ -258,7 +259,7 @@ export function NuevaEntregaForm({
             <label className="text-sm" htmlFor="date">
               Fecha *
             </label>
-            <input id="date" type="date" name="date" required className={inputClass} />
+            <input id="date" type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
           </div>
           <div className="space-y-1">
             <label className="flex items-center gap-2 pt-7 text-sm">
@@ -339,8 +340,8 @@ export function NuevaEntregaForm({
             const { aDesarmar, sobran, faltanPallets, faltanCajas } = plan[idx];
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
-              <div key={row.key} className="grid grid-cols-12 items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
-                <div className="col-span-3 min-w-0">
+              <div key={row.key} className="grid grid-cols-6 items-end gap-2 md:grid-cols-12 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
+                <div className="col-span-3 min-w-0 md:col-span-3">
                   <label className="text-xs text-foreground/60">Marca</label>
                   <select
                     value={row.marcaKey}
@@ -355,7 +356,7 @@ export function NuevaEntregaForm({
                     ))}
                   </select>
                 </div>
-                <div className="col-span-2 min-w-0">
+                <div className="col-span-3 min-w-0 md:col-span-2">
                   <label className="text-xs text-foreground/60">Formato</label>
                   <select
                     value={row.productId}
@@ -371,7 +372,7 @@ export function NuevaEntregaForm({
                     ))}
                   </select>
                 </div>
-                <div className="col-span-1 min-w-0">
+                <div className="col-span-2 min-w-0 md:col-span-1">
                   <label className="text-xs text-foreground/60">Pallets</label>
                   <input
                     value={row.pallets}
@@ -381,7 +382,7 @@ export function NuevaEntregaForm({
                     className={inputClass}
                   />
                 </div>
-                <div className="col-span-1 min-w-0">
+                <div className="col-span-2 min-w-0 md:col-span-1">
                   <label className="text-xs text-foreground/60">Cajas</label>
                   <input
                     value={row.cajas}
@@ -391,7 +392,7 @@ export function NuevaEntregaForm({
                     className={inputClass}
                   />
                 </div>
-                <div className="col-span-2 min-w-0">
+                <div className="col-span-2 min-w-0 md:col-span-2">
                   <label className="text-xs text-foreground/60">
                     {enPesos ? "$/bot." : enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
                   </label>
@@ -408,7 +409,7 @@ export function NuevaEntregaForm({
                     </p>
                   )}
                 </div>
-                <div className="col-span-1 min-w-0">
+                <div className="col-span-2 min-w-0 md:col-span-1">
                   <label className="text-xs text-foreground/60">Fact.</label>
                   <button
                     type="button"
@@ -422,7 +423,7 @@ export function NuevaEntregaForm({
                     {row.facturado ? "C/Fact" : "S/Fact"}
                   </button>
                 </div>
-                <div className="col-span-1 min-w-0">
+                <div className="col-span-3 min-w-0 md:col-span-1">
                   <label className="text-xs text-foreground/60">Subtotal</label>
                   <p className="px-2 py-2 text-sm">
                     {formatMoney(subtotal, monedaCuenta)}
@@ -431,7 +432,7 @@ export function NuevaEntregaForm({
                     )}
                   </p>
                 </div>
-                <div className="col-span-1 min-w-0">
+                <div className="col-span-1 min-w-0 text-right md:text-left">
                   {rows.length > 1 && (
                     <button
                       type="button"
@@ -447,7 +448,7 @@ export function NuevaEntregaForm({
                 {/* Lo que hay, y si hace falta desarmar un pallet para sacar las cajas: se ve antes de
                     guardar, en vez de enterarse después mirando el stock. */}
                 {hay && (
-                  <p className="col-span-12 -mt-1 text-xs text-foreground/50">
+                  <p className="col-span-6 -mt-1 text-xs text-foreground/50 md:col-span-12">
                     Hay {formatPallets(hay.pallets, product?.boxesPerPallet ?? null)} de este formato y{" "}
                     {formatQuantity(hay.sueltas)} {hay.sueltas === 1 ? "caja suelta" : "cajas sueltas"} · {formatQuantity(botellas)} botellas
                     {/* No frena: lo que se produce y se entrega en el día se carga a la noche. */}

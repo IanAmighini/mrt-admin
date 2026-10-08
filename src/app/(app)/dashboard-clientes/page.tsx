@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatFecha } from "@/lib/period";
+import { formatFecha, hoyComoFecha } from "@/lib/period";
 import { Droplets, Send, Users, Wallet } from "lucide-react";
 import type { Currency, Prisma } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
@@ -27,7 +27,6 @@ import { TopDeudaSection } from "@/components/TopDeudaSection";
 export default async function DashboardClientesPage() {
   const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
-  const today = new Date();
 
   const [entregas, pagos, saldos, vencimientos, ingresosDelMes, pagosDelMes, litros, cotizacion] = await Promise.all([
     getRecentRemitos(5),
@@ -44,7 +43,8 @@ export default async function DashboardClientesPage() {
     (doc) =>
       doc.type === "REMITO" &&
       ["CLIENTE", "AMBOS"].includes(doc.account.entity.type) &&
-      doc.dueDate! < today
+      // Vencido es que el día del vencimiento ya pasó entero, no que llegó.
+      doc.dueDate! < hoyComoFecha()
   );
 
   // Hay clientes que llevan la cuenta en dólares, así que sumar los saldos crudos daría un número
@@ -140,7 +140,7 @@ export default async function DashboardClientesPage() {
         </div>
       </section>
 
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
         <section>
           <h2 className="text-sm font-semibold mb-2">Últimas entregas</h2>
           <div className="overflow-x-auto">
@@ -222,7 +222,7 @@ export default async function DashboardClientesPage() {
         </section>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
         <TopDeudaSection
           title="Clientes con más deuda — Cuenta 1 (c/factura)"
           rows={topBlanco}

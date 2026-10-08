@@ -86,7 +86,7 @@ export function DeleteButton({
       </button>
       <dialog
         ref={dialogRef}
-        className="fixed inset-0 m-auto w-full max-w-md rounded-xl border border-foreground/10 bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50"
+        className="fixed inset-0 m-auto w-[calc(100%-1.5rem)] max-h-[calc(100dvh-1.5rem)] max-w-md rounded-xl border border-foreground/10 bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50"
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}

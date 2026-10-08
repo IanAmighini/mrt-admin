@@ -121,7 +121,7 @@ export default async function DashboardProveedoresPage() {
         )}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
+      <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
         <section>
           <h2 className="text-sm font-semibold mb-2">Últimas compras</h2>
           <div className="overflow-x-auto">

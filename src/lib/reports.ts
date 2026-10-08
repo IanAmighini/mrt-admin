@@ -15,7 +15,7 @@ import { getCostoInsumos, getRentabilidad } from "@/lib/dashboard-kpis";
 import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
-import { monthPeriod, periodLastDay, type Period } from "@/lib/period";
+import { hoyComoFecha, monthPeriod, periodLastDay, type Period } from "@/lib/period";
 
 export const REPORT_KEYS = [
   "remitos-vencidos",
@@ -111,11 +111,12 @@ export async function getVencidosReport(options?: {
 
   const rows: VencidoRow[] = [];
   for (const doc of vencimientos) {
-    if (!doc.dueDate || doc.dueDate >= asOf) continue;
+    // Vencido recién cuando el día del vencimiento pasó entero: el que vence hoy todavía no.
+    if (!doc.dueDate || doc.dueDate >= hoyComoFecha(asOf)) continue;
     if (doc.account.entity.type === "TESORERIA") continue;
     if (options?.circuit && doc.account.circuit !== options.circuit) continue;
 
-    const diasAtraso = Math.floor((asOf.getTime() - doc.dueDate.getTime()) / MS_POR_DIA);
+    const diasAtraso = Math.round((hoyComoFecha(asOf).getTime() - doc.dueDate.getTime()) / MS_POR_DIA);
     rows.push({
       documentId: doc.id,
       type: doc.type,
@@ -889,7 +890,7 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
     const mes = monthPeriod(new Date(ultimo.getFullYear(), ultimo.getMonth() - i, 1));
     const r = await getRentabilidad(mes);
     meses.push({
-      label: mes.from.toLocaleDateString("es-AR", { month: "long", year: "numeric" }),
+      label: mes.from.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }),
       from: mes.from,
       ventas: r.ingresos,
       costoInsumos: r.costoInsumos,

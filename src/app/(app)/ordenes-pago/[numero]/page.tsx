@@ -11,8 +11,10 @@ import { anularOrdenPago } from "../actions";
 import { PrintButton } from "@/components/PrintButton";
 
 /** Con cero adelante, como en el papel que se venía llenando a mano: 07/09/2026, no 7/9/2026. */
+// En UTC, como `formatFecha`: las fechas se guardan a la medianoche UTC del día, y leídas en hora
+// argentina caían en el día anterior (la orden del 7/10 decía 06/10).
 const fecha = (d: Date) =>
-  d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" });
 
 export default async function OrdenPagoPage({
   params,
@@ -94,17 +96,18 @@ export default async function OrdenPagoPage({
         </div>
       </div>
 
-      <div className="mx-auto w-full max-w-[820px] bg-white p-10 text-black shadow-sm print:p-0 print:shadow-none">
-        <header className="flex items-start justify-between gap-6">
+      <div className="mx-auto w-full max-w-[820px] bg-white p-4 text-black shadow-sm sm:p-10 print:p-0 print:shadow-none">
+        {/* En el celular el recuadro del número va abajo del membrete: al lado lo tapaba. */}
+        <header className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:gap-6">
           <div className="flex items-center gap-4">
             <Image src="/logo.png" alt="" width={76} height={76} priority />
             <div>
-              <p className="text-2xl font-bold tracking-tight">{emisor.nombre.toUpperCase()}</p>
+              <p className="text-xl font-bold tracking-tight sm:text-2xl">{emisor.nombre.toUpperCase()}</p>
               <p className="text-xs text-neutral-500">{emisor.direccion}</p>
               <p className="text-xs text-neutral-500">CUIT {emisor.cuit}</p>
             </div>
           </div>
-          <div className="bg-neutral-900 px-8 py-5 text-center text-white">
+          <div className="bg-neutral-900 px-6 py-4 text-center text-white sm:px-8 sm:py-5">
             <p className="text-[11px] font-bold tracking-widest">ORDEN DE PAGO</p>
             <p className="text-2xl font-bold">N° {formatNumeroOP(orden.numero)}</p>
             <p className="mt-1 text-xs font-semibold">{fecha(orden.date)}</p>
@@ -147,7 +150,8 @@ export default async function OrdenPagoPage({
         <h2 className="mt-6 text-sm font-bold">
           Pago actual — {etiqueta} <span className="ml-2 font-normal">({metodos.join(" + ")})</span>
         </h2>
-        <table className="mt-2 w-full text-sm">
+        <div className="overflow-x-auto">
+<table className="mt-2 w-full text-sm">
           <thead>
             <tr className="bg-neutral-900 text-white">
               <th className="px-3 py-2 text-left font-bold">#</th>
@@ -179,6 +183,7 @@ export default async function OrdenPagoPage({
             )}
           </tbody>
         </table>
+        </div>
 
         <h2 className="mt-10 text-sm font-bold">Resumen de cuenta</h2>
         <table className="mt-3 w-full text-sm">
