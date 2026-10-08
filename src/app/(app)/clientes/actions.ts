@@ -80,7 +80,8 @@ function fotoDeLaEntidad(e: {
 export async function createEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
-  const name = String(formData.get("name") || "").trim();
+  // Los espacios de más se limpian: "Tablada Goma  de Dattola" con dos espacios parecía otro nombre.
+  const name = String(formData.get("name") || "").replace(/\s+/g, " ").trim();
   const type = String(formData.get("type") || "") as EntityType;
   const taxId = String(formData.get("taxId") || "").trim() || null;
   const email = String(formData.get("email") || "").trim() || null;
@@ -147,7 +148,8 @@ export async function updateEntity(formData: FormData) {
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
 
-  const name = String(formData.get("name") || "").trim();
+  // Los espacios de más se limpian: "Tablada Goma  de Dattola" con dos espacios parecía otro nombre.
+  const name = String(formData.get("name") || "").replace(/\s+/g, " ").trim();
   const type = String(formData.get("type") || "") as EntityType;
   const taxId = String(formData.get("taxId") || "").trim() || null;
   const email = String(formData.get("email") || "").trim() || null;

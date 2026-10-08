@@ -1,10 +1,11 @@
 import Link from "next/link";
+import { formatLineasDeRemito } from "@/lib/product-label";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentRemitos } from "@/lib/ledger";
 import { getAllCurrentPrices } from "@/lib/pricing";
-import { formatMoney, formatNumeroExacto, formatQuantity, sumDecimals } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, sumDecimals } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { RemitoFormFields, lineaDeRemito } from "@/components/RemitoForm";
@@ -80,7 +81,7 @@ export default async function EntregasPage({
 
   const rows = remitos.map((doc) => {
     const pending = getDocumentPending(doc);
-    const pallets = doc.lines.reduce((acc, l) => acc + l.quantity.toNumber(), 0);
+    const pallets = formatLineasDeRemito(doc.lines);
     const defaultLines = doc.lines.map((l) => lineaDeRemito(l, doc.account.circuit));
     return { doc, pallets, pagado: pending.lessThanOrEqualTo(0), defaultLines };
   });
@@ -156,11 +157,11 @@ export default async function EntregasPage({
                   </Link>
                 </Td>
                 <Td className="whitespace-nowrap">{formatFecha(doc.date)}</Td>
-                <Td numero>{formatQuantity(pallets, "pallets")}</Td>
+                <Td numero className="whitespace-nowrap">{pallets}</Td>
                 <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
                 <Td>
                   <span
-                    className={`rounded px-2 py-1 text-xs font-medium ${
+                    className={`whitespace-nowrap rounded px-2 py-1 text-xs font-medium ${
                       pagado
                         ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
                         : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"

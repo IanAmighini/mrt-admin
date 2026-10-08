@@ -43,9 +43,9 @@ export default async function TesoreriaPage() {
       <div>
         <h1 className="text-xl font-semibold mb-1">Tesorería</h1>
         <p className="text-sm text-foreground/60">
-          Saldo del banco y de las dos cajas — se actualiza solo con cada cobro/pago que se asigna
-          a una de ellas, más los movimientos manuales (comisiones, impuestos, retiros, depósitos)
-          y lo que se carga en la caja chica.
+          El saldo del banco y de cada caja. Se actualiza solo con cada cobro o pago que entra o sale
+          de una de ellas, más los movimientos manuales (comisiones, impuestos, retiros, depósitos) y lo
+          que se carga en la caja chica.
         </p>
       </div>
 

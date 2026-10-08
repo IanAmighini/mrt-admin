@@ -60,7 +60,7 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
   return [
     sheet<VencidosReport["rows"][number]>({
       name: "Detalle",
-      title: "Remitos vencidos impagos",
+      title: "Comprobantes vencidos impagos",
       subtitle,
       columns: [
         { header: "Cliente", value: (r) => r.entityName, width: 32 },

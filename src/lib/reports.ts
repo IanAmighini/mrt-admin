@@ -32,7 +32,7 @@ export const REPORT_KEYS = [
 export type ReportKey = (typeof REPORT_KEYS)[number];
 
 export const REPORT_LABELS: Record<ReportKey, string> = {
-  "remitos-vencidos": "Remitos vencidos",
+  "remitos-vencidos": "Comprobantes vencidos",
   "insumos-bajo-minimo": "Insumos bajo mínimo",
   ventas: "Ventas / entregas",
   cobranzas: "Cobranzas y pagos",
@@ -56,7 +56,7 @@ function addByCurrency(map: Map<Currency, Prisma.Decimal>, currency: Currency, a
 }
 
 // ---------------------------------------------------------------------------
-// 1. Remitos vencidos impagos — "a hoy", no lleva período
+// 1. Comprobantes vencidos impagos (remitos y facturas de clientes) — "a hoy", no lleva período
 // ---------------------------------------------------------------------------
 
 export const VENCIDO_BUCKETS = ["1-15", "16-30", "31-60", "60+"] as const;
@@ -113,7 +113,8 @@ export async function getVencidosReport(options?: {
   for (const doc of vencimientos) {
     // Vencido recién cuando el día del vencimiento pasó entero: el que vence hoy todavía no.
     if (!doc.dueDate || doc.dueDate >= hoyComoFecha(asOf)) continue;
-    if (doc.account.entity.type === "TESORERIA") continue;
+    // Lo que nos deben: los comprobantes de proveedores vencidos son otra cosa (lo que debemos).
+    if (doc.account.entity.type !== "CLIENTE" && doc.account.entity.type !== "AMBOS") continue;
     if (options?.circuit && doc.account.circuit !== options.circuit) continue;
 
     const diasAtraso = Math.round((hoyComoFecha(asOf).getTime() - doc.dueDate.getTime()) / MS_POR_DIA);

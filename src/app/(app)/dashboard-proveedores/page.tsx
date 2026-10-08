@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { formatFecha } from "@/lib/period";
 import { Banknote, Building2, HandCoins, Package, ShoppingCart } from "lucide-react";
 import type { Prisma, Currency } from "@prisma/client";
@@ -20,7 +19,7 @@ import {
 import { formatMoney, ZERO } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
-import { TopDeudaSection } from "@/components/TopDeudaSection";
+import { Renglon, Tarjeta } from "@/components/ui/Tarjeta";
 
 function primaryAndExtra(map: Map<Currency, Prisma.Decimal>) {
   const ars = map.get("ARS") ?? ZERO;
@@ -36,8 +35,8 @@ export default async function DashboardProveedoresPage() {
   const isAdmin = user.role === "ADMIN";
 
   const [compras, pagos, saldos, comprasDelMes, pagosDelMes, valuacion, cotizacion] = await Promise.all([
-    getRecentCompras(5),
-    getRecentPayments(["PROVEEDOR", "AMBOS"], 5),
+    getRecentCompras(6),
+    getRecentPayments(["PROVEEDOR", "AMBOS"], 6),
     getEntitySaldos(["PROVEEDOR", "AMBOS"]),
     getCompras(),
     getPagos(["PROVEEDOR", "AMBOS"]),
@@ -56,19 +55,17 @@ export default async function DashboardProveedoresPage() {
   const compraKpi = primaryAndExtra(comprasDelMes);
   const pagoKpi = primaryAndExtra(pagosDelMes);
 
-  const topBlanco = [...saldos]
-    .sort((a, b) => (b.blancoSaldo?.toNumber() ?? 0) - (a.blancoSaldo?.toNumber() ?? 0))
-    .slice(0, 5);
-  const topNegro = [...saldos]
-    .sort((a, b) => (b.negroSaldo?.toNumber() ?? 0) - (a.negroSaldo?.toNumber() ?? 0))
-    .slice(0, 5);
+  // A quiénes más les debemos, por el total de las dos cuentas: sólo a los que les debemos algo, sin
+  // la cuenta por la que retiran los socios (va en su propia tarjeta de arriba).
+  const enPesos = (f: (typeof deuda)[number]) => (f.entity.moneda === "USD" && cotizacion ? f.total * cotizacion.toNumber() : f.total);
+  const lesDebemos = deuda.filter((f) => f.total > 0).sort((a, b) => enPesos(b) - enPesos(a));
 
   return (
     <div className="space-y-10">
       <div>
         <h1 className="text-xl font-semibold mb-1">Dashboard Proveedores</h1>
         <p className="text-sm text-foreground/60">
-          Últimas compras, últimos pagos y proveedores a los que más les debemos.
+          Lo que les debemos y lo último que compramos y pagamos.
         </p>
       </div>
 
@@ -121,101 +118,57 @@ export default async function DashboardProveedoresPage() {
         )}
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
-        <section>
-          <h2 className="text-sm font-semibold mb-2">Últimas compras</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Proveedor</th>
-                  <th className="py-2 pr-4">Remito</th>
-                  <th className="py-2 pr-4">Fecha</th>
-                  <th className="py-2 pr-4">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {compras.map((doc) => (
-                  <tr key={doc.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">
-                      <Link
-                        href={`/cuentas-corrientes/${doc.account.entity.slug}`}
-                        className="underline underline-offset-2"
-                      >
-                        {doc.account.entity.name}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">#{doc.number}</td>
-                    <td className="py-2 pr-4">{formatFecha(doc.date)}</td>
-                    <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
-                  </tr>
-                ))}
-                {compras.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center text-foreground/40">
-                      Todavía no hay compras cargadas.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <Tarjeta
+          titulo="A quiénes les debemos"
+          resumen={
+            lesDebemos.length === 0
+              ? "No le debemos nada a ningún proveedor."
+              : `${lesDebemos.length} ${lesDebemos.length === 1 ? "proveedor" : "proveedores"}`
+          }
+          href="/proveedores?saldo=deuda"
+        >
+          {lesDebemos.slice(0, 6).map((f) => (
+            <Renglon
+              key={f.entity.id}
+              izquierda={f.entity.name}
+              debajo={[
+                f.blancoSaldo && !f.blancoSaldo.isZero() ? `Cuenta 1 ${formatMoney(f.blancoSaldo, f.entity.moneda)}` : null,
+                f.negroSaldo && !f.negroSaldo.isZero() ? `Cuenta 2 ${formatMoney(f.negroSaldo, f.entity.moneda)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              derecha={formatMoney(f.total, f.entity.moneda)}
+              href={`/cuentas-corrientes/${f.entity.slug}`}
+            />
+          ))}
+        </Tarjeta>
 
-        <section>
-          <h2 className="text-sm font-semibold mb-2">Últimos pagos</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Proveedor</th>
-                  <th className="py-2 pr-4">Monto</th>
-                  <th className="py-2 pr-4">Medio</th>
-                  <th className="py-2 pr-4">Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagos.map((payment) => (
-                  <tr key={payment.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">
-                      <Link
-                        href={`/cuentas-corrientes/${payment.account.entity.slug}`}
-                        className="underline underline-offset-2"
-                      >
-                        {payment.account.entity.name}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">{formatMoney(payment.amount, payment.currency)}</td>
-                    <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[payment.method]}</td>
-                    <td className="py-2 pr-4">{formatFecha(payment.date)}</td>
-                  </tr>
-                ))}
-                {pagos.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center text-foreground/40">
-                      Todavía no hay pagos cargados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <Tarjeta titulo="Últimas compras" href="/compras">
+          {compras.map((doc) => (
+            <Renglon
+              key={doc.id}
+              izquierda={`${doc.account.entity.name} · #${doc.number}`}
+              debajo={`${formatFecha(doc.date)} · ${doc.purchaseLines.map((l) => l.item.name).join(", ")}`}
+              derecha={formatMoney(doc.totalAmount, doc.currency)}
+              href={`/cuentas-corrientes/${doc.account.entity.slug}`}
+            />
+          ))}
+          {compras.length === 0 && <p className="py-2 text-sm text-foreground/40">Todavía no hay compras cargadas.</p>}
+        </Tarjeta>
 
-        <TopDeudaSection
-          title="Proveedores que más les debemos — Cuenta 1 (c/factura)"
-          rows={topBlanco}
-          circuit="blanco"
-          entityNoun="Proveedor"
-          emptyMessage="Todavía no hay proveedores cargados."
-        />
-        <TopDeudaSection
-          title="Proveedores que más les debemos — Cuenta 2 (s/factura)"
-          rows={topNegro}
-          circuit="negro"
-          entityNoun="Proveedor"
-          emptyMessage="Todavía no hay proveedores cargados."
-        />
+        <Tarjeta titulo="Últimos pagos" href="/pagos-proveedores">
+          {pagos.map((p) => (
+            <Renglon
+              key={p.id}
+              izquierda={p.account.entity.name}
+              debajo={`${formatFecha(p.date)} · ${PAYMENT_METHOD_LABELS[p.method]}`}
+              derecha={formatMoney(p.amount, p.currency)}
+              href={`/cuentas-corrientes/${p.account.entity.slug}`}
+            />
+          ))}
+          {pagos.length === 0 && <p className="py-2 text-sm text-foreground/40">Todavía no hay pagos cargados.</p>}
+        </Tarjeta>
       </div>
 
       {isAdmin && <ReportesGerenciales valuacion={valuacion} />}

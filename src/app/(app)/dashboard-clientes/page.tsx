@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { formatFecha, hoyComoFecha } from "@/lib/period";
+import { formatFecha } from "@/lib/period";
 import { Droplets, Send, Users, Wallet } from "lucide-react";
 import type { Currency, Prisma } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
@@ -8,7 +8,6 @@ import {
   getRecentPayments,
   getRecentRemitos,
   getUltimaCotizacion,
-  getVencimientos,
   sumarSaldosEnPesos,
 } from "@/lib/ledger";
 import {
@@ -22,30 +21,25 @@ import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
-import { TopDeudaSection } from "@/components/TopDeudaSection";
+import { Renglon, Tarjeta } from "@/components/ui/Tarjeta";
+import { getVencidosReport } from "@/lib/reports";
+import { formatLineasDeRemito } from "@/lib/product-label";
 
 export default async function DashboardClientesPage() {
   const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const isAdmin = user.role === "ADMIN";
 
-  const [entregas, pagos, saldos, vencimientos, ingresosDelMes, pagosDelMes, litros, cotizacion] = await Promise.all([
-    getRecentRemitos(5),
-    getRecentPayments(["CLIENTE", "AMBOS"], 5),
+  const [entregas, pagos, saldos, vencidos, ingresosDelMes, pagosDelMes, litros, cotizacion] = await Promise.all([
+    getRecentRemitos(6),
+    getRecentPayments(["CLIENTE", "AMBOS"], 6),
     getEntitySaldos(["CLIENTE", "AMBOS"]),
-    getVencimientos(),
+    // La misma lista que el Inicio y el reporte de Comprobantes vencidos.
+    getVencidosReport(),
     getIngresos(),
     getPagos(["CLIENTE", "AMBOS"]),
     getLitrosEnvasados(),
     getUltimaCotizacion(),
   ]);
-
-  const remitosVencidos = vencimientos.filter(
-    (doc) =>
-      doc.type === "REMITO" &&
-      ["CLIENTE", "AMBOS"].includes(doc.account.entity.type) &&
-      // Vencido es que el día del vencimiento ya pasó entero, no que llegó.
-      doc.dueDate! < hoyComoFecha()
-  );
 
   // Hay clientes que llevan la cuenta en dólares, así que sumar los saldos crudos daría un número
   // sin sentido. Se valuán con la última cotización que alguien usó de verdad en la app —en un
@@ -56,19 +50,18 @@ export default async function DashboardClientesPage() {
   const ingresosArs = ingresosDelMes.get("ARS") ?? ZERO;
   const cobrosArs = pagosDelMes.get("ARS") ?? ZERO;
 
-  const topBlanco = [...saldos]
-    .sort((a, b) => (b.blancoSaldo?.toNumber() ?? 0) - (a.blancoSaldo?.toNumber() ?? 0))
-    .slice(0, 5);
-  const topNegro = [...saldos]
-    .sort((a, b) => (b.negroSaldo?.toNumber() ?? 0) - (a.negroSaldo?.toNumber() ?? 0))
-    .slice(0, 5);
+  // Quiénes más deben, por el total de las dos cuentas: sólo los que deben algo, y los de dólares
+  // valuados para poder ordenarlos contra los de pesos.
+  const enPesos = (f: (typeof saldos)[number]) => (f.entity.moneda === "USD" && cotizacion ? f.total * cotizacion.toNumber() : f.total);
+  const conDeuda = saldos.filter((f) => f.total > 0).sort((a, b) => enPesos(b) - enPesos(a));
+  const vencidosArs = sumDecimals(vencidos.rows.filter((r) => r.currency === "ARS").map((r) => r.pendiente));
 
   return (
     <div className="space-y-10">
       <div>
         <h1 className="text-xl font-semibold mb-1">Dashboard Clientes</h1>
         <p className="text-sm text-foreground/60">
-          Últimas entregas, remitos vencidos, últimos pagos y clientes con más deuda.
+          Lo que nos deben, lo vencido y lo último que entró y salió.
         </p>
       </div>
 
@@ -98,145 +91,78 @@ export default async function DashboardClientesPage() {
         />
       </div>
 
-      <section>
-        <h2 className="text-sm font-semibold mb-2">Remitos vencidos</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                <th className="py-2 pr-4">Cliente</th>
-                <th className="py-2 pr-4">Remito</th>
-                <th className="py-2 pr-4">Vencimiento</th>
-                <th className="py-2 pr-4">Pendiente</th>
-              </tr>
-            </thead>
-            <tbody>
-              {remitosVencidos.map((doc) => (
-                <tr key={doc.id} className="border-b border-foreground/5">
-                  <td className="py-2 pr-4">
-                    <Link
-                      href={`/cuentas-corrientes/${doc.account.entity.slug}`}
-                      className="underline underline-offset-2"
-                    >
-                      {doc.account.entity.name}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-4">#{doc.number}</td>
-                  <td className="py-2 pr-4 text-red-600 dark:text-red-400 font-medium">
-                    {doc.dueDate ? formatFecha(doc.dueDate) : "—"}
-                  </td>
-                  <td className="py-2 pr-4">{formatMoney(doc.pending, doc.currency)}</td>
-                </tr>
-              ))}
-              {remitosVencidos.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-4 text-center text-foreground/40">
-                    No hay remitos vencidos.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Tarjeta
+          titulo="Comprobantes vencidos"
+          resumen={
+            vencidos.rows.length === 0
+              ? "Nadie tiene comprobantes vencidos."
+              : `${vencidos.rows.length} ${vencidos.rows.length === 1 ? "comprobante" : "comprobantes"} · ${formatMoney(vencidosArs)}`
+          }
+          href="/reportes?report=remitos-vencidos"
+          alerta={vencidos.rows.length > 0}
+        >
+          {vencidos.rows.slice(0, 6).map((r) => (
+            <Renglon
+              key={r.documentId}
+              izquierda={`${r.entityName} · #${r.number}`}
+              debajo={`Venció el ${formatFecha(r.dueDate)} · ${r.diasAtraso} ${r.diasAtraso === 1 ? "día" : "días"}`}
+              derecha={formatMoney(r.pendiente, r.currency)}
+              href={`/cuentas-corrientes/${r.entitySlug}`}
+            />
+          ))}
+        </Tarjeta>
 
-      <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
-        <section>
-          <h2 className="text-sm font-semibold mb-2">Últimas entregas</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Cliente</th>
-                  <th className="py-2 pr-4">Remito</th>
-                  <th className="py-2 pr-4">Fecha</th>
-                  <th className="py-2 pr-4">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {entregas.map((doc) => (
-                  <tr key={doc.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">
-                      <Link
-                        href={`/cuentas-corrientes/${doc.account.entity.slug}`}
-                        className="underline underline-offset-2"
-                      >
-                        {doc.account.entity.name}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">#{doc.number}</td>
-                    <td className="py-2 pr-4">{formatFecha(doc.date)}</td>
-                    <td className="py-2 pr-4">{formatMoney(doc.totalAmount, doc.currency)}</td>
-                  </tr>
-                ))}
-                {entregas.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center text-foreground/40">
-                      Todavía no hay entregas cargadas.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <Tarjeta
+          titulo="Los que más deben"
+          resumen={
+            conDeuda.length === 0
+              ? "Ningún cliente debe nada."
+              : `${conDeuda.length} ${conDeuda.length === 1 ? "cliente" : "clientes"} con deuda`
+          }
+          href="/clientes?saldo=deuda"
+        >
+          {conDeuda.slice(0, 6).map((f) => (
+            <Renglon
+              key={f.entity.id}
+              izquierda={f.entity.name}
+              debajo={[
+                f.blancoSaldo && !f.blancoSaldo.isZero() ? `Cuenta 1 ${formatMoney(f.blancoSaldo, f.entity.moneda)}` : null,
+                f.negroSaldo && !f.negroSaldo.isZero() ? `Cuenta 2 ${formatMoney(f.negroSaldo, f.entity.moneda)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+              derecha={formatMoney(f.total, f.entity.moneda)}
+              href={`/cuentas-corrientes/${f.entity.slug}`}
+            />
+          ))}
+        </Tarjeta>
 
-        <section>
-          <h2 className="text-sm font-semibold mb-2">Últimos pagos</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-foreground/10 text-left text-foreground/60">
-                  <th className="py-2 pr-4">Cliente</th>
-                  <th className="py-2 pr-4">Monto</th>
-                  <th className="py-2 pr-4">Medio</th>
-                  <th className="py-2 pr-4">Fecha</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagos.map((payment) => (
-                  <tr key={payment.id} className="border-b border-foreground/5">
-                    <td className="py-2 pr-4">
-                      <Link
-                        href={`/cuentas-corrientes/${payment.account.entity.slug}`}
-                        className="underline underline-offset-2"
-                      >
-                        {payment.account.entity.name}
-                      </Link>
-                    </td>
-                    <td className="py-2 pr-4">{formatMoney(payment.amount, payment.currency)}</td>
-                    <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[payment.method]}</td>
-                    <td className="py-2 pr-4">{formatFecha(payment.date)}</td>
-                  </tr>
-                ))}
-                {pagos.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="py-4 text-center text-foreground/40">
-                      Todavía no hay pagos cargados.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+        <Tarjeta titulo="Últimas entregas" href="/entregas">
+          {entregas.map((doc) => (
+            <Renglon
+              key={doc.id}
+              izquierda={`${doc.account.entity.name} · #${doc.number}`}
+              debajo={`${formatFecha(doc.date)} · ${formatLineasDeRemito(doc.lines)}`}
+              derecha={formatMoney(doc.totalAmount, doc.currency)}
+              href={`/cuentas-corrientes/${doc.account.entity.slug}`}
+            />
+          ))}
+          {entregas.length === 0 && <p className="py-2 text-sm text-foreground/40">Todavía no hay entregas cargadas.</p>}
+        </Tarjeta>
 
-      <div className="grid gap-8 lg:grid-cols-2 [&>*]:min-w-0">
-        <TopDeudaSection
-          title="Clientes con más deuda — Cuenta 1 (c/factura)"
-          rows={topBlanco}
-          circuit="blanco"
-          entityNoun="Cliente"
-          emptyMessage="Todavía no hay clientes cargados."
-        />
-        <TopDeudaSection
-          title="Clientes con más deuda — Cuenta 2 (s/factura)"
-          rows={topNegro}
-          circuit="negro"
-          entityNoun="Cliente"
-          emptyMessage="Todavía no hay clientes cargados."
-        />
+        <Tarjeta titulo="Últimos cobros" href="/pagos-clientes">
+          {pagos.map((p) => (
+            <Renglon
+              key={p.id}
+              izquierda={p.account.entity.name}
+              debajo={`${formatFecha(p.date)} · ${PAYMENT_METHOD_LABELS[p.method]}`}
+              derecha={formatMoney(p.amount, p.currency)}
+              href={`/cuentas-corrientes/${p.account.entity.slug}`}
+            />
+          ))}
+          {pagos.length === 0 && <p className="py-2 text-sm text-foreground/40">Todavía no hay cobros cargados.</p>}
+        </Tarjeta>
       </div>
 
       {isAdmin && <ReportesGerenciales />}

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import type { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
@@ -9,15 +8,15 @@ import {
   getEntitySaldos,
   getTreasuries,
   getUltimaCotizacion,
-  getVencimientos,
   separarRetiroSocietario,
 } from "@/lib/ledger";
 import { getCartera } from "@/lib/cheques";
-import { getInsumosMinimoReport } from "@/lib/reports";
+import { getInsumosMinimoReport, getVencidosReport } from "@/lib/reports";
+import { Renglon, Tarjeta } from "@/components/ui/Tarjeta";
 import { getCajaChica } from "@/lib/caja";
 import { circuitoDeTesoreria } from "@/lib/pagos";
 import { formatMoney, formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
-import { formatFecha, hoyComoFecha } from "@/lib/period";
+import { formatFecha } from "@/lib/period";
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { buttonClass } from "@/components/ui/Button";
 
@@ -64,7 +63,8 @@ export default async function InicioPage() {
         })
       : null,
     ve("/stock") ? getInsumosMinimoReport() : null,
-    ve("/entregas") ? getVencimientos() : null,
+    // La misma lista que el Dashboard y el reporte de Comprobantes vencidos.
+    ve("/entregas") ? getVencidosReport() : null,
     ve("/proveedores") ? getEntitySaldos(["PROVEEDOR", "AMBOS"]) : null,
     ve("/proveedores") ? getUltimaCotizacion() : null,
     ve("/tesoreria/cheques") ? getCartera() : null,
@@ -85,10 +85,7 @@ export default async function InicioPage() {
   ]);
 
   // Lo que nos deben y ya venció.
-  const vencidosClientes = (vencimientos ?? []).filter(
-    (d) =>
-      (d.account.entity.type === "CLIENTE" || d.account.entity.type === "AMBOS") && d.dueDate && d.dueDate < hoyComoFecha()
-  );
+  const vencidosClientes = vencimientos?.rows ?? [];
   // Lo que les debemos a los proveedores, por saldo y no por vencimiento: a Cristian se le paga por
   // adelantado, así que sus compras figuraban "por vencer" aunque la cuenta esté a favor nuestro. La
   // cuenta por la que retiran los socios queda afuera, igual que en la lista de Proveedores.
@@ -180,23 +177,21 @@ export default async function InicioPage() {
               vencidosClientes.length === 0
                 ? "Nadie tiene comprobantes vencidos."
                 : `${vencidosClientes.length} ${vencidosClientes.length === 1 ? "comprobante" : "comprobantes"} · ${formatMoney(
-                    sumDecimals(vencidosClientes.filter((d) => d.currency === "ARS").map((d) => d.pending))
+                    sumDecimals(vencidosClientes.filter((d) => d.currency === "ARS").map((d) => d.pendiente))
                   )}`
             }
-            href="/entregas?pago=sin_pagar"
+            href="/reportes?report=remitos-vencidos"
             alerta={vencidosClientes.length > 0}
           >
-            {[...vencidosClientes]
-              .sort((a, b) => a.dueDate!.getTime() - b.dueDate!.getTime())
-              .slice(0, 5)
-              .map((d) => (
-                <Renglon
-                  key={d.id}
-                  izquierda={`${d.account.entity.name} · #${d.number}`}
-                  debajo={`Venció el ${formatFecha(d.dueDate!)}`}
-                  derecha={formatMoney(d.pending, d.currency)}
-                />
-              ))}
+            {vencidosClientes.slice(0, 5).map((d) => (
+              <Renglon
+                key={d.documentId}
+                izquierda={`${d.entityName} · #${d.number}`}
+                debajo={`Venció el ${formatFecha(d.dueDate)} · ${d.diasAtraso} ${d.diasAtraso === 1 ? "día" : "días"}`}
+                derecha={formatMoney(d.pendiente, d.currency)}
+                href={`/cuentas-corrientes/${d.entitySlug}`}
+              />
+            ))}
           </Tarjeta>
         )}
 
@@ -261,74 +256,6 @@ export default async function InicioPage() {
           </Tarjeta>
         )}
       </div>
-    </div>
-  );
-}
-
-function Tarjeta({
-  titulo,
-  resumen,
-  href,
-  alerta = false,
-  children,
-}: {
-  titulo: string;
-  resumen?: string;
-  href: string;
-  /** Hay algo para hacer: el resumen se resalta. */
-  alerta?: boolean;
-  children?: React.ReactNode;
-}) {
-  return (
-    <section className="flex min-w-0 flex-col rounded-xl border border-foreground/10 bg-background p-4 shadow-sm">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold">{titulo}</h2>
-          {resumen && (
-            <p className={`text-sm ${alerta ? "font-medium text-amber-700 dark:text-amber-400" : "text-foreground/60"}`}>
-              {resumen}
-            </p>
-          )}
-        </div>
-        <Link
-          href={href}
-          className="flex shrink-0 items-center gap-1 text-xs text-foreground/50 hover:text-foreground"
-        >
-          Ver <ArrowRight size={12} />
-        </Link>
-      </div>
-      <div className="divide-y divide-foreground/5">{children}</div>
-    </section>
-  );
-}
-
-function Renglon({
-  izquierda,
-  debajo,
-  derecha,
-  href,
-}: {
-  izquierda: string;
-  debajo?: string;
-  derecha: string;
-  /** Si el renglón lleva a otra pantalla que la de su tarjeta: los cheques adentro de Plata. */
-  href?: string;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3 py-1.5 text-sm">
-      <div className="min-w-0">
-        <p className="truncate">
-          {href ? (
-            <Link href={href} className="underline-offset-2 hover:underline">
-              {izquierda}
-            </Link>
-          ) : (
-            izquierda
-          )}
-        </p>
-        {debajo && <p className="truncate text-xs text-foreground/50">{debajo}</p>}
-      </div>
-      <p className="shrink-0 text-right tabular-nums">{derecha}</p>
     </div>
   );
 }

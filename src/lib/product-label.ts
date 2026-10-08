@@ -60,3 +60,43 @@ export function formatPallets(
   if (partes.length === 0) return "0 pallets";
   return signo + partes.join(" + ");
 }
+
+/**
+ * Lo que lleva un remito, en palabras: "26 pallets + 3 cajas". Suma los pallets y las cajas de sus
+ * líneas tal como se cargaron, sin pasar por el equivalente en pallets: "28,624 pallets" no le dice
+ * nada a nadie, y además mezcla cajas de formatos distintos en una fracción.
+ *
+ * Las líneas de antes de las cajas sueltas sólo tienen `quantity`; esas se pasan a pallets y cajas
+ * con las cajas por pallet de su producto.
+ */
+export function formatLineasDeRemito(
+  lines: {
+    quantity: Prisma.Decimal | number;
+    pallets: number | null;
+    cajas: number | null;
+    botellas?: number | null;
+    product: { boxesPerPallet: number | null };
+  }[]
+): string {
+  let pallets = 0;
+  let cajas = 0;
+  let botellas = 0;
+  for (const l of lines) {
+    if (l.pallets !== null && l.cajas !== null) {
+      pallets += l.pallets;
+      cajas += l.cajas;
+      botellas += l.botellas ?? 0;
+      continue;
+    }
+    const q = Number(l.quantity);
+    const enteros = Math.floor(q);
+    const bpp = l.product.boxesPerPallet;
+    pallets += enteros;
+    if (bpp) cajas += Math.round((q - enteros) * bpp);
+  }
+  const partes: string[] = [];
+  if (pallets > 0) partes.push(`${formatQuantity(pallets)} ${pallets === 1 ? "pallet" : "pallets"}`);
+  if (cajas > 0) partes.push(`${formatQuantity(cajas)} ${cajas === 1 ? "caja" : "cajas"}`);
+  if (botellas > 0) partes.push(`${formatQuantity(botellas)} ${botellas === 1 ? "botella" : "botellas"}`);
+  return partes.length > 0 ? partes.join(" + ") : "—";
+}

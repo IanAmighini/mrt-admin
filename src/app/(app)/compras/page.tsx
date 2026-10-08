@@ -190,7 +190,7 @@ export default async function ComprasPage({
                 <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
                 <Td>
                   <span
-                    className={`rounded px-2 py-1 text-xs font-medium ${
+                    className={`whitespace-nowrap rounded px-2 py-1 text-xs font-medium ${
                       pagado
                         ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
                         : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"

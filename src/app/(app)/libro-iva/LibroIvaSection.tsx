@@ -153,7 +153,7 @@ export async function LibroIvaSection({
                   <tr key={`${r.certificado}-${i}`} className="border-b border-foreground/5">
                     <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(r.date)}</td>
                     <td className="py-2 pr-4">{r.entityName}</td>
-                    <td className="py-2 pr-4 text-foreground/60">{r.taxId ?? "—"}</td>
+                    <td className="py-2 pr-4 whitespace-nowrap text-foreground/60">{r.taxId ?? "—"}</td>
                     <td className="py-2 pr-4">{RETENTION_KIND_LABELS[r.kind]}</td>
                     <td className="py-2 pr-4 text-foreground/60">{r.certificado ?? "—"}</td>
                     <td className={tdNum}>{formatMoney(r.amount)}</td>
@@ -261,9 +261,10 @@ function Planilla({
               <tr key={`${r.number}-${i}`} className="border-b border-foreground/5">
                 <td className="py-2 pr-4 whitespace-nowrap">{formatFecha(r.date)}</td>
                 <td className="py-2 pr-4">{r.tipo}</td>
-                <td className="py-2 pr-4">{r.number}</td>
+                {/* El número y el CUIT van enteros: partidos en tres renglones no se leían. */}
+                <td className="py-2 pr-4 whitespace-nowrap">{r.number}</td>
                 <td className="py-2 pr-4">{r.entityName}</td>
-                <td className="py-2 pr-4 text-foreground/60">{r.taxId ?? "—"}</td>
+                <td className="py-2 pr-4 whitespace-nowrap text-foreground/60">{r.taxId ?? "—"}</td>
                 {conConcepto && <td className="py-2 pr-4 text-foreground/60">{r.concepto}</td>}
                 <td className={tdNum}>{formatMoney(r.neto, r.currency)}</td>
                 <td className={tdNum}>{formatMoney(r.percepcion, r.currency)}</td>
