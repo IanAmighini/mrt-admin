@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { SupplierCategory } from "@prisma/client";
-import { Archive, Droplet, HelpCircle, Layers, PackageOpen, Scissors, Tag, type LucideIcon } from "lucide-react";
+import { Archive, CircleDot, Droplet, HelpCircle, Layers, Milk, PackageOpen, Scissors, Tag, type LucideIcon } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
@@ -14,13 +14,14 @@ import { ItemMovementFields } from "@/components/ItemMovementFields";
 import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { createItem } from "./actions";
+import { DetalleDeCategoria, TarjetaDeCategoria, VolverAInsumos } from "./InsumosStock";
 import { createItemMovement } from "./[itemId]/actions";
 
 const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
   ACEITE: Droplet,
   PREFORMAS: PackageOpen,
-  ENVASES: PackageOpen,
-  TAPAS: PackageOpen,
+  ENVASES: Milk,
+  TAPAS: CircleDot,
   CAJAS: Archive,
   ETIQUETAS: Tag,
   ADITIVO_TINTA: Droplet,
@@ -68,6 +69,7 @@ export default async function StockPage({
   const verProducto = !ver || ver === "producto";
   const verCategoria = ver && ver !== "producto" ? (ver as SupplierCategory) : null;
   const hayFiltro = Boolean(searchTerm || ver || soloBajoMinimo);
+  const enDetalle = Boolean(verCategoria || searchTerm || soloBajoMinimo);
   const hayBotellas = cajasRows.some((r) => r.botellas !== 0);
   const stockRows = (verProducto ? products : [])
     .map((product) => ({ product, stock: productStocks.get(product.id) ?? 0 }))
@@ -341,101 +343,69 @@ export default async function StockPage({
           )}
         </div>
 
-        <div className="space-y-4">
-          {SUPPLIER_CATEGORY_ORDER.map((category) => {
-            const categoryItems = itemsByCategory.get(category);
-            if (!categoryItems || categoryItems.length === 0) return null;
+        {verCategoria && <VolverAInsumos />}
 
-            const Icon = CATEGORY_ICONS[category];
-            const disponible = categoryItems.reduce((acc, item) => acc + Number(stocks.get(item.id) ?? 0), 0);
-            const unit = categoryItems[0].unit;
-            const categoryLabel = SUPPLIER_CATEGORY_LABELS[category];
-
-            return (
-              <div key={category} className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <Icon size={18} className="text-foreground/60" />
-                    <h3 className="text-base font-semibold">Stock de {categoryLabel.toLowerCase()}</h3>
-                  </div>
-                  {canEdit && (
-                    <div className="flex flex-wrap gap-2">
-                      <FormModal
-                        triggerLabel="Registrar merma"
-                        title={`Registrar merma — ${categoryLabel}`}
-                        action={createItemMovement}
-                        iconName="edit"
-                      >
-                        <ItemMovementFields items={categoryItems} type="MERMA" />
-                      </FormModal>
-                      <FormModal
-                        triggerLabel={`Ingreso de ${categoryLabel.toLowerCase()}`}
-                        title={`Ingreso de ${categoryLabel.toLowerCase()}`}
-                        action={createItemMovement}
-                      >
-                        <ItemMovementFields items={categoryItems} type="INGRESO" showConversion={category === "ACEITE"} />
-                      </FormModal>
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-lg bg-foreground/[0.03] p-3">
-                  <p className="text-xs text-foreground/50">Disponible</p>
-                  <p className="text-xl font-semibold">{formatQuantity(disponible, unit)}</p>
-                </div>
-
-                {categoryItems.length > 1 && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium uppercase tracking-wide text-foreground/40">
-                      Detalle
-                    </p>
-                    {categoryItems.map((item) => {
-                      const stock = stocks.get(item.id) ?? 0;
-                      const negative = Number(stock) < 0;
-                      // Ámbar cuando está en o por debajo del mínimo; el rojo queda para stock negativo.
-                      const minStock = item.minStock;
-                      const bajoMinimo =
-                        !negative && minStock != null && Number(stock) <= Number(minStock);
-                      return (
-                        <div key={item.id} className="flex items-center justify-between text-sm">
-                          <Link href={`/stock/${item.slug}`} className="underline underline-offset-2">
-                            {item.name}
-                          </Link>
-                          <span
-                            title={
-                              bajoMinimo && minStock
-                                ? `Por debajo del mínimo (${formatQuantity(minStock, item.unit)})`
-                                : undefined
-                            }
-                            className={
-                              negative
-                                ? "font-medium text-red-600 dark:text-red-400"
-                                : bajoMinimo
-                                  ? "font-medium text-amber-600 dark:text-amber-400"
-                                  : "font-medium"
-                            }
-                          >
-                            {formatQuantity(stock, item.unit)}
-                            {bajoMinimo && " ▾"}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {categoryItems.length === 1 && (
-                  <Link
-                    href={`/stock/${categoryItems[0].slug}`}
-                    className="text-xs underline underline-offset-2"
-                  >
-                    Ver kardex
-                  </Link>
-                )}
-              </div>
-            );
-          })}
-          {items.length === 0 && <p className="text-sm text-foreground/40">Todavía no hay insumos cargados.</p>}
-        </div>
+        {/* Sin filtro, una tarjeta por tipo con su total; con un tipo elegido o una búsqueda, el
+            detalle insumo por insumo. */}
+        {!enDetalle ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {SUPPLIER_CATEGORY_ORDER.map((category) => {
+              const categoryItems = itemsByCategory.get(category);
+              if (!categoryItems || categoryItems.length === 0) return null;
+              return (
+                <TarjetaDeCategoria
+                  key={category}
+                  category={category}
+                  items={categoryItems}
+                  stocks={stocks}
+                  icon={CATEGORY_ICONS[category]}
+                />
+              );
+            })}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {SUPPLIER_CATEGORY_ORDER.map((category) => {
+              const categoryItems = itemsByCategory.get(category);
+              if (!categoryItems || categoryItems.length === 0) return null;
+              const categoryLabel = SUPPLIER_CATEGORY_LABELS[category];
+              return (
+                <DetalleDeCategoria
+                  key={category}
+                  category={category}
+                  items={categoryItems}
+                  stocks={stocks}
+                  icon={CATEGORY_ICONS[category]}
+                  acciones={
+                    canEdit && (
+                      <>
+                        <FormModal
+                          triggerLabel="Registrar merma"
+                          title={`Registrar merma — ${categoryLabel}`}
+                          action={createItemMovement}
+                          iconName="edit"
+                        >
+                          <ItemMovementFields items={categoryItems} type="MERMA" />
+                        </FormModal>
+                        <FormModal
+                          triggerLabel={`Ingreso de ${categoryLabel.toLowerCase()}`}
+                          title={`Ingreso de ${categoryLabel.toLowerCase()}`}
+                          action={createItemMovement}
+                        >
+                          <ItemMovementFields items={categoryItems} type="INGRESO" showConversion={category === "ACEITE"} />
+                        </FormModal>
+                      </>
+                    )
+                  }
+                />
+              );
+            })}
+            {itemsByCategory.size === 0 && (
+              <p className="text-sm text-foreground/40">No hay insumos con este filtro.</p>
+            )}
+          </div>
+        )}
+        {items.length === 0 && <p className="text-sm text-foreground/40">Todavía no hay insumos cargados.</p>}
       </section>
     </div>
   );
