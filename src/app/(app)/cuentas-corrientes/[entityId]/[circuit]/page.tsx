@@ -11,7 +11,7 @@ import { CAJA_CHICA_SLUG } from "@/lib/caja";
 import { getAccountStatement, type StatementEntry } from "@/lib/account-statement";
 import { getCurrentPricesForAccount } from "@/lib/pricing";
 import { formatMoney, formatNumeroExacto } from "@/lib/money";
-import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
+import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS, PAYMENT_CONCEPTO_LABELS } from "@/lib/labels";
 import { desgloseDesdeDocumento } from "@/lib/impuestos";
 import { facturaDeCompra } from "@/lib/compra-factura";
 import {
@@ -21,6 +21,7 @@ import {
   deleteFactura,
   deleteGasto,
   deletePayment,
+  editarEntrada,
   deleteRemito,
   moveRemitoToBlanco,
   updateCompra,
@@ -38,6 +39,7 @@ import { CompraFormFields, filaDeCompra } from "@/components/CompraForm";
 import { EditFacturaFields } from "@/components/EditFacturaFields";
 import { GastoFormFields } from "@/components/GastoFormFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
+import { EntradaFormFields } from "@/components/EntradaFormFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
 import { GastoDeCajaFields } from "@/components/CajaFormFields";
 import { crearGastoDeCaja } from "@/app/(app)/caja-chica/actions";
@@ -75,6 +77,7 @@ export default async function AccountLedgerPage({
   const entityId = entity.id;
   const monedaCuenta = entity.moneda;
   const nombreEntidad = entity.name;
+  const esSocio = entity.retiroSocietario;
   const rotuloSubcuenta = entity.rotuloSubcuenta ?? "Viaje";
 
   const account = await prisma.account.findUnique({
@@ -140,6 +143,44 @@ export default async function AccountLedgerPage({
 
   function renderActions(entry: StatementEntry): React.ReactNode {
     if (!canEdit) return null;
+
+    if (entry.source.kind === "payment" && entry.source.payment.concepto) {
+      // Un aporte o un cobro a un proveedor se edita con su propio formulario: el de pagos lo
+      // guardaría como un pago común y daría vuelta el signo.
+      const { payment } = entry.source;
+      const etiqueta = PAYMENT_CONCEPTO_LABELS[payment.concepto!].toLowerCase();
+      return (
+        <div className="flex items-center gap-2">
+          <FormModal triggerLabel="Editar" soloIcono iconName="edit" title={`Editar ${etiqueta}`} action={editarEntrada}>
+            <EntradaFormFields
+              entityId={entityId}
+              moneda={monedaCuenta}
+              esSocio={esSocio}
+              treasuries={treasuries.map((t) => ({ id: t.id, name: t.name }))}
+              defaults={{
+                paymentId: payment.id,
+                concepto: payment.concepto!,
+                circuit,
+                date: toDateInputValue(payment.date),
+                amount: formatNumeroExacto((payment.amountArs ?? payment.amount).abs()),
+                exchangeRate: formatNumeroExacto(payment.exchangeRate),
+                method: payment.method,
+                destino: payment.treasuryId ?? "",
+                reference: payment.reference ?? "",
+                numeroOperacion: payment.numeroOperacion ?? "",
+              }}
+            />
+          </FormModal>
+          <DeleteButton
+            action={deletePayment}
+            hiddenName="paymentId"
+            hiddenValue={payment.id}
+            nombre={`el ${etiqueta} de ${formatMoney(payment.amount.abs(), payment.currency)} del ${formatFecha(payment.date)}`}
+            consecuencia="La plata sale de la caja a la que había entrado."
+          />
+        </div>
+      );
+    }
 
     if (entry.source.kind === "payment") {
       const { payment, linkedPayment } = entry.source;

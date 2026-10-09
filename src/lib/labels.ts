@@ -7,6 +7,7 @@ import type { CajaMovementType,
   ExpenseCategory,
   TaxKind,
   ItemMovementType,
+  PaymentConcepto,
   PaymentMethod,
   PedidoStatus,
   ProductMovementType,
@@ -115,6 +116,12 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   OTRO: "Otro",
 };
 
+/** Lo que entra desde la cuenta de un proveedor. Ver PaymentConcepto. */
+export const PAYMENT_CONCEPTO_LABELS: Record<PaymentConcepto, string> = {
+  APORTE_CAPITAL: "Aporte de capital",
+  COBRO_PROVEEDOR: "Cobro",
+};
+
 export const CHEQUE_ESTADO_LABELS: Record<ChequeEstado, string> = {
   EN_CARTERA: "En cartera",
   ENTREGADO: "Entregado",
@@ -219,6 +226,7 @@ export const TREASURY_MOVEMENT_CATEGORY_LABELS: Record<TreasuryMovementCategory,
   DEPOSITO: "Depósito",
   PASE: "Pase entre cajas",
   AJUSTE_ARQUEO: "Ajuste por arqueo",
+  APORTE_CAPITAL: "Aporte de capital",
   OTRO: "Otro",
 };
 

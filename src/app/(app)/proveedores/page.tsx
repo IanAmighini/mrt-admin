@@ -46,7 +46,7 @@ export default async function ProveedoresPage({
     .filter(({ entity }) => !rubro || rubroLabel(entity) === rubro);
 
   // El saldo a favor de la cuenta por la que se retira para los socios no es plata que el
-  // proveedor nos deba: va en su propia tarjeta y no suma a "A favor nuestro".
+  // proveedor nos deba: no suma a "A favor nuestro" ni tiene tarjeta propia.
   const esRetiro = (r: (typeof todos)[number]) => r.entity.retiroSocietario && r.total < 0;
   const debemos = buscados.filter((r) => r.total > 0);
   const aFavor = buscados.filter((r) => r.total < 0 && !esRetiro(r));
@@ -116,16 +116,6 @@ export default async function ProveedoresPage({
             href: hrefConSaldo("/proveedores", params, "cero", saldoFiltro),
             activa: saldoFiltro === "cero",
           },
-          ...(retiros.length > 0
-            ? [
-                {
-                  label: "Retiro societario",
-                  cantidad: retiros.length,
-                  valor: retiros.map((r) => formatMoney(-r.total, r.entity.moneda)).join(" + "),
-                  detalle: `acumulado en ${retiros.map((r) => r.entity.name).join(", ")}`,
-                },
-              ]
-            : []),
         ]}
       />
 

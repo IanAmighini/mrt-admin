@@ -5,13 +5,15 @@ import type { RecentMovement } from "@/lib/ledger";
 import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { tituloDeCaja } from "@/lib/account-statement";
-import { DOCUMENT_TYPE_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { DOCUMENT_TYPE_LABELS, PAYMENT_CONCEPTO_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { EntradaFormFields } from "./EntradaFormFields";
 import {
   cargarEnCuenta,
   createDocumentForEntity,
   createFactura,
   crearDevolucion,
   createPaymentForEntity,
+  registrarEntrada,
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { FormModal } from "./Modal";
 import { PaymentFormFields, type ChequeEnCartera } from "./PaymentFormFields";
@@ -29,6 +31,7 @@ export function CuentaCorrientePanel({
   entityId,
   entityName,
   entityType,
+  esSocio = false,
   rubroGasto,
   moneda,
   movements,
@@ -47,6 +50,8 @@ export function CuentaCorrientePanel({
   entityId: string;
   entityName: string;
   entityType: Entity["type"];
+  /** La cuenta por la que se retira para los socios: además de cobros, carga aportes de capital. */
+  esSocio?: boolean;
   /** El rubro del proveedor, para que un gasto suyo arranque con él puesto. */
   rubroGasto?: Entity["expenseCategory"];
   /** Moneda de la cuenta: en dólares el pago se carga en pesos y se convierte. */
@@ -109,6 +114,23 @@ export function CuentaCorrientePanel({
                   cartera={cartera}
                   viajes={viajes}
                   rotuloSubcuenta={rotuloSubcuenta}
+                />
+              </FormModal>
+            )}
+            {/* Plata que entra desde un proveedor: nos paga algo que le vendimos o, en la cuenta del
+                socio, un aporte de capital. Antes se cargaba como un pago en negativo. */}
+            {(entityType === "PROVEEDOR" || esSocio) && (
+              <FormModal
+                triggerLabel={esSocio ? "Aporte o cobro" : "Registrar cobro"}
+                title={esSocio ? "Aporte de capital o cobro" : `Cobro a ${entityName}`}
+                action={registrarEntrada}
+                peso="secundario"
+              >
+                <EntradaFormFields
+                  entityId={entityId}
+                  moneda={moneda}
+                  esSocio={esSocio}
+                  treasuries={treasuries.map((t) => ({ id: t.id, name: t.name }))}
                 />
               </FormModal>
             )}
@@ -252,12 +274,17 @@ export function CuentaCorrientePanel({
             >
               <div>
                 <p className="text-sm font-medium">
-                  {entityType === "CLIENTE" ? "Cobro" : "Pago"} — {PAYMENT_METHOD_LABELS[movement.payment.method]}
+                  {movement.payment.concepto
+                    ? PAYMENT_CONCEPTO_LABELS[movement.payment.concepto]
+                    : entityType === "CLIENTE"
+                      ? "Cobro"
+                      : "Pago"}{" "}
+                  — {PAYMENT_METHOD_LABELS[movement.payment.method]}
                 </p>
                 <p className="text-xs text-foreground/50">{formatFecha(movement.date)}</p>
               </div>
               <p className="text-sm font-semibold text-green-700 dark:text-green-400">
-                {formatMoney(movement.payment.amount, movement.payment.currency)}
+                {formatMoney(movement.payment.amount.abs(), movement.payment.currency)}
               </p>
             </div>
           )

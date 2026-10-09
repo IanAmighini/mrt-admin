@@ -476,6 +476,9 @@ export async function getRecentPayments(
 ) {
   return prisma.payment.findMany({
     where: {
+      // Los aportes y los cobros a proveedores no son pagos: entra plata, no sale. Se ven en la
+      // cuenta corriente y en la caja.
+      concepto: null,
       account: { entity: { type: { in: typeFilter }, ...(filtros.entityId ? { id: filtros.entityId } : {}) } },
       ...(filtros.method ? { method: filtros.method } : {}),
       ...(filtros.from || filtros.to

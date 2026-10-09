@@ -25,6 +25,7 @@ import {
   DOCUMENT_TYPE_LABELS,
   ESTADO_DEVOLUCION_LABELS,
   EXPENSE_CATEGORY_LABELS,
+  PAYMENT_CONCEPTO_LABELS,
   PAYMENT_METHOD_LABELS,
   RETENTION_KIND_LABELS,
 } from "@/lib/labels";
@@ -2705,9 +2706,10 @@ export async function deletePayment(formData: FormData) {
     await logAudit(tx, {
       userId: user.id,
       action: "DELETE",
-      entityType: "Pago",
+      entityType: payment.concepto ? PAYMENT_CONCEPTO_LABELS[payment.concepto] : "Pago",
       entityId: payment.account.entityId,
-      summary: `${payment.account.entity.name} — ${formatMoney(payment.amount, payment.currency)} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
+      // Un aporte o un cobro a un proveedor se guardan en negativo, pero se cargaron en positivo.
+      summary: `${payment.account.entity.name} — ${formatMoney(payment.concepto ? payment.amount.abs() : payment.amount, payment.currency)} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
       cambios: diffDeCampos(
         fotoDelPago({
           date: payment.date,
@@ -3264,4 +3266,180 @@ export async function cargarEnCuenta(formData: FormData) {
   if (tipo === "GASTO") return createGasto(formData);
   if (tipo === "NOTA") return createDocumentForEntity(formData);
   throw new UserError("Elegí qué querés cargar.");
+}
+
+/**
+ * Plata que entra desde la cuenta de un proveedor: un aporte de capital del socio, o un proveedor
+ * que nos paga algo que le vendimos. Es un pago al revés —entra plata a una caja y su saldo sube—, y
+ * se guarda como tal: con el monto en negativo, que es lo que el saldo, la caja y la imputación ya
+ * saben leer. Lo nuevo es el `concepto`, que hace que se cargue y se muestre en positivo y con su
+ * nombre en vez de como un "pago de −US$ 8.523".
+ *
+ * Va sólo en efectivo o transferencia y siempre a una caja: es plata que llegó a la empresa.
+ */
+const CONCEPTOS = ["APORTE_CAPITAL", "COBRO_PROVEEDOR"] as const;
+type Concepto = (typeof CONCEPTOS)[number];
+
+async function guardarEntrada(formData: FormData, editarId: string | null) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const anterior = editarId
+    ? await prisma.payment.findUnique({
+        where: { id: editarId },
+        include: { account: { include: { entity: true } } },
+      })
+    : null;
+  if (editarId && !anterior) throw new UserError("La entrada ya no existe.");
+  if (anterior && !anterior.concepto) throw new UserError("Este movimiento es un pago común: se edita desde su propio lápiz.");
+
+  const entityId = anterior?.account.entityId ?? String(formData.get("entityId") || "");
+  const conceptoRaw = String(formData.get("concepto") || "");
+  if (!(CONCEPTOS as readonly string[]).includes(conceptoRaw)) throw new UserError("Elegí qué es: un cobro o un aporte de capital.");
+  const concepto = conceptoRaw as Concepto;
+
+  const circuit = String(formData.get("circuit") || "");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Cuenta inválida.");
+  const account = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId, circuit } },
+    include: { entity: true },
+  });
+  if (!account) throw new UserError("No se encontró la cuenta de este proveedor.");
+  const entity = account.entity;
+  if (entity.type !== "PROVEEDOR" && entity.type !== "AMBOS") {
+    throw new UserError("Esto es para proveedores. Lo que paga un cliente se carga con Registrar cobro.");
+  }
+  if (concepto === "APORTE_CAPITAL" && !entity.retiroSocietario) {
+    throw new UserError(`${entity.name} no es la cuenta de un socio: un aporte de capital sólo se carga en la de Cristian.`);
+  }
+
+  const date = parseFormDate(formData.get("date"));
+  const method = String(formData.get("method") || "") as PaymentMethod;
+  if (method !== "EFECTIVO" && method !== "TRANSFERENCIA") throw new UserError("Elegí si entró en efectivo o por transferencia.");
+  validarMetodo(circuit, method);
+  const reference = String(formData.get("reference") || "").trim() || null;
+  const numeroOperacion = leerNumeroOperacion(formData, method);
+
+  const destino = String(formData.get("destino") || "");
+  const caja = destino ? await prisma.entity.findUnique({ where: { id: destino } }) : null;
+  if (!caja || caja.type !== "TESORERIA") throw new UserError("Elegí a qué caja entró la plata.");
+  const cuentaDeCaja = await prisma.account.findUnique({
+    where: { entityId_circuit: { entityId: caja.id, circuit: circuitoDeTesoreria(caja.name) } },
+  });
+  if (!cuentaDeCaja) throw new UserError("No se encontró la cuenta de esa caja.");
+
+  // Se escribe en positivo, como todo lo demás. En una cuenta en dólares se escriben los pesos que
+  // entraron y la cotización, igual que en un pago.
+  const { amount, exchangeRate, amountArs } = montoDelPago(formData, entity.moneda);
+  if (!amount.greaterThan(0)) throw new UserError("El monto tiene que ser mayor a cero.");
+  const enPesos = amountArs ?? amount;
+
+  // Borrar la entrada vieja le saca la plata a su caja; meter la nueva se la pone. Se simula todo
+  // antes de tocar nada.
+  await verificarCajaDelPago({
+    destino,
+    isCobro: true,
+    date,
+    enPesos,
+    movimientosAnteriores: editarId
+      ? await prisma.document.findMany({ where: { sourcePaymentId: editarId }, select: { id: true, accountId: true } })
+      : [],
+  });
+
+  const etiqueta = PAYMENT_CONCEPTO_LABELS[concepto];
+  const datos = {
+    accountId: account.id,
+    date,
+    // En negativo: es lo que hace que el saldo del proveedor suba, igual que un pago lo baja.
+    amount: amount.negated(),
+    currency: entity.moneda,
+    exchangeRate,
+    amountArs: amountArs?.negated() ?? null,
+    method,
+    concepto,
+    reference,
+    numeroOperacion,
+    treasuryId: caja.id,
+  };
+
+  await prisma.$transaction(async (tx) => {
+    let id: string;
+    if (editarId) {
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: editarId } });
+      await tx.document.deleteMany({ where: { sourcePaymentId: editarId } });
+      await tx.payment.update({ where: { id: editarId }, data: datos });
+      id = editarId;
+    } else {
+      id = (await tx.payment.create({ data: { ...datos, createdById: user.id } })).id;
+    }
+    await tx.document.create({
+      data: {
+        accountId: cuentaDeCaja.id,
+        type: "AJUSTE",
+        number: `P-${id.slice(-8)}`,
+        date,
+        currency: "ARS",
+        netAmount: enPesos,
+        totalAmount: enPesos,
+        reason:
+          entity.moneda === "USD" && exchangeRate
+            ? `${etiqueta} de ${entity.name} — ${PAYMENT_METHOD_LABELS[method]} — ${formatMoney(amount, "USD")} a ${exchangeRate.toString()}`
+            : `${etiqueta} de ${entity.name} — ${PAYMENT_METHOD_LABELS[method]}`,
+        treasuryCategory: concepto === "APORTE_CAPITAL" ? "APORTE_CAPITAL" : "COBRO",
+        sourcePaymentId: id,
+        createdById: user.id,
+      },
+    });
+
+    const foto = (p: {
+      date: Date;
+      amount: Prisma.Decimal;
+      currency: string;
+      amountArs: Prisma.Decimal | null;
+      exchangeRate: Prisma.Decimal | null;
+      method: PaymentMethod;
+      reference: string | null;
+      numeroOperacion: string | null;
+      circuito: Circuit;
+    }) =>
+      fotoDelPago({
+        date: p.date,
+        // En el registro también en positivo, como se cargó.
+        amount: p.amount.abs(),
+        currency: p.currency,
+        amountArs: p.amountArs?.abs() ?? null,
+        exchangeRate: p.exchangeRate,
+        method: PAYMENT_METHOD_LABELS[p.method],
+        retentionKind: null,
+        reference: p.reference,
+        numeroOperacion: p.numeroOperacion,
+        circuito: CIRCUIT_LABELS[p.circuito],
+        viaje: null,
+      });
+    await logAudit(tx, {
+      userId: user.id,
+      action: editarId ? "UPDATE" : "CREATE",
+      entityType: etiqueta,
+      entityId,
+      summary: `${etiqueta} de ${entity.name} — ${formatMoney(amount, entity.moneda)} — ${PAYMENT_METHOD_LABELS[method]}`,
+      cambios: diffDeCampos(
+        anterior ? foto({ ...anterior, circuito: anterior.account.circuit }) : null,
+        foto({ ...datos, circuito: circuit }),
+        CAMPOS_DEL_PAGO
+      ),
+    });
+  });
+
+  await reimputarEntidades(entityId);
+  revalidatePath(`/cuentas-corrientes/${entity.slug}`);
+  revalidatePath("/proveedores");
+  revalidatePath("/dashboard-proveedores");
+  revalidatePath("/tesoreria");
+}
+
+export async function registrarEntrada(formData: FormData) {
+  await guardarEntrada(formData, null);
+}
+
+export async function editarEntrada(formData: FormData) {
+  await guardarEntrada(formData, String(formData.get("paymentId") || ""));
 }

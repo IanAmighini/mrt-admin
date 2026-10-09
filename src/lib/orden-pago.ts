@@ -32,6 +32,8 @@ export async function getPagosSinOrden(entityId: string) {
   return prisma.payment.findMany({
     where: {
       ordenPagoId: null,
+      // Una orden de pago documenta plata que sale: un aporte o un cobro no entran.
+      concepto: null,
       account: { entityId, circuit: "BLANCO" },
     },
     include: { allocations: { include: { document: true } }, chequesEntregados: true },

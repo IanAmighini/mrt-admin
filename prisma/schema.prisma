@@ -100,6 +100,8 @@ enum TreasuryMovementCategory {
   /// anulan entre sí.
   PASE
   AJUSTE_ARQUEO
+  /// Plata que pone un socio. No es ingreso de la empresa: es capital.
+  APORTE_CAPITAL
   OTRO
 }
 
@@ -251,6 +253,16 @@ enum TaxKind {
 enum Currency {
   ARS
   USD
+}
+
+/// Plata que ENTRA desde la cuenta de un proveedor, al revés de un pago. Se guarda con el monto en
+/// negativo —que es lo que hace que el saldo suba— pero se carga y se muestra en positivo, con su
+/// nombre. Antes se cargaba a mano como "pago negativo" y se leía como un error.
+enum PaymentConcepto {
+  /// El socio pone plata en la empresa (Cristian, por la cuenta por la que se retira).
+  APORTE_CAPITAL
+  /// Un proveedor nos paga lo que nos debe: un insumo que le vendimos, por ejemplo.
+  COBRO_PROVEEDOR
 }
 
 enum PaymentMethod {
@@ -477,6 +489,8 @@ model Payment {
   /// realmente se movió.
   amountArs       Decimal?       @db.Decimal(14, 2)
   method          PaymentMethod
+  /// Vacío en un pago o un cobro común. Ver PaymentConcepto.
+  concepto        PaymentConcepto?
   /// Solo cuando `method` es RETENCION: contra qué impuesto se imputa.
   retentionKind   RetentionKind?
   reference       String?

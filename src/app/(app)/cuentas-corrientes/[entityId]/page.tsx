@@ -339,6 +339,7 @@ export default async function EntityLedgerPage({
           entityId={entity.id}
           entityName={entity.name}
           entityType={entity.type}
+          esSocio={entity.retiroSocietario}
           rubroGasto={entity.expenseCategory}
           moneda={entity.moneda}
           movements={recentMovements}

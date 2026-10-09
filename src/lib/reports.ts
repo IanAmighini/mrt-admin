@@ -441,6 +441,7 @@ export async function getCobranzasReport(period: Period, lado: CobranzasLado): P
   const payments = await prisma.payment.findMany({
     where: {
       date: { gte: period.from, lt: period.to },
+      concepto: null,
       account: {
         entity: { type: { in: lado === "CLIENTES" ? ["CLIENTE", "AMBOS"] : ["PROVEEDOR", "AMBOS"] } },
       },

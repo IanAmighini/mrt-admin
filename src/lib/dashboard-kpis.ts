@@ -86,6 +86,8 @@ export async function getPagos(typeFilter: EntityType[], period: Period = monthP
     where: {
       date: { gte: period.from, lt: period.to },
       account: { entity: { type: { in: typeFilter } } },
+      // Un aporte del socio o un cobro a un proveedor no son pagos: entra plata, no sale.
+      concepto: null,
     },
   });
 

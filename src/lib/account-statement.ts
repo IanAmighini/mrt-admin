@@ -6,6 +6,7 @@ import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import {
   CIRCUIT_LABELS,
   DOCUMENT_TYPE_LABELS,
+  PAYMENT_CONCEPTO_LABELS,
   PAYMENT_METHOD_LABELS,
   ESTADO_DEVOLUCION_LABELS,
   TREASURY_MOVEMENT_CATEGORY_LABELS,
@@ -225,15 +226,24 @@ export async function getAccountStatement({
       sinImputar.greaterThan(0) ? `${formatMoney(sinImputar, payment.currency)} sin imputar` : null,
     ].filter(Boolean);
 
+    // Un aporte o un cobro a un proveedor se guardan en negativo, pero se leen como lo que son: plata
+    // que entró, en el Debe y en positivo, y no un "pago de −US$ 8.523" en el Haber.
+    const entrada = payment.concepto !== null;
     all.push({
       key: `pay-${payment.id}`,
       date: payment.date,
       // Lo que entra de un cliente es un cobro; lo que sale a un proveedor, un pago.
-      title: `${account.entity.type === "CLIENTE" ? "Cobro" : "Pago"} — ${PAYMENT_METHOD_LABELS[payment.method]}`,
+      title: `${
+        payment.concepto
+          ? PAYMENT_CONCEPTO_LABELS[payment.concepto]
+          : account.entity.type === "CLIENTE"
+            ? "Cobro"
+            : "Pago"
+      } — ${PAYMENT_METHOD_LABELS[payment.method]}`,
       subtitle: subtitleParts.length > 0 ? subtitleParts.join(" · ") : null,
       currency: payment.currency,
-      debe: ZERO,
-      haber: payment.amount,
+      debe: entrada ? payment.amount.negated() : ZERO,
+      haber: entrada ? ZERO : payment.amount,
       cargadoEl: payment.createdAt,
       esSaldoInicial: false,
       source: { kind: "payment", payment, linkedPayment },
