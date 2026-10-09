@@ -1,26 +1,15 @@
-import Link from "next/link";
 import { requireUser } from "@/lib/auth-helpers";
 import { getEntitySaldos, getUltimaCotizacion, sumarSaldosEnPesos } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { FormModal } from "@/components/Modal";
 import { EntityFormFields } from "@/components/EntityFormFields";
 import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
+import { CuentasAlDia, FilasDeCuentas, TarjetasDeSaldo, hrefConSaldo } from "@/components/CuentasLista";
 import { ORDENES, ordenarFilas } from "@/lib/orden-saldos";
-import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { createEntity } from "./actions";
 
-const TYPE_LABELS: Record<string, string> = {
-  CLIENTE: "Cliente",
-  PROVEEDOR: "Proveedor",
-  AMBOS: "Cliente y proveedor",
-};
-
 /** Los tres estados en que puede estar una cuenta, que es como se la busca. */
-const SALDO_FILTERS = [
-  { value: "deuda", label: "Nos deben" },
-  { value: "favor", label: "A favor" },
-  { value: "cero", label: "En cero" },
-];
+const SALDOS = ["deuda", "favor", "cero"] as const;
 
 export default async function ClientesPage({
   searchParams,
@@ -31,33 +20,37 @@ export default async function ClientesPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [todos, cotizacion] = await Promise.all([
+  const [todos, cotizacionDecimal] = await Promise.all([
     getEntitySaldos(["CLIENTE", "AMBOS"]),
     getUltimaCotizacion(),
   ]);
+  const cotizacion = cotizacionDecimal?.toNumber() ?? null;
 
   const busqueda = q?.trim().toLowerCase();
-  const saldoFiltro = SALDO_FILTERS.some((f) => f.value === saldo) ? saldo : "";
+  const saldoFiltro = (SALDOS as readonly string[]).includes(saldo ?? "") ? saldo! : "";
   const hayFiltro = Boolean(busqueda || saldoFiltro || orden);
 
-  const rows = todos
-    .filter(
-      ({ entity }) =>
-        !busqueda ||
-        entity.name.toLowerCase().includes(busqueda) ||
-        (entity.taxId ?? "").toLowerCase().includes(busqueda)
-    )
-    .filter(({ total }) => {
-      if (saldoFiltro === "deuda") return total > 0;
-      if (saldoFiltro === "favor") return total < 0;
-      if (saldoFiltro === "cero") return total === 0;
-      return true;
-    });
+  // Las tarjetas cuentan sobre lo buscado, sin el filtro de saldo: si no, al tocar "Nos deben"
+  // las otras dos quedarían en cero.
+  const buscados = todos.filter(
+    ({ entity }) =>
+      !busqueda || entity.name.toLowerCase().includes(busqueda) || (entity.taxId ?? "").toLowerCase().includes(busqueda)
+  );
+  const deben = buscados.filter((r) => r.total > 0);
+  const aFavor = buscados.filter((r) => r.total < 0);
+  const enCero = buscados.filter((r) => r.total === 0);
 
-  const filas = ordenarFilas(rows, orden);
+  const conSaldo = ordenarFilas(
+    saldoFiltro === "deuda" ? deben : saldoFiltro === "favor" ? aFavor : saldoFiltro === "cero" ? [] : [...deben, ...aFavor],
+    orden,
+    cotizacion
+  );
+  const enPesos = (r: (typeof todos)[number]) => (r.entity.moneda === "USD" && cotizacion ? r.total * cotizacion : r.total);
+  const maximo = Math.max(0, ...deben.map(enPesos));
 
-  const { total: deudaTotal, dolaresSinValuar } = sumarSaldosEnPesos(rows, cotizacion);
-  const conDeuda = rows.filter((r) => r.total > 0).length;
+  const totalDeben = sumarSaldosEnPesos(deben, cotizacionDecimal);
+  const totalFavor = sumarSaldosEnPesos(aFavor, cotizacionDecimal);
+  const params = { q, orden };
 
   return (
     <div className="space-y-6">
@@ -65,18 +58,7 @@ export default async function ClientesPage({
         <div>
           <h1 className="text-xl font-semibold mb-1">Clientes</h1>
           <p className="text-sm text-foreground/60">
-            {rows.length} {rows.length === 1 ? "cliente" : "clientes"} ·{" "}
-            {conDeuda > 0 ? (
-              <>
-                {conDeuda} con deuda por{" "}
-                <span className="font-medium text-foreground/80">
-                  {formatMoney(deudaTotal)}
-                  {!dolaresSinValuar.isZero() && ` + ${formatMoney(dolaresSinValuar, "USD")}`}
-                </span>
-              </>
-            ) : (
-              "ninguno con deuda"
-            )}
+            {todos.length} clientes. Tocá una tarjeta para ver sólo esos.
           </p>
         </div>
         {canEdit && (
@@ -86,67 +68,65 @@ export default async function ClientesPage({
         )}
       </div>
 
+      <TarjetasDeSaldo
+        tarjetas={[
+          {
+            label: "Nos deben",
+            cantidad: deben.length,
+            valor:
+              formatMoney(totalDeben.total) +
+              (totalDeben.dolaresSinValuar.isZero() ? "" : ` + ${formatMoney(totalDeben.dolaresSinValuar, "USD")}`),
+            detalle: deben.some((r) => r.entity.moneda === "USD") && cotizacion ? `dólares a ${formatMoney(cotizacion)}` : undefined,
+            href: hrefConSaldo("/clientes", params, "deuda", saldoFiltro),
+            activa: saldoFiltro === "deuda",
+            tono: "deuda",
+          },
+          {
+            label: "A favor del cliente",
+            cantidad: aFavor.length,
+            valor:
+              formatMoney(totalFavor.total.negated()) +
+              (totalFavor.dolaresSinValuar.isZero() ? "" : ` + ${formatMoney(totalFavor.dolaresSinValuar.negated(), "USD")}`),
+            href: hrefConSaldo("/clientes", params, "favor", saldoFiltro),
+            activa: saldoFiltro === "favor",
+            tono: "favor",
+          },
+          {
+            label: "Al día",
+            cantidad: enCero.length,
+            href: hrefConSaldo("/clientes", params, "cero", saldoFiltro),
+            activa: saldoFiltro === "cero",
+          },
+        ]}
+      />
+
       <FilterBar limpiarHref="/clientes" hayFiltro={hayFiltro} textoBoton="Filtrar">
+        {saldoFiltro && <input type="hidden" name="saldo" value={saldoFiltro} />}
         <FiltroBuscar defaultValue={q} placeholder="Nombre o CUIT…" />
-        <FiltroSelect label="Saldo" name="saldo" defaultValue={saldoFiltro} opciones={SALDO_FILTERS} />
         <FiltroSelect
           label="Ordenar por"
           name="orden"
           defaultValue={orden}
-          todos="Nombre (A-Z)"
+          todos={ORDENES[0].label}
           className="w-full sm:w-56"
           opciones={ORDENES.filter((o) => o.value).map((o) => ({ value: o.value, label: o.label }))}
         />
       </FilterBar>
 
-      <Table>
-        <Thead>
-          <Th>Nombre</Th>
-          <Th secundaria>Tipo</Th>
-          <Th secundaria>CUIT</Th>
-          <Th secundaria align="derecha">
-            Cuenta 1 (c/factura)
-          </Th>
-          <Th secundaria align="derecha">
-            Cuenta 2 (s/factura)
-          </Th>
-          <Th align="derecha">Total</Th>
-        </Thead>
-        <tbody>
-          {filas.map(({ entity, blancoSaldo, negroSaldo, total }) => (
-            <Tr key={entity.id}>
-              <Td>
-                <Link
-                  href={`/cuentas-corrientes/${entity.slug}`}
-                  className="underline underline-offset-2"
-                >
-                  {entity.name}
-                </Link>
-                {/* En el teléfono las otras columnas no están, así que el CUIT va acá abajo. */}
-                {entity.taxId && (
-                  <span className="block text-xs text-foreground/50 md:hidden">{entity.taxId}</span>
-                )}
-              </Td>
-              <Td secundaria>{TYPE_LABELS[entity.type]}</Td>
-              <Td secundaria>{entity.taxId || "—"}</Td>
-              <Td secundaria numero>
-                {blancoSaldo ? formatMoney(blancoSaldo, entity.moneda) : "—"}
-              </Td>
-              <Td secundaria numero>
-                {negroSaldo ? formatMoney(negroSaldo, entity.moneda) : "—"}
-              </Td>
-              <Td numero className={total < 0 ? "font-medium text-green-700 dark:text-green-400" : "font-medium"}>
-                {formatMoney(total, entity.moneda)}
-              </Td>
-            </Tr>
-          ))}
-          {rows.length === 0 && (
-            <TableEmpty colSpan={6}>
-              {hayFiltro ? "No hay clientes con este filtro." : "Todavía no hay clientes cargados."}
-            </TableEmpty>
-          )}
-        </tbody>
-      </Table>
+      {conSaldo.length > 0 && (
+        <FilasDeCuentas
+          filas={conSaldo}
+          maximo={maximo}
+          cotizacion={cotizacion}
+          etiquetaFavor={() => "a favor del cliente"}
+        />
+      )}
+      {(saldoFiltro === "" || saldoFiltro === "cero") && <CuentasAlDia filas={enCero} />}
+      {conSaldo.length === 0 && (saldoFiltro === "deuda" || saldoFiltro === "favor" || enCero.length === 0) && (
+        <p className="rounded-xl border border-foreground/10 px-4 py-8 text-center text-sm text-foreground/40">
+          {hayFiltro ? "No hay clientes con este filtro." : "Todavía no hay clientes cargados."}
+        </p>
+      )}
     </div>
   );
 }
