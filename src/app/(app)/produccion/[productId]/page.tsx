@@ -10,9 +10,12 @@ import { getProductMovements, getProductStock } from "@/lib/stock";
 import { formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { CAJA_MOVEMENT_TYPE_LABELS, PRODUCT_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import { formatPallets } from "@/lib/product-label";
-import { formatFecha, hoyEnInput } from "@/lib/period";
+import { formatFecha, toDateInputValue } from "@/lib/period";
+import { AjusteProductoFields, type AjusteProductoDefaults } from "@/components/AjusteProductoFields";
 import {
+  borrarMovimientoDeProducto,
   createProductMovement,
+  editarMovimientoDeProducto,
   deleteRecipeLine,
   restaurarRecetaAutomatica,
   updateProduct,
@@ -72,7 +75,34 @@ export default async function ProductDetailPage({
 
   // El kardex junta los pallets de este formato y las cajas sueltas de su caja: son el mismo
   // producto, y un desarmado se ve como las dos mitades de lo mismo, en el mismo día.
-  type Renglon = { id: string; date: Date; createdAt: Date; tipo: string; cantidad: string; negativo: boolean; motivo: string; usuario: string };
+  type Renglon = {
+    id: string;
+    date: Date;
+    createdAt: Date;
+    tipo: string;
+    cantidad: string;
+    negativo: boolean;
+    motivo: string;
+    usuario: string;
+    /** Un ajuste o una merma cargados a mano: lo único que se corrige o se borra desde acá. */
+    editable: AjusteProductoDefaults | null;
+  };
+  const editable = (
+    m: { id: string; type: string; date: Date; reason: string; productionLineId: string | null; documentLineId: string | null },
+    kind: "PALLETS" | "CAJAS",
+    cantidad: number
+  ): AjusteProductoDefaults | null =>
+    (m.type === "AJUSTE" || m.type === "MERMA") && !m.productionLineId && !m.documentLineId
+      ? {
+          movementId: m.id,
+          kind,
+          type: m.type,
+          date: toDateInputValue(m.date),
+          quantity: formatNumeroExacto(Math.abs(cantidad)),
+          effect: cantidad < 0 ? "RESTA" : "SUMA",
+          reason: m.reason,
+        }
+      : null;
   const kardex: Renglon[] = [
     ...movements.map((m) => ({
       id: m.id,
@@ -83,6 +113,7 @@ export default async function ProductDetailPage({
       negativo: m.quantity.isNegative(),
       motivo: m.reason,
       usuario: m.createdBy.name,
+      editable: editable(m, "PALLETS", m.quantity.toNumber()),
     })),
     ...(caja?.movimientos ?? []).map((m) => ({
       id: m.id,
@@ -102,6 +133,7 @@ export default async function ProductDetailPage({
       negativo: m.quantity < 0 || (m.quantity === 0 && m.botellas < 0),
       motivo: m.reason,
       usuario: m.createdBy.name,
+      editable: m.botellas === 0 ? editable(m, "CAJAS", m.quantity) : null,
     })),
   ].sort((a, b) => b.date.getTime() - a.date.getTime() || b.createdAt.getTime() - a.createdAt.getTime());
 
@@ -382,47 +414,7 @@ export default async function ProductDetailPage({
             roturas y lo que aparece o falta después de un conteo. Lo que se envasa va por
             Producción, y armar o desarmar pallets también.
           </p>
-          <input type="hidden" name="productId" value={product.id} />
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Tipo">
-              <select name="type" defaultValue="AJUSTE" className={selectClass}>
-                <option value="AJUSTE">Ajuste</option>
-                <option value="MERMA">Merma (rotura)</option>
-              </select>
-            </Field>
-            <Field label="Fecha">
-              <input
-                type="date"
-                name="date"
-                required
-                defaultValue={hoyEnInput()}
-                className={selectClass}
-              />
-            </Field>
-            <Field label="Cantidad">
-              <div className="flex gap-2">
-                <input name="quantity" required inputMode="numeric" className={selectClass} />
-                <select name="unidad" defaultValue="PALLETS" className={`${selectClass} w-auto`}>
-                  <option value="PALLETS">pallets</option>
-                  <option value="CAJAS">cajas sueltas</option>
-                </select>
-              </div>
-            </Field>
-            <Field label="Efecto (sólo el ajuste)">
-              <select name="effect" defaultValue="SUMA" className={selectClass}>
-                <option value="SUMA">Suma al stock</option>
-                <option value="RESTA">Resta del stock</option>
-              </select>
-            </Field>
-          </div>
-          <Field label="Motivo">
-            <input
-              name="reason"
-              required
-              placeholder="Conteo físico, stock inicial, pallet roto…"
-              className={selectClass}
-            />
-          </Field>
+          <AjusteProductoFields productId={product.id} />
         </FormConError>
       )}
 
@@ -437,6 +429,7 @@ export default async function ProductDetailPage({
                 <th className="py-2 pr-4">Cantidad</th>
                 <th className="py-2 pr-4">Motivo</th>
                 <th className="py-2 pr-4">Usuario</th>
+                {canAdjust && <th className="py-2 w-16" />}
               </tr>
             </thead>
             <tbody>
@@ -449,11 +442,41 @@ export default async function ProductDetailPage({
                   </td>
                   <td className="py-2 pr-4">{m.motivo}</td>
                   <td className="py-2 pr-4">{m.usuario}</td>
+                  {canAdjust && (
+                    <td className="py-2">
+                      {m.editable && (
+                        <div className="flex items-center gap-1">
+                          <FormModal
+                            triggerLabel="Editar"
+                            soloIcono
+                            iconName="edit"
+                            title={`Corregir ${m.tipo.toLowerCase()}`}
+                            action={editarMovimientoDeProducto}
+                          >
+                            <AjusteProductoFields productId={product.id} defaults={m.editable} />
+                            <button type="submit" className={botonPrimario}>
+                              Guardar cambios
+                            </button>
+                          </FormModal>
+                          <DeleteButton
+                            action={borrarMovimientoDeProducto}
+                            hiddenName="movementId"
+                            hiddenValue={m.id}
+                            nombre={`${m.tipo.toLowerCase()} de ${m.cantidad} del ${formatFecha(m.date)}`}
+                            consecuencia="El stock vuelve a lo que era antes de esta carga."
+                          >
+                            <input type="hidden" name="productId" value={product.id} />
+                            <input type="hidden" name="kind" value={m.editable.kind} />
+                          </DeleteButton>
+                        </div>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
               {kardex.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-4 text-center text-foreground/40">
+                  <td colSpan={canAdjust ? 6 : 5} className="py-4 text-center text-foreground/40">
                     Sin movimientos todavía.
                   </td>
                 </tr>

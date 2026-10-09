@@ -23,13 +23,11 @@ function parseFormDate(value: FormDataEntryValue | null): Date {
   return parseFecha(str);
 }
 
-export async function createItemMovement(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
-
-  const itemId = String(formData.get("itemId") || "");
-  const item = await prisma.item.findUnique({ where: { id: itemId } });
-  if (!item) notFound();
-
+/**
+ * Lo que dice el formulario de un movimiento de insumo cargado a mano —ingreso, ajuste, merma—,
+ * ya con su signo. Lo usan cargarlo y corregirlo, así las dos cosas siguen las mismas reglas.
+ */
+function leerMovimientoDeInsumo(formData: FormData, item: { category: string }) {
   const type = String(formData.get("type") || "") as ItemMovementType;
   if (!MOVEMENT_TYPES.includes(type)) throw new UserError("Tipo de movimiento inválido.");
 
@@ -58,26 +56,59 @@ export async function createItemMovement(formData: FormData) {
   } else {
     const quantityRaw = String(formData.get("quantity") || "").trim();
     if (!quantityRaw) throw new UserError("Falta la cantidad.");
-    quantity = parseNumeroEscrito(quantityRaw, "cantidad");
+    quantity = parseNumeroEscrito(quantityRaw, "cantidad").abs();
   }
+  if (quantity.isZero()) throw new UserError("La cantidad no puede ser cero.");
 
   if (type !== "INGRESO" && effect === "RESTA") {
     quantity = quantity.negated();
   }
+  return { type, date, reason, quantity, sourceKg, conversionFactor };
+}
+
+const CAMPOS_DEL_MOVIMIENTO = {
+  tipo: "Tipo",
+  insumo: "Insumo",
+  date: "Fecha",
+  quantity: "Cantidad",
+  reason: "Motivo",
+  sourceKg: "Kilos",
+  conversionFactor: "Densidad",
+} as const;
+
+function fotoDelMovimiento(
+  m: {
+    type: ItemMovementType;
+    date: Date;
+    quantity: Prisma.Decimal;
+    reason: string;
+    sourceKg: Prisma.Decimal | null;
+    conversionFactor: Prisma.Decimal | null;
+  },
+  item: { name: string; unit: string }
+) {
+  return {
+    tipo: ITEM_MOVEMENT_TYPE_LABELS[m.type],
+    insumo: item.name,
+    date: m.date,
+    quantity: formatQuantity(m.quantity, item.unit),
+    reason: m.reason,
+    sourceKg: m.sourceKg,
+    conversionFactor: m.conversionFactor,
+  };
+}
+
+export async function createItemMovement(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const itemId = String(formData.get("itemId") || "");
+  const item = await prisma.item.findUnique({ where: { id: itemId } });
+  if (!item) notFound();
+
+  const m = leerMovimientoDeInsumo(formData, item);
 
   await prisma.$transaction(async (tx) => {
-    await tx.itemMovement.create({
-      data: {
-        itemId: item.id,
-        date,
-        quantity,
-        type,
-        reason,
-        sourceKg,
-        conversionFactor,
-        createdById: user.id,
-      },
-    });
+    await tx.itemMovement.create({ data: { itemId: item.id, ...m, createdById: user.id } });
     // Un ajuste o una merma no pueden sacar más de lo que hay.
     await asegurarSinNegativos(tx, { insumos: [item.id] });
   });
@@ -87,28 +118,8 @@ export async function createItemMovement(formData: FormData) {
     action: "CREATE",
     entityType: "Movimiento de insumo",
     entityId: item.id,
-    summary: `${ITEM_MOVEMENT_TYPE_LABELS[type]} — ${item.name} — ${formatQuantity(quantity, item.unit)}`,
-    cambios: diffDeCampos(
-      null,
-      {
-        tipo: ITEM_MOVEMENT_TYPE_LABELS[type],
-        insumo: item.name,
-        date,
-        quantity: formatQuantity(quantity, item.unit),
-        reason,
-        sourceKg,
-        conversionFactor,
-      },
-      {
-        tipo: "Tipo",
-        insumo: "Insumo",
-        date: "Fecha",
-        quantity: "Cantidad",
-        reason: "Motivo",
-        sourceKg: "Kilos",
-        conversionFactor: "Densidad",
-      }
-    ),
+    summary: `${ITEM_MOVEMENT_TYPE_LABELS[m.type]} — ${item.name} — ${formatQuantity(m.quantity, item.unit)}`,
+    cambios: diffDeCampos(null, fotoDelMovimiento(m, item), CAMPOS_DEL_MOVIMIENTO),
   });
 
   revalidatePath(`/stock/${item.slug}`);
@@ -116,18 +127,40 @@ export async function createItemMovement(formData: FormData) {
 }
 
 /**
- * Borra un movimiento cargado a mano desde esta misma ficha.
- *
- * Hasta ahora un ingreso mal cargado no se podía tocar: quedaba ahí y había que compensarlo con un
- * ajuste en contra, que arregla el saldo pero deja los dos números falsos en el kardex. Pasó con
- * una entrega de aceite cargada con el factor de conversión equivocado —789 millones de litros— y
- * la única salida fue entrar a la base.
- *
- * **Sólo los movimientos sueltos.** El que trae una compra o el que descuenta una producción no se
- * borran desde acá: son la consecuencia de otra cosa, y sacarlos por separado dejaría la compra
- * diciendo que entró mercadería que el stock no tiene. Esos se corrigen en su origen, que ya
- * reescribe el movimiento solo.
+ * Corrige un movimiento cargado a mano: una merma con la cantidad mal, un ajuste del día que no
+ * era. Los que vienen de una compra, una venta o una producción se corrigen en su origen.
  */
+export async function editarMovimientoDeInsumo(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+
+  const movementId = String(formData.get("movementId") || "");
+  const anterior = await prisma.itemMovement.findUnique({ where: { id: movementId }, include: { item: true } });
+  if (!anterior) throw new UserError("El movimiento ya no existe.");
+  if (anterior.documentId || anterior.productionLineId) {
+    throw new UserError(
+      "Este movimiento lo generó una compra, una venta o una producción: corregilo ahí y el stock se acomoda solo."
+    );
+  }
+
+  const m = leerMovimientoDeInsumo(formData, anterior.item);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.itemMovement.update({ where: { id: movementId }, data: m });
+    await asegurarSinNegativos(tx, { insumos: [anterior.itemId] });
+    await logAudit(tx, {
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Movimiento de insumo",
+      entityId: anterior.itemId,
+      summary: `${ITEM_MOVEMENT_TYPE_LABELS[m.type]} — ${anterior.item.name} — ${formatQuantity(m.quantity, anterior.item.unit)}`,
+      cambios: diffDeCampos(fotoDelMovimiento(anterior, anterior.item), fotoDelMovimiento(m, anterior.item), CAMPOS_DEL_MOVIMIENTO),
+    });
+  });
+
+  revalidatePath(`/stock/${anterior.item.slug}`);
+  revalidatePath("/stock");
+}
+
 export async function borrarMovimientoDeInsumo(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 

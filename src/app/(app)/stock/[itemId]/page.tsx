@@ -8,13 +8,20 @@ import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { DENSIDAD_ACEITE } from "@/lib/aceite";
 import { getPreformasOrdenadas } from "@/lib/preformas";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
-import { borrarMovimientoDeInsumo, borrarVentaDeInsumo, createItemMovement, editarVentaDeInsumo, venderInsumo } from "./actions";
+import {
+  borrarMovimientoDeInsumo,
+  borrarVentaDeInsumo,
+  createItemMovement,
+  editarMovimientoDeInsumo,
+  editarVentaDeInsumo,
+  venderInsumo,
+} from "./actions";
+import { MovimientoInsumoFields } from "@/components/MovimientoInsumoFields";
 import { VentaInsumoFields, type VentaInsumoDefaults } from "@/components/VentaInsumoFields";
 import { DeleteButton } from "@/components/DeleteButton";
 import { FormConError } from "@/components/FormConError";
-import { KilosALitros } from "@/components/KilosALitros";
 import { FormModal } from "@/components/Modal";
-import { formatFecha, hoyEnInput, toDateInputValue } from "@/lib/period";
+import { formatFecha, toDateInputValue } from "@/lib/period";
 import { updateItemAjustes } from "../actions";
 import { APILADA } from "@/components/ui/Table";
 
@@ -202,85 +209,7 @@ export default async function ItemDetailPage({
           pendingLabel="Registrando…"
         >
           <h2 className="text-sm font-semibold">Nuevo movimiento</h2>
-          <input type="hidden" name="itemId" value={item.id} />
-          {/* "Efecto" sólo dice algo en un ajuste, una merma o una venta: un ingreso siempre suma. Con
-              Ingreso elegido se esconde, sin JavaScript: la regla de abajo mira la opción marcada. */}
-          <div className="grid grid-cols-2 gap-3 [&:has(#type_option[value=INGRESO]:checked)_.sin-ingreso]:hidden">
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="type">
-                Tipo
-              </label>
-              <select
-                id="type"
-                name="type"
-                required
-                defaultValue="INGRESO"
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              >
-                <option value="INGRESO">Ingreso</option>
-                <option value="AJUSTE">Ajuste</option>
-                <option value="MERMA">Merma</option>
-                <option value="VENTA">Venta</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="date">
-                Fecha
-              </label>
-              <input
-                id="date"
-                type="date"
-                name="date"
-                required
-                defaultValue={hoyEnInput()}
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="quantity">
-                Cantidad ({item.unit})
-              </label>
-              <input
-                id="quantity"
-                name="quantity"
-                inputMode="decimal"
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="sin-ingreso space-y-1">
-              <label className="text-sm" htmlFor="effect">
-                Efecto
-              </label>
-              <select
-                id="effect"
-                name="effect"
-                defaultValue="RESTA"
-                className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-              >
-                <option value="SUMA">Suma al stock</option>
-                <option value="RESTA">Resta al stock</option>
-              </select>
-            </div>
-          </div>
-          {/* Sólo el aceite entra por kilos: es lo que dice el ticket de la balanza. */}
-          {item.category === "ACEITE" && (
-            <KilosALitros
-              id="sourceKg"
-              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-            />
-          )}
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="reason">
-              Motivo
-            </label>
-            <input
-              id="reason"
-              name="reason"
-              required
-              placeholder="Compra a proveedor X, conteo físico, rotura..."
-              className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
-            />
-          </div>
+          <MovimientoInsumoFields itemId={item.id} unidad={item.unit} esAceite={item.category === "ACEITE"} />
         </FormConError>
       )}
 
@@ -346,13 +275,43 @@ export default async function ItemDetailPage({
                       </div>
                     )}
                     {canEdit && !m.documentId && !m.productionLineId && (
-                      <DeleteButton
-                        action={borrarMovimientoDeInsumo}
-                        hiddenName="movementId"
-                        hiddenValue={m.id}
-                        nombre={`el ${ITEM_MOVEMENT_TYPE_LABELS[m.type].toLowerCase()} de ${formatQuantity(m.quantity, item.unit)} del ${formatFecha(m.date)}`}
-                        consecuencia="El stock vuelve a lo que era antes de esta carga."
-                      />
+                      <div className="flex items-center gap-1">
+                        <FormModal
+                          triggerLabel="Editar"
+                          soloIcono
+                          iconName="edit"
+                          title={`Corregir ${ITEM_MOVEMENT_TYPE_LABELS[m.type].toLowerCase()} de ${item.name}`}
+                          action={editarMovimientoDeInsumo}
+                        >
+                          <MovimientoInsumoFields
+                            itemId={item.id}
+                            unidad={item.unit}
+                            esAceite={item.category === "ACEITE"}
+                            defaults={{
+                              movementId: m.id,
+                              type: m.type,
+                              date: toDateInputValue(m.date),
+                              quantity: formatNumeroExacto(m.quantity.abs()),
+                              effect: m.quantity.isNegative() ? "RESTA" : "SUMA",
+                              sourceKg: m.sourceKg ? formatNumeroExacto(m.sourceKg) : "",
+                              reason: m.reason,
+                            }}
+                          />
+                          <button
+                            type="submit"
+                            className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+                          >
+                            Guardar cambios
+                          </button>
+                        </FormModal>
+                        <DeleteButton
+                          action={borrarMovimientoDeInsumo}
+                          hiddenName="movementId"
+                          hiddenValue={m.id}
+                          nombre={`el ${ITEM_MOVEMENT_TYPE_LABELS[m.type].toLowerCase()} de ${formatQuantity(m.quantity, item.unit)} del ${formatFecha(m.date)}`}
+                          consecuencia="El stock vuelve a lo que era antes de esta carga."
+                        />
+                      </div>
                     )}
                   </td>
                 </tr>
