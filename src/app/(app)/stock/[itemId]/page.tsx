@@ -8,12 +8,13 @@ import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { DENSIDAD_ACEITE } from "@/lib/aceite";
 import { getPreformasOrdenadas } from "@/lib/preformas";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
-import { borrarMovimientoDeInsumo, createItemMovement, venderInsumo } from "./actions";
+import { borrarMovimientoDeInsumo, borrarVentaDeInsumo, createItemMovement, editarVentaDeInsumo, venderInsumo } from "./actions";
+import { VentaInsumoFields, type VentaInsumoDefaults } from "@/components/VentaInsumoFields";
 import { DeleteButton } from "@/components/DeleteButton";
 import { FormConError } from "@/components/FormConError";
 import { KilosALitros } from "@/components/KilosALitros";
 import { FormModal } from "@/components/Modal";
-import { formatFecha, hoyEnInput } from "@/lib/period";
+import { formatFecha, hoyEnInput, toDateInputValue } from "@/lib/period";
 import { updateItemAjustes } from "../actions";
 import { APILADA } from "@/components/ui/Table";
 
@@ -44,11 +45,37 @@ export default async function ItemDetailPage({
       // "Ambos" queda afuera a propósito: en ese caso no se puede deducir si la venta se cobra o
       // se descuenta, y hoy no existe ninguna. La acción tira un error claro si llegara a pasar.
       where: { type: { in: ["CLIENTE", "PROVEEDOR"] } },
-      select: { id: true, name: true, type: true },
+      select: { id: true, name: true, type: true, moneda: true },
       orderBy: { name: "asc" },
     }),
   ]);
   const movementsDesc = movements.slice().reverse();
+
+  // Las ventas del historial, para poder corregirlas desde acá: el formulario arranca con lo que
+  // se cargó.
+  const ventas = new Map(
+    (
+      await prisma.document.findMany({
+        where: { id: { in: movements.filter((m) => m.type === "VENTA" && m.documentId).map((m) => m.documentId!) } },
+        include: { account: true },
+      })
+    ).map((d) => [d.id, d])
+  );
+  const defaultsDeVenta = (m: (typeof movements)[number]): VentaInsumoDefaults | null => {
+    const d = m.documentId ? ventas.get(m.documentId) : undefined;
+    if (!d) return null;
+    const cantidad = m.quantity.negated();
+    return {
+      documentId: d.id,
+      entityId: d.account.entityId,
+      circuit: d.account.circuit,
+      date: toDateInputValue(d.date),
+      quantity: formatNumeroExacto(cantidad),
+      unitPrice: cantidad.isZero() ? "" : formatNumeroExacto(d.totalAmount.dividedBy(cantidad).toDecimalPlaces(4)),
+      number: d.number,
+      notes: d.reason?.split(" — ").slice(1).join(" — ") ?? "",
+    };
+  };
 
   return (
     <div className="space-y-8">
@@ -61,82 +88,8 @@ export default async function ItemDetailPage({
           <div className="flex items-center gap-4">
             <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
             {canEdit && item.llevaStock && (
-              <FormModal triggerLabel="Vender" title={`Vender ${item.name}`} action={venderInsumo}>
-                <input type="hidden" name="itemId" value={item.id} />
-                <p className="text-xs text-foreground/50">
-                  Descuenta el stock y carga la plata en la cuenta corriente de quien lo recibe. Si
-                  es un proveedor se le descuenta de lo que se le debe; si es un cliente, se le
-                  suma a lo que nos debe.
-                </p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-1">
-                    <label className="text-sm" htmlFor="venta-fecha">
-                      Fecha
-                    </label>
-                    <input
-                      id="venta-fecha"
-                      type="date"
-                      name="date"
-                      required
-                      defaultValue={hoyEnInput()}
-                      className={inputClass}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm" htmlFor="venta-entidad">
-                      A quién
-                    </label>
-                    <select id="venta-entidad" name="entityId" required defaultValue="" className={inputClass}>
-                      <option value="" disabled>
-                        — Elegir —
-                      </option>
-                      {entidades.map((e) => (
-                        <option key={e.id} value={e.id}>
-                          {e.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm" htmlFor="venta-cantidad">
-                      Cantidad ({item.unit})
-                    </label>
-                    <input id="venta-cantidad" name="quantity" required inputMode="decimal" className={inputClass} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm" htmlFor="venta-precio">
-                      Precio unitario
-                    </label>
-                    <input id="venta-precio" name="unitPrice" required inputMode="decimal" className={inputClass} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm" htmlFor="venta-circuito">
-                      Circuito
-                    </label>
-                    <select id="venta-circuito" name="circuit" defaultValue="BLANCO" className={inputClass}>
-                      <option value="BLANCO">Cuenta 1 (c/factura)</option>
-                      <option value="NEGRO">Cuenta 2 (s/factura)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-sm" htmlFor="venta-numero">
-                      Comprobante (opcional)
-                    </label>
-                    <input id="venta-numero" name="number" className={inputClass} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm" htmlFor="venta-notas">
-                    Notas
-                  </label>
-                  <input id="venta-notas" name="notes" className={inputClass} />
-                </div>
-                <button
-                  type="submit"
-                  className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-                >
-                  Registrar venta
-                </button>
+              <FormModal triggerLabel="Vender" title={`Vender ${item.name}`} action={venderInsumo} maxWidthClass="max-w-xl">
+                <VentaInsumoFields itemId={item.id} unidad={item.unit} entidades={entidades} />
               </FormModal>
             )}
           </div>
@@ -342,7 +295,7 @@ export default async function ItemDetailPage({
                 <th className="py-2 pr-4">Cantidad</th>
                 <th className="py-2 pr-4">Motivo</th>
                 <th className="py-2 pr-4">Usuario</th>
-                <th className="py-2 w-10" />
+                <th className="py-2 w-16" />
               </tr>
             </thead>
             <tbody>
@@ -366,6 +319,32 @@ export default async function ItemDetailPage({
                       producción se corrigen en su origen, que reescribe el movimiento solo; un
                       botón acá dejaría la compra diciendo que entró algo que el stock no tiene. */}
                   <td className="py-2">
+                    {canEdit && m.type === "VENTA" && defaultsDeVenta(m) && (
+                      <div className="flex items-center gap-1">
+                        <FormModal
+                          triggerLabel="Editar"
+                          soloIcono
+                          iconName="edit"
+                          title={`Editar venta de ${item.name}`}
+                          action={editarVentaDeInsumo}
+                          maxWidthClass="max-w-xl"
+                        >
+                          <VentaInsumoFields
+                            itemId={item.id}
+                            unidad={item.unit}
+                            entidades={entidades}
+                            defaults={defaultsDeVenta(m)!}
+                          />
+                        </FormModal>
+                        <DeleteButton
+                          action={borrarVentaDeInsumo}
+                          hiddenName="documentId"
+                          hiddenValue={m.documentId!}
+                          nombre={`la venta de ${formatQuantity(m.quantity.negated(), item.unit)} del ${formatFecha(m.date)}`}
+                          consecuencia="El insumo vuelve al stock y se saca de la cuenta de quien lo compró."
+                        />
+                      </div>
+                    )}
                     {canEdit && !m.documentId && !m.productionLineId && (
                       <DeleteButton
                         action={borrarMovimientoDeInsumo}
@@ -392,6 +371,3 @@ export default async function ItemDetailPage({
     </div>
   );
 }
-
-const inputClass =
-  "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";

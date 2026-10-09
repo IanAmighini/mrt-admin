@@ -13,6 +13,7 @@ import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
+import { aLaMonedaDeLaCuenta, leerCotizacion, monedaEscrita } from "@/lib/moneda";
 
 const MOVEMENT_TYPES: ItemMovementType[] = ["INGRESO", "AJUSTE", "MERMA", "VENTA"];
 
@@ -187,47 +188,77 @@ export async function borrarMovimientoDeInsumo(formData: FormData) {
   revalidatePath("/stock");
 }
 
+/** Lo que se mira de una venta de insumo en Actividad. */
+const CAMPOS_DE_LA_VENTA = {
+  insumo: "Insumo",
+  aQuien: "A qui\u00e9n",
+  cuenta: "Cuenta",
+  tipo: "Comprobante",
+  number: "N\u00famero",
+  date: "Fecha",
+  quantity: "Cantidad",
+  unitPrice: "Precio unitario",
+  total: "Total",
+  notes: "Notas",
+} as const;
+
+/** Las ventas de insumos se numeran solas: VI-00001, VI-00002… */
+async function proximoNumeroDeVenta(tx: Prisma.TransactionClient) {
+  const ultimo = await tx.document.findFirst({
+    where: { number: { startsWith: "VI-0" } },
+    orderBy: { number: "desc" },
+    select: { number: true },
+  });
+  const n = ultimo ? Number(ultimo.number.slice(3)) + 1 : 1;
+  return `VI-${String(n).padStart(5, "0")}`;
+}
+
 /**
- * Vende un insumo: descuenta stock y carga la plata en la cuenta corriente de quien lo recibe, en
- * una sola operación. Es lo que hace falta para el pallet descartable, que entra gratis con las
- * compras y después se le vende al proveedor de pallets normalizados.
+ * Una venta de insumo, nueva o corregida: baja el stock y carga la plata en la cuenta de quien
+ * compra, en una sola transacción. Si viene `documentId` es una corrección: se reescriben el
+ * comprobante y el movimiento de stock que ya existían, así queda una sola operación con su
+ * historial en vez de un borrado y una alta.
  *
- * **El tipo de comprobante sale de a quién se le vende**, y eso es lo que hace que el signo quede
- * bien sin que nadie tenga que pensarlo. El saldo de una cuenta significa cosas opuestas según el
- * tipo de entidad: en un cliente, positivo es lo que nos debe; en un proveedor, lo que le debemos.
- *
- *   - Cliente   -> NOTA_DEBITO,  que `getDocumentEffect` suma  -> nos debe más.
- *   - Proveedor -> NOTA_CREDITO, que resta                     -> le debemos menos.
- *
- * Los dos son tipos que la cuenta corriente ya sabe editar y borrar, así que no hace falta ninguna
- * pantalla nueva para corregir una venta cargada mal.
+ * El precio se escribe en pesos o en dólares y se guarda en la moneda de la cuenta de quien compra.
+ * Antes iba siempre en pesos, y a Víctor Dilver —que se lleva en dólares— una venta quedó en pesos
+ * dentro de su cuenta en dólares.
  */
-export async function venderInsumo(formData: FormData) {
+async function guardarVenta(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
 
+  const documentId = String(formData.get("documentId") || "") || null;
   const itemId = String(formData.get("itemId") || "");
   const entityId = String(formData.get("entityId") || "");
   if (!itemId) throw new UserError("Falta el insumo.");
   if (!entityId) throw new UserError("Elegí a quién se le vende.");
 
   const circuit = String(formData.get("circuit") || "");
-  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Elegí el circuito.");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Elegí la cuenta.");
 
   const date = parseFormDate(formData.get("date"));
   const quantity = parseNumeroEscrito(String(formData.get("quantity") || ""), "cantidad");
-  const unitPrice = parseNumeroEscrito(String(formData.get("unitPrice") || ""), "precio unitario");
+  const precioEscrito = parseNumeroEscrito(String(formData.get("unitPrice") || ""), "precio unitario");
   if (!quantity.greaterThan(0)) throw new UserError("La cantidad tiene que ser mayor a cero.");
-  if (unitPrice.isNegative()) throw new UserError("El precio no puede ser negativo.");
+  if (precioEscrito.isNegative()) throw new UserError("El precio no puede ser negativo.");
 
-  const number = String(formData.get("number") || "").trim();
+  const numeroEscrito = String(formData.get("number") || "").trim();
   const notes = String(formData.get("notes") || "").trim() || null;
 
-  const [item, account] = await Promise.all([
+  const [item, account, anterior] = await Promise.all([
     prisma.item.findUnique({ where: { id: itemId } }),
     prisma.account.findUnique({
       where: { entityId_circuit: { entityId, circuit } },
       include: { entity: true },
     }),
+    documentId
+      ? prisma.document.findUnique({
+          where: { id: documentId },
+          include: {
+            account: { include: { entity: true } },
+            itemMovements: { where: { type: "VENTA" }, include: { item: true } },
+          },
+        })
+      : null,
   ]);
   if (!item) throw new UserError("El insumo ya no existe.");
   if (!account) throw new UserError("No se encontró la cuenta de esa entidad.");
@@ -236,80 +267,166 @@ export async function venderInsumo(formData: FormData) {
       `"${item.name}" no lleva stock, así que no se puede vender desde acá. Cargalo como un movimiento en la cuenta corriente.`
     );
   }
+  if (documentId && (!anterior || anterior.itemMovements.length !== 1)) {
+    throw new UserError("Esa venta ya no existe.");
+  }
 
+  const moneda = account.entity.moneda;
+  const { convertir, exchangeRate } = aLaMonedaDeLaCuenta(
+    monedaEscrita(formData.get("currency"), moneda),
+    moneda,
+    leerCotizacion(formData.get("exchangeRate"))
+  );
+  const unitPrice = convertir(precioEscrito);
   const tipo = tipoDeComprobanteParaVenta(account.entity.type, formData.get("efecto"));
-  const total = quantity.times(unitPrice);
+  const total = convertir(quantity.times(precioEscrito)).toDecimalPlaces(2);
   const detalle = `Venta de ${formatQuantity(quantity, item.unit)} de ${item.name}`;
 
+  const foto = (d: {
+    entidad: string;
+    circuito: "BLANCO" | "NEGRO";
+    tipo: DocumentType;
+    number: string;
+    date: Date;
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    total: Prisma.Decimal;
+    currency: "ARS" | "USD";
+    notes: string | null;
+  }) => ({
+    insumo: item.name,
+    aQuien: d.entidad,
+    cuenta: CIRCUIT_LABELS[d.circuito],
+    tipo: DOCUMENT_TYPE_LABELS[d.tipo],
+    number: d.number,
+    date: d.date,
+    quantity: formatQuantity(d.quantity, item.unit),
+    unitPrice: formatMoney(d.unitPrice, d.currency),
+    total: formatMoney(d.total, d.currency),
+    notes: d.notes,
+  });
+
   await prisma.$transaction(async (tx) => {
-    const document = await tx.document.create({
-      data: {
-        accountId: account.id,
-        type: tipo,
-        number: number || `VI-${item.slug}-${date.getTime()}`,
-        date,
-        currency: "ARS",
-        netAmount: total,
-        totalAmount: total,
-        reason: notes ? `${detalle} — ${notes}` : detalle,
-        createdById: user.id,
-      },
+    const number = numeroEscrito || anterior?.number || (await proximoNumeroDeVenta(tx));
+    const datos = {
+      accountId: account.id,
+      type: tipo,
+      number,
+      date,
+      currency: moneda,
+      exchangeRate,
+      netAmount: total,
+      totalAmount: total,
+      reason: notes ? `${detalle} — ${notes}` : detalle,
+    };
+    const movimiento = {
+      itemId,
+      date,
+      quantity: quantity.negated(),
+      reason: `${detalle} — ${account.entity.name}`,
+    };
+
+    if (anterior) {
+      await tx.document.update({ where: { id: anterior.id }, data: datos });
+      await tx.itemMovement.update({ where: { id: anterior.itemMovements[0].id }, data: movimiento });
+    } else {
+      const document = await tx.document.create({ data: { ...datos, createdById: user.id } });
+      await tx.itemMovement.create({
+        data: { ...movimiento, type: "VENTA", documentId: document.id, createdById: user.id },
+      });
+    }
+
+    // El insumo de antes también: si se cambió de insumo, el viejo recupera lo que había salido.
+    await asegurarSinNegativos(tx, { insumos: [itemId, ...(anterior ? [anterior.itemMovements[0].itemId] : [])] });
+
+    const despues = foto({
+      entidad: account.entity.name,
+      circuito: account.circuit,
+      tipo,
+      number,
+      date,
+      quantity,
+      unitPrice,
+      total,
+      currency: moneda,
+      notes,
     });
-
-    await tx.itemMovement.create({
-      data: {
-        itemId,
-        date,
-        quantity: quantity.negated(),
-        type: "VENTA",
-        reason: `${detalle} — ${account.entity.name}`,
-        documentId: document.id,
-        createdById: user.id,
-      },
-    });
-
-    await asegurarSinNegativos(tx, { insumos: [itemId] });
-
     await logAudit(tx, {
       userId: user.id,
-      action: "CREATE",
+      action: anterior ? "UPDATE" : "CREATE",
       entityType: "Venta de insumo",
-      entityId: document.id,
-      summary: `${detalle} — ${account.entity.name} — ${formatMoney(total)}`,
+      entityId: anterior?.id ?? number,
+      summary: `${detalle} — ${account.entity.name} — ${formatMoney(total, moneda)}`,
       cambios: diffDeCampos(
-        null,
-        {
-          insumo: item.name,
-          aQuien: account.entity.name,
-          cuenta: CIRCUIT_LABELS[account.circuit],
-          tipo: DOCUMENT_TYPE_LABELS[tipo],
-          number: document.number,
-          date,
-          quantity: formatQuantity(quantity, item.unit),
-          unitPrice: formatMoney(unitPrice),
-          total: formatMoney(total),
-          notes,
-        },
-        {
-          insumo: "Insumo",
-          aQuien: "A qui\u00e9n",
-          cuenta: "Cuenta",
-          tipo: "Comprobante",
-          number: "N\u00famero",
-          date: "Fecha",
-          quantity: "Cantidad",
-          unitPrice: "Precio unitario",
-          total: "Total",
-          notes: "Notas",
-        }
+        anterior
+          ? foto({
+              entidad: anterior.account.entity.name,
+              circuito: anterior.account.circuit,
+              tipo: anterior.type,
+              number: anterior.number,
+              date: anterior.date,
+              quantity: anterior.itemMovements[0].quantity.negated(),
+              unitPrice: anterior.totalAmount.dividedBy(anterior.itemMovements[0].quantity.negated()),
+              total: anterior.totalAmount,
+              currency: anterior.currency,
+              notes: anterior.reason?.split(" — ").slice(1).join(" — ") || null,
+            })
+          : null,
+        despues,
+        CAMPOS_DE_LA_VENTA
       ),
     });
   });
 
-  await reimputarEntidades(account.entityId);
+  await reimputarEntidades(account.entityId, anterior?.account.entityId);
   revalidatePath(`/stock/${item.slug}`);
+  if (anterior && anterior.itemMovements[0].itemId !== itemId) revalidatePath(`/stock/${anterior.itemMovements[0].item.slug}`);
   revalidatePath("/stock");
   revalidatePath(`/cuentas-corrientes/${account.entity.slug}`);
+  if (anterior) revalidatePath(`/cuentas-corrientes/${anterior.account.entity.slug}`);
+}
+
+export async function venderInsumo(formData: FormData) {
+  formData.delete("documentId");
+  await guardarVenta(formData);
+}
+
+export async function editarVentaDeInsumo(formData: FormData) {
+  if (!formData.get("documentId")) throw new UserError("Falta la venta.");
+  await guardarVenta(formData);
+}
+
+/** Borra una venta de insumo entera: la plata sale de la cuenta y el insumo vuelve al stock. */
+export async function borrarVentaDeInsumo(formData: FormData) {
+  const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  const documentId = String(formData.get("documentId") || "");
+  const doc = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: {
+      account: { include: { entity: true } },
+      itemMovements: { where: { type: "VENTA" }, include: { item: true } },
+    },
+  });
+  if (!doc || doc.itemMovements.length === 0) throw new UserError("Esa venta ya no existe.");
+  const mov = doc.itemMovements[0];
+
+  await prisma.$transaction(async (tx) => {
+    await tx.paymentAllocation.deleteMany({ where: { documentId } });
+    await tx.itemMovement.deleteMany({ where: { documentId } });
+    await tx.document.delete({ where: { id: documentId } });
+    await logAudit(tx, {
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Venta de insumo",
+      entityId: documentId,
+      summary: `${doc.reason ?? "Venta de insumo"} — ${doc.account.entity.name} — ${formatMoney(doc.totalAmount, doc.currency)}`,
+    });
+  });
+
+  await reimputarEntidades(doc.account.entityId);
+  revalidatePath(`/stock/${mov.item.slug}`);
+  revalidatePath("/stock");
+  revalidatePath(`/cuentas-corrientes/${doc.account.entity.slug}`);
 }
 
 /**

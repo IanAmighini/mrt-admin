@@ -188,10 +188,14 @@ export async function updateDocument(formData: FormData) {
     include: {
       entrega: { select: { nombre: true } },
       destinatario: { select: { nombre: true } },
-      _count: { select: { lines: true } },
+      _count: { select: { lines: true, itemMovements: true } },
     },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
+  // Una venta de insumo mueve stock: se corrige en la ficha del insumo, que cambia todo junto.
+  if (document._count.itemMovements > 0) {
+    throw new UserError("Es una venta de insumo: corregila desde la ficha del insumo (Stock), que ajusta también el stock.");
+  }
   if (!NON_FACTURA_TYPES.includes(document.type)) {
     throw new UserError("Este comprobante no es una nota ni un ajuste.");
   }

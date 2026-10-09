@@ -44,6 +44,8 @@ import { crearGastoDeCaja } from "@/app/(app)/caja-chica/actions";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { addDays, formatFecha, hoyEnInput, parseFecha, toDateInputValue } from "@/lib/period";
 import { getDestinatarios, getEntregasParaElegir } from "@/lib/entregas";
+import { Pencil } from "lucide-react";
+import { borrarVentaDeInsumo } from "@/app/(app)/stock/[itemId]/actions";
 
 const inputClass =
   "rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
@@ -125,6 +127,17 @@ export default async function AccountLedgerPage({
     priceMapByCircuit.NEGRO[productId] = { amount: price.amount.toNumber(), currency: price.currency };
   }
 
+  // Las ventas de insumos de esta cuenta: se corrigen desde la ficha del insumo, que cambia la
+  // cantidad, el precio y el stock juntos.
+  const ventasDeInsumo = new Map(
+    (
+      await prisma.itemMovement.findMany({
+        where: { type: "VENTA", document: { accountId: account.id } },
+        select: { documentId: true, item: { select: { slug: true, name: true } } },
+      })
+    ).map((m) => [m.documentId!, m.item])
+  );
+
   function renderActions(entry: StatementEntry): React.ReactNode {
     if (!canEdit) return null;
 
@@ -191,6 +204,29 @@ export default async function AccountLedgerPage({
           Pasar a Cuenta 1 (c/factura)
         </BotonConError>
       ) : null;
+
+    const insumoVendido = ventasDeInsumo.get(doc.id);
+    if (insumoVendido) {
+      return (
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/stock/${insumoVendido.slug}`}
+            title={`Editar la venta en la ficha de ${insumoVendido.name}`}
+            aria-label={`Editar la venta en la ficha de ${insumoVendido.name}`}
+            className="rounded p-1 text-foreground/50 transition-colors hover:bg-foreground/5 hover:text-foreground"
+          >
+            <Pencil size={16} />
+          </Link>
+          <DeleteButton
+            action={borrarVentaDeInsumo}
+            hiddenName="documentId"
+            hiddenValue={doc.id}
+            nombre={`la venta #${doc.number}`}
+            consecuencia={`${insumoVendido.name} vuelve al stock.`}
+          />
+        </div>
+      );
+    }
 
     // Una devolución: nota de crédito con la mercadería que volvió. No se edita —el importe y el
     // stock tienen que decir lo mismo—, se borra y se carga de nuevo.

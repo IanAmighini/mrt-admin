@@ -185,6 +185,8 @@ async function getIngresosNetos(period: Period): Promise<Prisma.Decimal> {
       currency: "ARS",
       account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
       ...SIN_SALDO_INICIAL,
+      // Las ventas de insumos van aparte (getVentasDeInsumos), con su costo: acá se contarían dos veces.
+      itemMovements: { none: { type: "VENTA" } },
     },
     include: DOCUMENT_INCLUDE_EFECTO,
   });
@@ -196,6 +198,49 @@ async function getIngresosNetos(period: Period): Promise<Prisma.Decimal> {
     const neto = total.isZero() ? efecto : efecto.times(toDecimal(doc.netAmount)).dividedBy(total);
     return acc.plus(neto);
   }, ZERO);
+}
+
+/**
+ * Lo que se vendió de insumos en el período —tapas sobrantes, envases, pallets descartables— y lo
+ * que costó. Cuenta como venta sea a quien sea: a un cliente se le cobra y a un proveedor se le
+ * descuenta de lo que le debemos, pero en los dos casos es una venta.
+ *
+ * El costo de cada venta es la cantidad por el costo del insumo: el costo unitario cargado en su
+ * ficha; si no tiene, el precio de la última compra; y si tampoco hay compra, el precio al que se
+ * vendió. Ese último caso da margen cero a propósito: un insumo se vende al costo o más, así que
+ * nunca agranda la ganancia.
+ */
+export async function getVentasDeInsumos(period: Period) {
+  const movimientos = await prisma.itemMovement.findMany({
+    where: {
+      type: "VENTA",
+      date: { gte: period.from, lt: period.to },
+      document: { currency: "ARS" },
+    },
+    include: { item: true, document: { select: { netAmount: true } } },
+  });
+  const ultimasCompras = await prisma.purchaseLine.findMany({
+    where: { itemId: { in: [...new Set(movimientos.map((m) => m.itemId))] }, document: { currency: "ARS" } },
+    select: { itemId: true, unitPrice: true, document: { select: { date: true } } },
+    orderBy: { document: { date: "desc" } },
+  });
+
+  let ventas = ZERO;
+  let costo = ZERO;
+  let sinCostoConocido = 0;
+  for (const m of movimientos) {
+    const cantidad = toDecimal(m.quantity).abs();
+    const venta = toDecimal(m.document?.netAmount ?? 0);
+    ventas = ventas.plus(venta);
+    const compra = ultimasCompras.find((c) => c.itemId === m.itemId && c.document.date <= m.date);
+    const unitario = m.item.unitCost ?? compra?.unitPrice ?? null;
+    if (unitario) costo = costo.plus(cantidad.times(unitario));
+    else {
+      costo = costo.plus(venta);
+      sinCostoConocido++;
+    }
+  }
+  return { ventas, costo, cantidad: movimientos.length, sinCostoConocido };
 }
 
 /**
@@ -254,19 +299,23 @@ async function getFacturasDeProveedorSinCompra(period: Period) {
  * por comprobante y el número dejaría de ser comparable contra el mes anterior.
  */
 export async function getRentabilidad(period: Period = monthPeriod()) {
-  const [ingresos, costo, sinStock, gastos, sueltas] = await Promise.all([
+  const [ventasDeProducto, costo, sinStock, gastos, sueltas, ventasDeInsumos] = await Promise.all([
     getIngresosNetos(period),
     getCostoInsumos(period),
     getCostoInsumosSinStock(period),
     getGastosNetos(period),
     getFacturasDeProveedorSinCompra(period),
+    getVentasDeInsumos(period),
   ]);
 
-  const costoInsumos = costo.total.plus(sinStock);
+  // Lo vendido de insumos suma a las ventas, y lo que costó, al costo de lo vendido.
+  const ingresos = ventasDeProducto.plus(ventasDeInsumos.ventas);
+  const costoInsumos = costo.total.plus(sinStock).plus(ventasDeInsumos.costo);
   return {
     ingresos,
     costoInsumos,
     gastos,
+    ventasDeInsumos,
     rentabilidad: ingresos.minus(costoInsumos).minus(gastos),
     itemsSinCosto: costo.itemsSinCosto,
     facturasSinCompra: sueltas,

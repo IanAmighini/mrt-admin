@@ -20,7 +20,7 @@ export async function ResultadoSection({ period }: { period: Period }) {
   // La cascada: cada renglón con lo que suma o resta, y los dos subtotales destacados.
   const filas = [
     { label: "Ventas netas", monto: report.ventas, tipo: "suma" as const },
-    { label: "Costo de insumos", monto: report.costoInsumos.negated(), tipo: "resta" as const },
+    { label: "Costo de insumos y de lo vendido", monto: report.costoInsumos.negated(), tipo: "resta" as const },
     { label: "Margen bruto", monto: report.margenBruto, tipo: "subtotal" as const },
     { label: "Gastos", monto: report.gastos.negated(), tipo: "resta" as const },
     { label: "Resultado", monto: report.resultado, tipo: "total" as const },
@@ -70,6 +70,16 @@ export async function ResultadoSection({ period }: { period: Period }) {
             </div>
           ))}
         </div>
+        {report.ventasDeInsumos.cantidad > 0 && (
+          <p className="mt-3 text-xs text-foreground/60">
+            Incluye {report.ventasDeInsumos.cantidad}{" "}
+            {report.ventasDeInsumos.cantidad === 1 ? "venta de insumos" : "ventas de insumos"} por{" "}
+            {formatMoney(report.ventasDeInsumos.ventas)}, con un costo de {formatMoney(report.ventasDeInsumos.costo)}
+            {report.ventasDeInsumos.sinCostoConocido > 0 &&
+              ` (${report.ventasDeInsumos.sinCostoConocido} sin costo ni compra cargados: se tomó el precio de venta como costo)`}
+            .
+          </p>
+        )}
         <p className="mt-3 text-xs text-foreground/50">
           Todo en pesos y neto de IVA: el IVA se cobra y se deposita, así que no es ingreso ni
           costo. Las cuentas en dólares quedan afuera — valuarlas necesitaría una cotización por

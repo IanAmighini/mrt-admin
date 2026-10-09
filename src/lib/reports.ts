@@ -858,6 +858,8 @@ export type ResultadoReport = {
     delPeriodo: Prisma.Decimal;
     acumulado: Prisma.Decimal;
   }[];
+  /** Lo vendido de insumos (ya sumado en ventas) y lo que costó (ya sumado en costo). */
+  ventasDeInsumos: { ventas: Prisma.Decimal; costo: Prisma.Decimal; cantidad: number; sinCostoConocido: number };
   /** Lo que el número NO está contando, para que se pueda discutir. */
   avisos: { itemsSinCosto: number; facturasSinCompra: { count: number; total: Prisma.Decimal } };
 };
@@ -922,6 +924,7 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
       .sort((a, b) => (a.category === null ? 1 : b.category === null ? -1 : b.total.comparedTo(a.total))),
     meses,
     retiros,
+    ventasDeInsumos: actual.ventasDeInsumos,
     avisos: { itemsSinCosto: actual.itemsSinCosto, facturasSinCompra: actual.facturasSinCompra },
   };
 }

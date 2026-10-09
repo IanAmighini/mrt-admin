@@ -212,6 +212,12 @@ async function ReportesGerenciales() {
               <span className="text-foreground/60">Ventas</span>
               <span className="tabular-nums">{formatMoney(rentabilidad.ingresos)}</span>
             </div>
+            {rentabilidad.ventasDeInsumos.cantidad > 0 && (
+              <div className="flex justify-between text-xs text-foreground/50">
+                <span>incluye venta de insumos</span>
+                <span className="tabular-nums">{formatMoney(rentabilidad.ventasDeInsumos.ventas)}</span>
+              </div>
+            )}
             <div className="flex justify-between">
               <span className="text-foreground/60">− Insumos</span>
               <span className="tabular-nums">{formatMoney(rentabilidad.costoInsumos)}</span>

@@ -176,7 +176,13 @@ export async function getAccountStatement({
       ? tituloDeCaja(doc)
       : {
           // Una nota de crédito con mercadería es una devolución, y así se la llama en todos lados.
-          title: `${doc.type === "NOTA_CREDITO" && doc.lines.length > 0 ? "Devolución" : DOCUMENT_TYPE_LABELS[doc.type]} #${doc.number}`,
+          title: `${
+            doc.type === "NOTA_CREDITO" && doc.lines.length > 0
+              ? "Devolución"
+              : (doc.type === "NOTA_DEBITO" || doc.type === "NOTA_CREDITO") && doc.reason?.startsWith("Venta de ")
+                ? "Venta de insumo"
+                : DOCUMENT_TYPE_LABELS[doc.type]
+          } #${doc.number}`,
           subtitle: documentSubtitle(doc),
         };
     all.push({
