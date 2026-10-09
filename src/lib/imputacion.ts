@@ -27,6 +27,10 @@ type Tx = Prisma.TransactionClient;
  *    "sin viaje" y se mezcla todo, como siempre.
  *  - **Misma moneda**.
  *  - Un pago en negativo (una corrección) no cancela nada: suma deuda por sí solo, vía el saldo.
+ *  - **Un cobro a un proveedor es al revés**: es él el que nos paga lo que le vendimos, así que lo
+ *    que se cancela es la venta (un crédito de su cuenta). Entra como una "deuda" más, que sólo
+ *    puede cancelar un comprobante —la venta que eligió quien lo cargó, o cualquier crédito si no
+ *    eligió ninguna—, y queda como una imputación en negativo: la venta deja de deber lo cobrado.
  */
 export async function reimputarCuenta(tx: Tx, accountId: string) {
   const account = await tx.account.findUnique({
@@ -52,17 +56,41 @@ export async function reimputarCuenta(tx: Tx, accountId: string) {
     }),
     tx.payment.findMany({
       where: { accountId },
-      select: { id: true, date: true, createdAt: true, currency: true, entregaId: true, amount: true },
+      select: {
+        id: true,
+        date: true,
+        createdAt: true,
+        currency: true,
+        entregaId: true,
+        amount: true,
+        concepto: true,
+        cobraDocumentoId: true,
+      },
     }),
   ]);
 
   const porFecha = (a: { date: Date; createdAt: Date }, b: { date: Date; createdAt: Date }) =>
     a.date.getTime() - b.date.getTime() || a.createdAt.getTime() - b.createdAt.getTime();
 
-  const deudas = documents
-    .map((d) => ({ ...d, pendiente: getDocumentEffect(d) }))
-    .filter((d) => d.pendiente.greaterThan(0))
-    .sort(porFecha);
+  type Deuda = {
+    tipo: "DOC" | "COBRO";
+    id: string;
+    date: Date;
+    createdAt: Date;
+    currency: string;
+    entregaId: string | null;
+    pendiente: Prisma.Decimal;
+    /** Sólo un cobro que eligió qué venta paga. */
+    soloContra: string | null;
+  };
+  const deudas: Deuda[] = [
+    ...documents
+      .map((d) => ({ tipo: "DOC" as const, id: d.id, date: d.date, createdAt: d.createdAt, currency: d.currency, entregaId: d.entregaId, pendiente: getDocumentEffect(d), soloContra: null }))
+      .filter((d) => d.pendiente.greaterThan(0)),
+    ...payments
+      .filter((p) => p.concepto === "COBRO_PROVEEDOR" && p.amount.lessThan(0))
+      .map((p) => ({ tipo: "COBRO" as const, id: p.id, date: p.date, createdAt: p.createdAt, currency: p.currency, entregaId: p.entregaId, pendiente: p.amount.negated(), soloContra: p.cobraDocumentoId })),
+  ].sort(porFecha);
 
   type Credito = { tipo: "PAGO" | "DOC"; id: string; date: Date; createdAt: Date; currency: string; entregaId: string | null; monto: Prisma.Decimal };
   const creditos: Credito[] = [
@@ -78,15 +106,32 @@ export async function reimputarCuenta(tx: Tx, accountId: string) {
   const pagos: { paymentId: string; documentId: string; amount: Prisma.Decimal }[] = [];
   const notas: { creditoId: string; documentId: string; amount: Prisma.Decimal }[] = [];
 
+  // Primero, los cobros que dijeron qué venta pagan: esa venta es de ellos aunque haya deudas más
+  // viejas que, por fecha, se la hubieran comido antes.
+  const restaDe = new Map(creditos.map((c) => [c.id, c.monto]));
+  for (const d of deudas) {
+    if (d.tipo !== "COBRO" || !d.soloContra) continue;
+    const venta = creditos.find((c) => c.id === d.soloContra && c.tipo === "DOC" && c.currency === d.currency);
+    if (!venta) continue;
+    const aplica = Prisma.Decimal.min(restaDe.get(venta.id)!, d.pendiente);
+    if (aplica.lessThanOrEqualTo(0)) continue;
+    restaDe.set(venta.id, restaDe.get(venta.id)!.minus(aplica));
+    d.pendiente = d.pendiente.minus(aplica);
+    pagos.push({ paymentId: d.id, documentId: venta.id, amount: aplica.negated() });
+  }
+
   for (const c of creditos) {
-    let resta = c.monto;
+    let resta = restaDe.get(c.id)!;
     for (const d of deudas) {
       if (resta.lessThanOrEqualTo(0)) break;
       if (d.pendiente.lessThanOrEqualTo(0) || d.currency !== c.currency || d.entregaId !== c.entregaId) continue;
+      // Un cobro sólo lo cancela una venta (un comprobante), nunca otro pago; y si eligió cuál, ésa.
+      if (d.tipo === "COBRO" && (c.tipo !== "DOC" || (d.soloContra && d.soloContra !== c.id))) continue;
       const aplica = Prisma.Decimal.min(resta, d.pendiente);
       d.pendiente = d.pendiente.minus(aplica);
       resta = resta.minus(aplica);
-      if (c.tipo === "PAGO") pagos.push({ paymentId: c.id, documentId: d.id, amount: aplica });
+      if (d.tipo === "COBRO") pagos.push({ paymentId: d.id, documentId: c.id, amount: aplica.negated() });
+      else if (c.tipo === "PAGO") pagos.push({ paymentId: c.id, documentId: d.id, amount: aplica });
       else notas.push({ creditoId: c.id, documentId: d.id, amount: aplica });
     }
   }

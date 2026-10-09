@@ -48,6 +48,7 @@ import { addDays, formatFecha, hoyEnInput, parseFecha, toDateInputValue } from "
 import { getDestinatarios, getEntregasParaElegir } from "@/lib/entregas";
 import { Pencil } from "lucide-react";
 import { borrarVentaDeInsumo } from "@/app/(app)/stock/[itemId]/actions";
+import { getVentasACobrar } from "@/lib/ventas-insumo";
 
 const inputClass =
   "rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
@@ -141,6 +142,19 @@ export default async function AccountLedgerPage({
     ).map((m) => [m.documentId!, m.item])
   );
 
+  // Para editar los aportes y cobros a proveedores: el cheque que entró con cada uno y las ventas que
+  // un cobro puede pagar (incluida la que ya paga, aunque haya quedado saldada).
+  const entradas = statement.entries.flatMap((e) =>
+    e.source.kind === "payment" && e.source.payment.concepto ? [e.source.payment] : []
+  );
+  const [chequesDeEntradas, ventasACobrar] = await Promise.all([
+    entradas.length > 0
+      ? prisma.cheque.findMany({ where: { recibidoEnId: { in: entradas.map((p) => p.id) } } })
+      : Promise.resolve([]),
+    entradas.length > 0 ? getVentasACobrar(entityId, entradas.map((p) => p.cobraDocumentoId)) : Promise.resolve([]),
+  ]);
+  const chequeDeEntrada = new Map(chequesDeEntradas.map((c) => [c.recibidoEnId!, c]));
+
   function renderActions(entry: StatementEntry): React.ReactNode {
     if (!canEdit) return null;
 
@@ -168,7 +182,14 @@ export default async function AccountLedgerPage({
                 destino: payment.treasuryId ?? "",
                 reference: payment.reference ?? "",
                 numeroOperacion: payment.numeroOperacion ?? "",
+                cobraDocumentoId: payment.cobraDocumentoId ?? "",
+                chequeNumero: chequeDeEntrada.get(payment.id)?.numero ?? "",
+                chequeBanco: chequeDeEntrada.get(payment.id)?.banco ?? "",
+                chequeFechaCobro: chequeDeEntrada.get(payment.id)?.fechaCobro
+                  ? toDateInputValue(chequeDeEntrada.get(payment.id)!.fechaCobro!)
+                  : "",
               }}
+              ventas={ventasACobrar}
             />
           </FormModal>
           <DeleteButton
@@ -197,10 +218,10 @@ export default async function AccountLedgerPage({
                 circuit,
                 method: payment.method,
                 date: toDateInputValue(payment.date),
-                // En una cuenta en dólares se edita en pesos, igual que se cargó.
-                amount: (payment.exchangeRate
-                  ? payment.amount.times(payment.exchangeRate)
-                  : payment.amount
+                // En una cuenta en dólares se edita en pesos, igual que se cargó: los pesos guardados,
+                // no dólares × cotización, que por el redondeo daba otro número y al guardar lo pisaba.
+                amount: (payment.amountArs ??
+                  (payment.exchangeRate ? payment.amount.times(payment.exchangeRate).toDecimalPlaces(2) : payment.amount)
                 ).toString(),
                 exchangeRate: formatNumeroExacto(payment.exchangeRate),
                 reference: payment.reference ?? undefined,

@@ -6,7 +6,7 @@ import { getDocumentEffect } from "@/lib/ledger";
 import { formatMoney } from "@/lib/money";
 import { tituloDeCaja } from "@/lib/account-statement";
 import { DOCUMENT_TYPE_LABELS, PAYMENT_CONCEPTO_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
-import { EntradaFormFields } from "./EntradaFormFields";
+import { EntradaFormFields, type VentaOpcion } from "./EntradaFormFields";
 import {
   cargarEnCuenta,
   createDocumentForEntity,
@@ -32,6 +32,7 @@ export function CuentaCorrientePanel({
   entityName,
   entityType,
   esSocio = false,
+  ventasACobrar = [],
   rubroGasto,
   moneda,
   movements,
@@ -52,6 +53,8 @@ export function CuentaCorrientePanel({
   entityType: Entity["type"];
   /** La cuenta por la que se retira para los socios: además de cobros, carga aportes de capital. */
   esSocio?: boolean;
+  /** Las ventas de insumos que el proveedor todavía no nos pagó, para que el cobro diga cuál paga. */
+  ventasACobrar?: VentaOpcion[];
   /** El rubro del proveedor, para que un gasto suyo arranque con él puesto. */
   rubroGasto?: Entity["expenseCategory"];
   /** Moneda de la cuenta: en dólares el pago se carga en pesos y se convierte. */
@@ -131,6 +134,7 @@ export function CuentaCorrientePanel({
                   moneda={moneda}
                   esSocio={esSocio}
                   treasuries={treasuries.map((t) => ({ id: t.id, name: t.name }))}
+                  ventas={ventasACobrar}
                 />
               </FormModal>
             )}

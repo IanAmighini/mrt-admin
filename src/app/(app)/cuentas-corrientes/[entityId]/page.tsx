@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getVentasACobrar } from "@/lib/ventas-insumo";
 import { formatFecha, hoyEnInput } from "@/lib/period";
 import { notFound, redirect } from "next/navigation";
 import type { Account, Product } from "@prisma/client";
@@ -109,6 +110,8 @@ export default async function EntityLedgerPage({
   const isCaja = entity.type === "TESORERIA";
   const isCliente = entity.type !== "PROVEEDOR" && !isCaja;
   const isProveedor = entity.type !== "CLIENTE" && !isCaja;
+  // Las ventas de insumos que el proveedor todavía no pagó: su cobro elige cuál paga.
+  const ventasACobrar = entity.type === "PROVEEDOR" || entity.retiroSocietario ? await getVentasACobrar(entity.id) : [];
   const isSoloCliente = entity.type === "CLIENTE";
 
   // Todas las consultas son independientes entre sí — se disparan juntas para no encadenar
@@ -340,6 +343,7 @@ export default async function EntityLedgerPage({
           entityName={entity.name}
           entityType={entity.type}
           esSocio={entity.retiroSocietario}
+          ventasACobrar={ventasACobrar}
           rubroGasto={entity.expenseCategory}
           moneda={entity.moneda}
           movements={recentMovements}
@@ -354,7 +358,7 @@ export default async function EntityLedgerPage({
                   id: p.id,
                   fecha: formatFecha(p.date),
                   metodo: PAYMENT_METHOD_LABELS[p.method],
-                  amount: formatNumeroEditable(p.amount),
+                  amount: formatNumeroEditable(p.amount.toDecimalPlaces(2)),
                   montoLabel: formatMoney(p.amount, p.currency),
                   comprobante:
                     p.chequesEntregados.length > 0

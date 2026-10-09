@@ -211,9 +211,10 @@ export async function PagosPageContent({
                                 date: toDateInputValue(payment.date),
                                 // En una cuenta en dólares se edita en pesos, igual que se cargó:
                                 // se rehace la multiplicación para prellenar lo que salió del banco.
-                                amount: (payment.exchangeRate
-                                  ? payment.amount.times(payment.exchangeRate)
-                                  : payment.amount
+                                amount: (payment.amountArs ??
+                                  (payment.exchangeRate
+                                    ? payment.amount.times(payment.exchangeRate).toDecimalPlaces(2)
+                                    : payment.amount)
                                 ).toString(),
                                 exchangeRate: formatNumeroExacto(payment.exchangeRate),
                                 reference: payment.reference ?? undefined,

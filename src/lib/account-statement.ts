@@ -12,7 +12,7 @@ import {
   TREASURY_MOVEMENT_CATEGORY_LABELS,
 } from "@/lib/labels";
 import { formatProductBrandLabel } from "@/lib/product-label";
-import { getAccountDocuments, getDocumentEffect, getTreasuries, type DocumentWithRelations } from "@/lib/ledger";
+import { getAccountDocuments, getDocumentEffect, getDocumentPending, getTreasuries, type DocumentWithRelations } from "@/lib/ledger";
 import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 
 export type StatementPayment = Prisma.PaymentGetPayload<{ include: { allocations: true } }>;
@@ -173,6 +173,17 @@ export async function getAccountStatement({
   const esCaja = account.entity.type === "TESORERIA";
   for (const doc of documents) {
     const effect = getDocumentEffect(doc);
+    const esVentaDeInsumo =
+      (doc.type === "NOTA_DEBITO" || doc.type === "NOTA_CREDITO") && Boolean(doc.reason?.startsWith("Venta de "));
+    // Una venta de insumo dice si ya se cobró y cuánto falta: así se sabe a qué corresponde el
+    // saldo y desde cuándo está (la fecha es la de la venta).
+    const pendienteDeVenta = esVentaDeInsumo ? getDocumentPending(doc).abs() : null;
+    const estadoDeVenta =
+      pendienteDeVenta === null
+        ? null
+        : pendienteDeVenta.lessThan(0.005)
+          ? "Cobrada"
+          : `Falta cobrar ${formatMoney(pendienteDeVenta, doc.currency)}`;
     const { title, subtitle } = esCaja
       ? tituloDeCaja(doc)
       : {
@@ -180,11 +191,11 @@ export async function getAccountStatement({
           title: `${
             doc.type === "NOTA_CREDITO" && doc.lines.length > 0
               ? "Devolución"
-              : (doc.type === "NOTA_DEBITO" || doc.type === "NOTA_CREDITO") && doc.reason?.startsWith("Venta de ")
+              : esVentaDeInsumo
                 ? "Venta de insumo"
                 : DOCUMENT_TYPE_LABELS[doc.type]
           } #${doc.number}`,
-          subtitle: documentSubtitle(doc),
+          subtitle: [documentSubtitle(doc), estadoDeVenta].filter(Boolean).join(" · ") || null,
         };
     all.push({
       key: `doc-${doc.id}`,
@@ -223,7 +234,9 @@ export async function getAccountStatement({
     const subtitleParts = [
       payment.reference,
       destinoLabel,
-      sinImputar.greaterThan(0) ? `${formatMoney(sinImputar, payment.currency)} sin imputar` : null,
+      // Desde medio centavo: los pagos en dólares guardan ocho decimales y no tiene sentido avisar
+      // de una fracción de centavo.
+      sinImputar.greaterThanOrEqualTo(0.005) ? `${formatMoney(sinImputar, payment.currency)} sin imputar` : null,
     ].filter(Boolean);
 
     // Un aporte o un cobro a un proveedor se guardan en negativo, pero se leen como lo que son: plata

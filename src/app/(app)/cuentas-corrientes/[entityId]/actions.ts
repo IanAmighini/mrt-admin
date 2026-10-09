@@ -2402,6 +2402,10 @@ async function applyPaymentDestino(params: {
         amount: montoProveedor,
         currency: monedaProveedor,
         exchangeRate: cotizacion,
+        // Los pesos de origen, cuando la cuenta del proveedor va en dólares: son el dato. Los
+        // dólares son la división, y sin esto se reconstruían multiplicando y daban otro número.
+        amountArs:
+          monedaProveedor === "USD" ? (monedaOrigen === "ARS" ? payment.amount : payment.amountArs) : null,
         method: payment.method,
         numeroOperacion: payment.numeroOperacion,
         reference:
@@ -3275,7 +3279,8 @@ export async function cargarEnCuenta(formData: FormData) {
  * saben leer. Lo nuevo es el `concepto`, que hace que se cargue y se muestre en positivo y con su
  * nombre en vez de como un "pago de −US$ 8.523".
  *
- * Va sólo en efectivo o transferencia y siempre a una caja: es plata que llegó a la empresa.
+ * Entra por cualquier medio de un cobro —un cheque queda en la cartera— y siempre a una caja: es
+ * plata que llegó a la empresa. Un cobro puede decir qué venta paga, y ahí se imputa contra ella.
  */
 const CONCEPTOS = ["APORTE_CAPITAL", "COBRO_PROVEEDOR"] as const;
 type Concepto = (typeof CONCEPTOS)[number];
@@ -3314,8 +3319,19 @@ async function guardarEntrada(formData: FormData, editarId: string | null) {
 
   const date = parseFormDate(formData.get("date"));
   const method = String(formData.get("method") || "") as PaymentMethod;
-  if (method !== "EFECTIVO" && method !== "TRANSFERENCIA") throw new UserError("Elegí si entró en efectivo o por transferencia.");
+  if (!(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).includes(method) || method === "RETENCION") {
+    throw new UserError("Elegí cómo entró la plata.");
+  }
   validarMetodo(circuit, method);
+
+  // La venta que paga, si se eligió: tiene que ser un crédito de esta misma cuenta.
+  const cobraDocumentoId = concepto === "COBRO_PROVEEDOR" ? String(formData.get("cobraDocumentoId") || "") || null : null;
+  if (cobraDocumentoId) {
+    const venta = await prisma.document.findUnique({ where: { id: cobraDocumentoId }, select: { accountId: true } });
+    if (!venta || venta.accountId !== account.id) {
+      throw new UserError("La venta elegida no es de esta cuenta. Elegí una de la misma cuenta que el cobro.");
+    }
+  }
   const reference = String(formData.get("reference") || "").trim() || null;
   const numeroOperacion = leerNumeroOperacion(formData, method);
 
@@ -3359,6 +3375,7 @@ async function guardarEntrada(formData: FormData, editarId: string | null) {
     reference,
     numeroOperacion,
     treasuryId: caja.id,
+    cobraDocumentoId,
   };
 
   await prisma.$transaction(async (tx) => {
@@ -3368,9 +3385,22 @@ async function guardarEntrada(formData: FormData, editarId: string | null) {
       await tx.document.deleteMany({ where: { sourcePaymentId: editarId } });
       await tx.payment.update({ where: { id: editarId }, data: datos });
       id = editarId;
+      // El cheque que entró con la versión anterior se rehace con lo que traiga el formulario,
+      // salvo que ya haya salido de la cartera: ahí es un papel que ya no está.
+      const chequeViejo = await tx.cheque.findUnique({ where: { recibidoEnId: editarId } });
+      if (chequeViejo) {
+        if (chequeViejo.estado !== "EN_CARTERA") {
+          throw new UserError(
+            `El cheque #${chequeViejo.numero} de esta entrada ya no está en la cartera, así que no se puede cambiar. Si hay que corregirla, primero devolvé el cheque a la cartera.`
+          );
+        }
+        await tx.cheque.delete({ where: { id: chequeViejo.id } });
+      }
     } else {
       id = (await tx.payment.create({ data: { ...datos, createdById: user.id } })).id;
     }
+    // Un cheque recibido queda en la cartera, como el de cualquier cobro.
+    await aplicarCheque(tx, { formData, paymentId: id, method, amount: enPesos, circuit, userId: user.id, esPago: false });
     await tx.document.create({
       data: {
         accountId: cuentaDeCaja.id,

@@ -363,6 +363,8 @@ model Document {
   taxes             DocumentTax[]
   /// Los cheques que entraron con este movimiento, cuando es un cambio por efectivo.
   chequesDelCambio  Cheque[]            @relation("ChequeCambiado")
+  /// Los cobros a un proveedor que pagan esta venta.
+  cobrosDeVenta     Payment[]           @relation("CobroDeVenta")
 
   @@index([accountId])
   @@index([destinatarioId])
@@ -473,34 +475,42 @@ model DocumentLink {
 }
 
 model Payment {
-  id              String         @id @default(cuid())
-  accountId       String
-  account         Account        @relation(fields: [accountId], references: [id])
-  date            DateTime
+  id               String           @id @default(cuid())
+  accountId        String
+  account          Account          @relation(fields: [accountId], references: [id])
+  date             DateTime
   /// En la moneda de la cuenta. Si la cuenta va en dólares, esto son dólares.
-  amount          Decimal        @db.Decimal(14, 2)
-  currency        Currency       @default(ARS)
+  ///
+  /// Con ocho decimales: un pago en pesos a una cuenta en dólares se acredita como pesos ÷
+  /// cotización, y redondeado a centavos ya no vuelve a los mismos pesos ($39.056.000 a 1522
+  /// quedaba en $39.055.996,34). Se muestra con dos; por detrás queda el número entero.
+  amount           Decimal          @db.Decimal(20, 8)
+  currency         Currency         @default(ARS)
   /// Con qué cotización se pagó, cuando el pago se hizo en pesos contra una cuenta en dólares.
   /// Guardarla es lo que deja reconstruir cuántos pesos salieron del banco.
-  exchangeRate    Decimal?       @db.Decimal(12, 4)
+  exchangeRate     Decimal?         @db.Decimal(12, 4)
   /// Los pesos que de verdad salieron, cuando la cuenta va en dólares. Es un dato, no una cuenta:
   /// reconstruirlo como `amount × exchangeRate` no da lo mismo, porque los dólares se guardan
   /// redondeados a dos decimales y ahí se pierden unos pesos. La caja tiene que decir lo que
   /// realmente se movió.
-  amountArs       Decimal?       @db.Decimal(14, 2)
-  method          PaymentMethod
+  amountArs        Decimal?         @db.Decimal(14, 2)
+  method           PaymentMethod
   /// Vacío en un pago o un cobro común. Ver PaymentConcepto.
-  concepto        PaymentConcepto?
+  concepto         PaymentConcepto?
+  /// Sólo en un cobro a un proveedor: la venta que paga. La imputación lo cancela contra ella y no
+  /// contra cualquier crédito de la cuenta.
+  cobraDocumentoId String?
+  cobraDocumento   Document?        @relation("CobroDeVenta", fields: [cobraDocumentoId], references: [id], onDelete: SetNull)
   /// Solo cuando `method` es RETENCION: contra qué impuesto se imputa.
-  retentionKind   RetentionKind?
-  reference       String?
+  retentionKind    RetentionKind?
+  reference        String?
   /// El número que da el banco a una transferencia (operación, código de identificación o
   /// referencia, según el banco). Si el cobro va directo a un proveedor, pasa a su pago y sale en
   /// la orden de pago.
-  numeroOperacion String?
-  createdById     String
-  createdBy       User           @relation(fields: [createdById], references: [id])
-  createdAt       DateTime       @default(now())
+  numeroOperacion  String?
+  createdById      String
+  createdBy        User             @relation(fields: [createdById], references: [id])
+  createdAt        DateTime         @default(now())
 
   /**
    * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.
@@ -620,7 +630,7 @@ model CreditAllocation {
   credito    Document @relation("CreditoAplicado", fields: [creditoId], references: [id], onDelete: Cascade)
   documentId String
   document   Document @relation("CreditoRecibido", fields: [documentId], references: [id], onDelete: Cascade)
-  amount     Decimal  @db.Decimal(14, 2)
+  amount     Decimal  @db.Decimal(20, 8)
 
   @@index([creditoId])
   @@index([documentId])
@@ -632,7 +642,7 @@ model PaymentAllocation {
   payment    Payment  @relation(fields: [paymentId], references: [id])
   documentId String
   document   Document @relation(fields: [documentId], references: [id])
-  amount     Decimal  @db.Decimal(14, 2)
+  amount     Decimal  @db.Decimal(20, 8)
   createdAt  DateTime @default(now())
 
   @@unique([paymentId, documentId])
