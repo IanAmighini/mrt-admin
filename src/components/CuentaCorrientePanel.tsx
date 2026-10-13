@@ -2,10 +2,12 @@ import type { Entity, Product } from "@prisma/client";
 import { DevolucionFields } from "./DevolucionFields";
 import { formatFecha, hoyEnInput } from "@/lib/period";
 import type { RecentMovement } from "@/lib/ledger";
-import { getDocumentEffect } from "@/lib/ledger";
+import { getDocumentEffect, getDocumentPending } from "@/lib/ledger";
+import Link from "next/link";
+import { ETIQUETA, ETIQUETA_DESTACADA, EstadoDePago } from "./Etiquetas";
 import { formatMoney } from "@/lib/money";
 import { tituloDeCaja } from "@/lib/account-statement";
-import { DOCUMENT_TYPE_LABELS, PAYMENT_CONCEPTO_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, PAYMENT_CONCEPTO_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { EntradaFormFields, type VentaOpcion } from "./EntradaFormFields";
 import {
   cargarEnCuenta,
@@ -28,6 +30,8 @@ import type { ItemDeCompra } from "./NuevaCompraForm";
 import type { DestinatarioOption, ViajeOption } from "./ViajeFields";
 
 export function CuentaCorrientePanel({
+  parte,
+  entitySlug,
   entityId,
   entityName,
   entityType,
@@ -48,6 +52,13 @@ export function CuentaCorrientePanel({
   rotuloSubcuenta,
   devolucion,
 }: {
+  /**
+   * La ficha muestra los botones arriba de todo y los movimientos en su tarjeta, cada parte por su
+   * lado. Sin esto, las dos juntas en una tarjeta, como se usa en la ficha de una caja.
+   */
+  parte?: "acciones" | "movimientos";
+  /** Para los links al libro mayor de cada cuenta. */
+  entitySlug?: string;
   entityId: string;
   entityName: string;
   entityType: Entity["type"];
@@ -96,12 +107,8 @@ export function CuentaCorrientePanel({
   // El botón de gasto es el simétrico del de factura: lo ven los proveedores, no los clientes.
   const isProveedor = entityType === "PROVEEDOR" || entityType === "AMBOS";
 
-  return (
-    <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold">Cuenta corriente</h2>
-        {canEdit && (
-          <div className="flex flex-wrap gap-3">
+  const acciones = canEdit ? (
+          <div className="flex flex-wrap gap-2">
             {!isTreasury && (
               <FormModal
                 triggerLabel={isCliente ? "Registrar cobro" : "Registrar pago"}
@@ -148,6 +155,7 @@ export function CuentaCorrientePanel({
                 title="Cargar en la cuenta"
                 action={cargarEnCuenta}
                 maxWidthClass="max-w-5xl"
+                peso="secundario"
               >
                 <CargarEnCuentaFields
                   entityId={entityId}
@@ -249,9 +257,11 @@ export function CuentaCorrientePanel({
               </FormModal>
             )}
           </div>
-        )}
-      </div>
+  ) : null;
 
+  if (parte === "acciones") return acciones;
+
+  const lista = (
       <div className="space-y-2">
         {movements.map((movement) =>
           movement.kind === "document" ? (
@@ -297,6 +307,140 @@ export function CuentaCorrientePanel({
           <p className="py-4 text-center text-sm text-foreground/40">Sin movimientos.</p>
         )}
       </div>
+  );
+
+  // Una caja lee sus movimientos con su propio título ("Pago a Teoplast — Efectivo"): sigue con la
+  // lista de siempre.
+  if (parte === "movimientos" && isTreasury) {
+    return (
+      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
+        <h2 className="text-sm font-semibold">Movimientos</h2>
+        {lista}
+      </div>
+    );
+  }
+
+  if (parte === "movimientos") {
+    return (
+      <MovimientosRecientes
+        movements={movements}
+        entitySlug={entitySlug}
+        esCliente={entityType === "CLIENTE"}
+      />
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-5 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold">Cuenta corriente</h2>
+        {acciones}
+      </div>
+      {lista}
     </div>
+  );
+}
+
+/**
+ * Lo último que pasó en la cuenta, de las dos cuentas juntas: una fila por movimiento, con lo que
+ * hay que saber de un vistazo en etiquetas —por qué medio entró, a qué caja, en qué cuenta, si el
+ * comprobante ya está pagado— y el monto a la derecha. Lo completo está en el libro mayor.
+ */
+function MovimientosRecientes({
+  movements,
+  entitySlug,
+  esCliente,
+}: {
+  movements: RecentMovement[];
+  entitySlug?: string;
+  esCliente: boolean;
+}) {
+  const cuenta = (c: "BLANCO" | "NEGRO") => CIRCUIT_LABELS[c].split(" (")[0];
+  return (
+    <section className="rounded-xl border border-foreground/10 bg-background shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <h2 className="text-sm font-semibold">Últimos movimientos</h2>
+        {entitySlug && (
+          <div className="flex items-center gap-3 text-xs">
+            <span className="text-foreground/50">Libro mayor:</span>
+            <Link href={`/cuentas-corrientes/${entitySlug}/blanco`} className="font-medium hover:underline">
+              Cuenta 1 →
+            </Link>
+            <Link href={`/cuentas-corrientes/${entitySlug}/negro`} className="font-medium hover:underline">
+              Cuenta 2 →
+            </Link>
+          </div>
+        )}
+      </div>
+      <div className="divide-y divide-foreground/10 border-t border-foreground/10">
+        {movements.map((m) => {
+          if (m.kind === "payment") {
+            const p = m.payment;
+            const entra = p.concepto !== null || esCliente;
+            const cheques = [...p.chequesEntregados, ...(p.chequeRecibido ? [p.chequeRecibido] : [])].map((c) => `#${c.numero}`);
+            const medio = [
+              PAYMENT_METHOD_LABELS[p.method],
+              p.numeroOperacion ? `Op. ${p.numeroOperacion}` : null,
+              cheques.length > 0 ? cheques.join(", ") : null,
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <div key={p.id} className="flex items-start justify-between gap-3 px-4 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    {p.concepto ? PAYMENT_CONCEPTO_LABELS[p.concepto] : esCliente ? "Cobro" : "Pago"}{" "}
+                    <span className="font-normal text-foreground/50">· {formatFecha(p.date)}</span>
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <span className={ETIQUETA}>{medio}</span>
+                    {m.directo ? (
+                      <span className={ETIQUETA_DESTACADA}>{esCliente ? `→ ${m.directo}` : `cobro directo de ${m.directo}`}</span>
+                    ) : (
+                      p.treasury && <span className={ETIQUETA}>{entra ? `→ ${p.treasury.name}` : `desde ${p.treasury.name}`}</span>
+                    )}
+                    <span className={ETIQUETA}>{cuenta(m.circuit)}</span>
+                  </div>
+                </div>
+                <p className="shrink-0 text-sm font-semibold tabular-nums text-green-700 dark:text-green-400">
+                  {formatMoney(p.amount.abs(), p.currency)}
+                </p>
+              </div>
+            );
+          }
+          const d = m.document;
+          const efecto = getDocumentEffect(d);
+          const esVenta = (d.type === "NOTA_DEBITO" || d.type === "NOTA_CREDITO") && Boolean(d.reason?.startsWith("Venta de "));
+          const titulo =
+            d.type === "NOTA_CREDITO" && d.lines.length > 0
+              ? "Devolución"
+              : esVenta
+                ? "Venta de insumo"
+                : d.number === "SALDO-INICIAL"
+                  ? "Saldo inicial"
+                  : DOCUMENT_TYPE_LABELS[d.type];
+          return (
+            <div key={d.id} className="flex items-start justify-between gap-3 px-4 py-2.5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  {titulo}
+                  {d.number !== "SALDO-INICIAL" && ` #${d.number}`}{" "}
+                  <span className="font-normal text-foreground/50">· {formatFecha(d.date)}</span>
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <span className={ETIQUETA}>{cuenta(m.circuit)}</span>
+                  {/* Sólo lo que suma deuda tiene algo que pagar o cobrar. */}
+                  {efecto.greaterThan(0) && (
+                    <EstadoDePago pendiente={getDocumentPending(d)} total={efecto} moneda={d.currency} verbo={esCliente ? "Cobrado" : "Pagado"} />
+                  )}
+                </div>
+              </div>
+              <p className="shrink-0 text-sm font-semibold tabular-nums">{formatMoney(efecto, d.currency)}</p>
+            </div>
+          );
+        })}
+        {movements.length === 0 && <p className="px-4 py-6 text-center text-sm text-foreground/40">Sin movimientos.</p>}
+      </div>
+    </section>
   );
 }

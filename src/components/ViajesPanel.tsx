@@ -182,10 +182,12 @@ export function ViajesPanel({
       </div>
 
       {destinatarios.length > 0 && (
-        <div className="space-y-2 border-t border-foreground/10 pt-4">
-          <p className="text-xs font-medium uppercase tracking-wide text-foreground/40">
-            A nombre de
-          </p>
+        // Plegado: son una docena y casi nunca se tocan, y abiertos le ganaban la pantalla a los viajes.
+        <details className="group border-t border-foreground/10 pt-4">
+          <summary className="cursor-pointer list-none text-xs font-medium uppercase tracking-wide text-foreground/40 hover:text-foreground/70">
+            <span className="inline-block transition-transform group-open:rotate-90">›</span> A nombre de ({destinatarios.length})
+          </summary>
+          <div className="mt-2 space-y-2">
           {destinatarios.map((d) => (
             <div key={d.id} className="flex items-center justify-between gap-3 text-sm">
               <span>
@@ -222,7 +224,8 @@ export function ViajesPanel({
               )}
             </div>
           ))}
-        </div>
+          </div>
+        </details>
       )}
     </div>
   );

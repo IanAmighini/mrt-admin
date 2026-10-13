@@ -34,6 +34,16 @@ import { EntityFormFields } from "@/components/EntityFormFields";
 import { DeleteButton } from "@/components/DeleteButton";
 import { FormConError } from "@/components/FormConError";
 import { EntitySummaryCards } from "@/components/EntitySummaryCards";
+import { ETIQUETA, ETIQUETA_DESTACADA } from "@/components/Etiquetas";
+import { iniciales } from "@/components/CuentasLista";
+import { rubroLabel } from "@/lib/rubro-proveedor";
+
+const TIPO_LABELS: Record<string, string> = {
+  CLIENTE: "Cliente",
+  PROVEEDOR: "Proveedor",
+  AMBOS: "Cliente y proveedor",
+  TESORERIA: "Caja",
+};
 import { EntregasPanel } from "@/components/EntregasPanel";
 import { ComprasPanel } from "@/components/ComprasPanel";
 import { CuentaCorrientePanel } from "@/components/CuentaCorrientePanel";
@@ -215,111 +225,10 @@ export default async function EntityLedgerPage({
     card4Value = String(compras.count);
   }
 
-  const volverA = isCaja
-    ? { href: "/tesoreria", label: "Tesorería" }
-    : entity.type === "PROVEEDOR"
-      ? { href: "/proveedores", label: "Proveedores" }
-      : { href: "/clientes", label: "Clientes" };
-
-  return (
-    <div className="space-y-10">
-      <div className="flex items-start justify-between">
-        <div>
-          <Link href={volverA.href} className="text-sm underline underline-offset-2">
-            ← {volverA.label}
-          </Link>
-          <h1 className="text-xl font-semibold mt-2">{entity.name}</h1>
-        </div>
-        {canEdit && (
-          <div className="flex items-center gap-3">
-            <FormModal
-              triggerLabel="Editar"
-              iconName="edit"
-              peso="secundario"
-              title={isCaja ? "Editar la caja" : "Editar cliente/proveedor"}
-              action={updateEntity}
-            >
-              <EntityFormFields
-                defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
-                mostrarRetiroSocietario={user.role === "ADMIN"}
-                showSupplierCategory={entity.type !== "CLIENTE"}
-                entity={entity}
-                saldosIniciales={saldosIniciales}
-              />
-            </FormModal>
-            <DeleteButton
-              action={deleteEntity}
-              hiddenName="entityId"
-              hiddenValue={entity.id}
-              nombre={`a ${entity.name}`}
-              consecuencia="Solo se puede si no tiene movimientos cargados."
-            />
-          </div>
-        )}
-      </div>
-
-      <EntitySummaryCards
-        entitySlug={entity.slug}
-        blancoSaldo={blancoSaldo}
-        negroSaldo={negroSaldo}
-        moneda={entity.moneda}
-        card3Label={isCaja ? undefined : card3Label}
-        card3Value={isCaja ? undefined : card3Value}
-        card4Label={isCaja ? undefined : card4Label}
-        card4Value={isCaja ? undefined : card4Value}
-        soloCircuito={isCaja ? circuitoDeTesoreria(entity.name) : undefined}
-      />
-
-      {entity.llevaCuentaPreformas && (
-        <PreformasPanel
-          entityId={entity.id}
-          deudas={deudasPreforma}
-          preformas={preformas}
-          entregas={entregasPreforma}
-          canEdit={canEdit}
-        />
-      )}
-
-      {/* Sin panel a la izquierda, la cuenta corriente ocupa el ancho entero en vez de dejar media
-          pantalla vacía al lado. */}
-      <div className={`grid gap-6 ${hayPanelIzquierdo ? "lg:grid-cols-2" : ""}`}>
-        <div className={hayPanelIzquierdo ? "space-y-6" : "hidden"}>
-          {isCliente && <EntregasPanel entityId={entity.id} remitos={recentRemitos} canEdit={canEdit} />}
-          {entity.llevaViajes && (
-            <ViajesPanel
-              entityId={entity.id}
-              entitySlug={entity.slug}
-              entityName={entity.name}
-              moneda={entity.moneda}
-              viajes={viajes}
-              destinatarios={destinatarios}
-              canEdit={canEdit}
-              rotulo={entity.rotuloSubcuenta ?? "Viaje"}
-              mostrarDestinatarios={isCliente}
-              sinAsignar={[
-                {
-                  circuito: "BLANCO" as const,
-                  monto: toDecimal(blancoSaldo).minus(
-                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.BLANCO))
-                  ),
-                },
-                {
-                  circuito: "NEGRO" as const,
-                  monto: toDecimal(negroSaldo).minus(
-                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.NEGRO))
-                  ),
-                },
-              ]}
-            />
-          )}
-          {/* Sin compras el panel no tiene nada que mostrar, y en la mitad de los proveedores
-              —los de servicios— nunca va a tenerlo. Se esconde en vez de ocupar media pantalla
-              diciendo que está vacío; el botón para cargar una sigue en "Cargar". */}
-          {isProveedor && recentCompras.length > 0 && (
-            <ComprasPanel entityId={entity.id} compras={recentCompras} canEdit={canEdit} />
-          )}
-        </div>
+  const panelDeCuenta = (parte: "acciones" | "movimientos") => (
         <CuentaCorrientePanel
+          parte={parte}
+          entitySlug={entity.slug}
           devolucion={
             isCliente
               ? {
@@ -395,12 +304,144 @@ export default async function EntityLedgerPage({
                 }
           }
         />
+  );
+
+  const volverA = isCaja
+    ? { href: "/tesoreria", label: "Tesorería" }
+    : entity.type === "PROVEEDOR"
+      ? { href: "/proveedores", label: "Proveedores" }
+      : { href: "/clientes", label: "Clientes" };
+
+  return (
+    <div className="space-y-10">
+      <div className="flex items-start justify-between">
+        <div>
+          <Link href={volverA.href} className="text-sm underline underline-offset-2">
+            ← {volverA.label}
+          </Link>
+          <div className="mt-2 flex items-center gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/20 text-sm font-semibold text-foreground/70">
+              {iniciales(entity.name)}
+            </span>
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold">{entity.name}</h1>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {!isCaja && <span className={ETIQUETA}>{TIPO_LABELS[entity.type]}</span>}
+                {rubroLabel(entity) && <span className={ETIQUETA}>{rubroLabel(entity)}</span>}
+                {entity.taxId && <span className={ETIQUETA}>CUIT {entity.taxId}</span>}
+                {entity.moneda === "USD" && <span className={ETIQUETA_DESTACADA}>Cuenta en U$S</span>}
+                {entity.llevaViajes && (
+                  <span className={ETIQUETA}>Divide su cuenta en {(entity.rotuloSubcuenta ?? "Viaje").toLowerCase()}s</span>
+                )}
+                {entity.retiroSocietario && <span className={ETIQUETA}>Retiro societario</span>}
+              </div>
+            </div>
+          </div>
+        </div>
+        {canEdit && (
+          <div className="flex items-center gap-3">
+            <FormModal
+              triggerLabel="Editar"
+              iconName="edit"
+              peso="secundario"
+              title={isCaja ? "Editar la caja" : "Editar cliente/proveedor"}
+              action={updateEntity}
+            >
+              <EntityFormFields
+                defaultType={entity.type === "PROVEEDOR" ? "PROVEEDOR" : "CLIENTE"}
+                mostrarRetiroSocietario={user.role === "ADMIN"}
+                showSupplierCategory={entity.type !== "CLIENTE"}
+                entity={entity}
+                saldosIniciales={saldosIniciales}
+              />
+            </FormModal>
+            <DeleteButton
+              action={deleteEntity}
+              hiddenName="entityId"
+              hiddenValue={entity.id}
+              nombre={`a ${entity.name}`}
+              consecuencia="Solo se puede si no tiene movimientos cargados."
+            />
+          </div>
+        )}
+      </div>
+
+      <EntitySummaryCards
+        entitySlug={entity.slug}
+        blancoSaldo={blancoSaldo}
+        negroSaldo={negroSaldo}
+        moneda={entity.moneda}
+        entityType={entity.type}
+        retiroSocietario={entity.retiroSocietario}
+        card3Label={isCaja ? undefined : card3Label}
+        card3Value={isCaja ? undefined : card3Value}
+        card4Label={isCaja ? undefined : card4Label}
+        card4Value={isCaja ? undefined : card4Value}
+        soloCircuito={isCaja ? circuitoDeTesoreria(entity.name) : undefined}
+      />
+
+      {/* Lo que se carga, todo junto arriba: antes estaba adentro de la tarjeta de movimientos y en
+          un cliente quedaba en dos renglones al costado de la lista. */}
+      {canEdit && <div className="-mt-4">{panelDeCuenta("acciones")}</div>}
+
+      {entity.llevaCuentaPreformas && (
+        <PreformasPanel
+          entityId={entity.id}
+          deudas={deudasPreforma}
+          preformas={preformas}
+          entregas={entregasPreforma}
+          canEdit={canEdit}
+        />
+      )}
+
+      {/* Sin panel a la izquierda, la cuenta corriente ocupa el ancho entero en vez de dejar media
+          pantalla vacía al lado. */}
+      <div className={`grid items-start gap-6 ${hayPanelIzquierdo ? "lg:grid-cols-5" : ""}`}>
+        <div className={hayPanelIzquierdo ? "lg:col-span-3" : ""}>{panelDeCuenta("movimientos")}</div>
+        <div className={hayPanelIzquierdo ? "space-y-6 lg:col-span-2" : "hidden"}>
+          {isCliente && <EntregasPanel entityId={entity.id} entityName={entity.name} remitos={recentRemitos} canEdit={canEdit} />}
+          {entity.llevaViajes && (
+            <ViajesPanel
+              entityId={entity.id}
+              entitySlug={entity.slug}
+              entityName={entity.name}
+              moneda={entity.moneda}
+              viajes={viajes}
+              destinatarios={destinatarios}
+              canEdit={canEdit}
+              rotulo={entity.rotuloSubcuenta ?? "Viaje"}
+              mostrarDestinatarios={isCliente}
+              sinAsignar={[
+                {
+                  circuito: "BLANCO" as const,
+                  monto: toDecimal(blancoSaldo).minus(
+                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.BLANCO))
+                  ),
+                },
+                {
+                  circuito: "NEGRO" as const,
+                  monto: toDecimal(negroSaldo).minus(
+                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.NEGRO))
+                  ),
+                },
+              ]}
+            />
+          )}
+          {/* Sin compras el panel no tiene nada que mostrar, y en la mitad de los proveedores
+              —los de servicios— nunca va a tenerlo. Se esconde en vez de ocupar media pantalla
+              diciendo que está vacío; el botón para cargar una sigue en "Cargar". */}
+          {isProveedor && recentCompras.length > 0 && (
+            <ComprasPanel entityId={entity.id} entityName={entity.name} compras={recentCompras} canEdit={canEdit} />
+          )}
+        </div>
       </div>
 
       {/* Los precios son los que le cobramos a un cliente: en un proveedor no se usan para nada
           —ni en una compra ni en un gasto— y ocupaban media pantalla en cada ficha. */}
       {isCliente && (
-        <>
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold">Listados de precios</h2>
+          <div className="grid items-start gap-6 lg:grid-cols-2">
           <PricesSection
             entityId={entity.id}
             circuit="BLANCO"
@@ -417,7 +458,8 @@ export default async function EntityLedgerPage({
             currentPrices={negroPrices}
             priceHistory={negroPriceHistory}
           />
-        </>
+          </div>
+        </section>
       )}
     </div>
   );
@@ -442,9 +484,11 @@ function PricesSection({
 
   return (
     <section className="space-y-2">
-      <h2 className="text-sm font-semibold text-foreground/60">{CIRCUIT_LABELS[circuit]}</h2>
       <details className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-        <summary className="cursor-pointer text-sm font-semibold">Listado de precios</summary>
+        <summary className="cursor-pointer text-sm font-semibold">
+          {CIRCUIT_LABELS[circuit]}{" "}
+          <span className="font-normal text-foreground/50">· {currentPrices.size} {currentPrices.size === 1 ? "precio vigente" : "precios vigentes"}</span>
+        </summary>
 
         <div className="mt-4 space-y-4">
           <Table>

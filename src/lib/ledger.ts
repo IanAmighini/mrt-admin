@@ -435,9 +435,23 @@ export async function getComprasSummary(entityId: string): Promise<ComprasSummar
   return { count: new Set(documents.map((d) => d.number)).size, totalByUnit };
 }
 
-export type RecentMovement =
+const PAGO_DE_LA_FICHA = {
+  allocations: true,
+  treasury: { select: { name: true } },
+  chequesEntregados: { select: { numero: true } },
+  chequeRecibido: { select: { numero: true } },
+} satisfies Prisma.PaymentInclude;
+
+export type RecentMovement = { circuit: Circuit } & (
   | { kind: "document"; date: Date; document: DocumentWithRelations }
-  | { kind: "payment"; date: Date; payment: Prisma.PaymentGetPayload<{ include: { allocations: true } }> };
+  | {
+      kind: "payment";
+      date: Date;
+      payment: Prisma.PaymentGetPayload<{ include: typeof PAGO_DE_LA_FICHA }>;
+      /** El otro lado de un cobro directo: a qué proveedor fue, o de qué cliente vino. */
+      directo: string | null;
+    }
+);
 
 /** Documentos y pagos mezclados de las dos cuentas de una entidad, para el panel de actividad
  * reciente de la ficha individual (sin saldo acumulado — eso es de la tabla de movimientos). */
@@ -447,21 +461,48 @@ export async function getRecentMovementsForEntity(
 ): Promise<RecentMovement[]> {
   const accounts = await prisma.account.findMany({ where: { entityId } });
   const accountIds = accounts.map((a) => a.id);
+  const circuitoDe = new Map(accounts.map((a) => [a.id, a.circuit]));
 
   const [documents, payments] = await Promise.all([
     prisma.document.findMany({
       where: { accountId: { in: accountIds } },
       include: DOCUMENT_QUERY_INCLUDE,
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      take: limit,
     }),
     prisma.payment.findMany({
       where: { accountId: { in: accountIds } },
-      include: { allocations: true },
+      include: PAGO_DE_LA_FICHA,
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      take: limit,
     }),
   ]);
 
+  const vinculados = payments.map((p) => p.linkedPaymentId).filter((id): id is string => Boolean(id));
+  const nombreDelOtroLado = new Map(
+    (vinculados.length
+      ? await prisma.payment.findMany({
+          where: { id: { in: vinculados } },
+          select: { id: true, account: { select: { entity: { select: { name: true } } } } },
+        })
+      : []
+    ).map((p) => [p.id, p.account.entity.name])
+  );
+
   const movements: RecentMovement[] = [
-    ...documents.map((document) => ({ kind: "document" as const, date: document.date, document })),
-    ...payments.map((payment) => ({ kind: "payment" as const, date: payment.date, payment })),
+    ...documents.map((document) => ({
+      kind: "document" as const,
+      date: document.date,
+      document,
+      circuit: circuitoDe.get(document.accountId)!,
+    })),
+    ...payments.map((payment) => ({
+      kind: "payment" as const,
+      date: payment.date,
+      payment,
+      circuit: circuitoDe.get(payment.accountId)!,
+      directo: payment.linkedPaymentId ? (nombreDelOtroLado.get(payment.linkedPaymentId) ?? null) : null,
+    })),
   ];
 
   return movements.sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, limit);
