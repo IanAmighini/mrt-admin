@@ -22,10 +22,10 @@ export default async function AppLayout({
   const entries = navEntriesForRole(user.role);
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col print:min-h-0">
       <AbrirCalendario />
-      <div className="h-1 bg-primary" />
-      <header className="flex items-center justify-between border-b border-foreground/10 bg-background px-6 py-3.5 shadow-sm">
+      <div className="h-1 bg-primary print:hidden" />
+      <header className="flex items-center justify-between print:hidden border-b border-foreground/10 bg-background px-6 py-3.5 shadow-sm">
         <div className="flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" width={32} height={32} className="shrink-0 rounded-lg" />

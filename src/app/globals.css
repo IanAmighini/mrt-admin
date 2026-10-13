@@ -49,9 +49,17 @@ body {
     background: #fff;
   }
 
-  /* El layout de la app envuelve la página en su sidebar y su header; en papel estorban. */
+  /* Los fondos —el recuadro negro del número, el encabezado de la tabla, el total en amarillo— son
+     parte de la orden. Sin esto el navegador los saca para ahorrar tinta y el papel no se parece a
+     la pantalla. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* El layout de la app envuelve la página en su menú y su barra de arriba; en papel estorban. Se
+     esconden con `print:hidden` en el layout y no por etiqueta: la orden tiene su propio <header>. */
   aside,
-  header nav,
   .print\:hidden {
     display: none !important;
   }
@@ -63,6 +71,7 @@ body {
   }
 
   @page {
-    margin: 14mm;
+    size: A4;
+    margin: 10mm;
   }
 }

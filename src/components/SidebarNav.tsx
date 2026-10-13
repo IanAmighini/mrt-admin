@@ -119,7 +119,7 @@ export function SidebarNav({ entries }: { entries: NavEntry[] }) {
 
   return (
     <>
-      <div className="flex items-center border-b border-foreground/10 px-3 py-2 md:hidden">
+      <div className="flex items-center border-b border-foreground/10 px-3 py-2 md:hidden print:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}
@@ -139,7 +139,7 @@ export function SidebarNav({ entries }: { entries: NavEntry[] }) {
       )}
 
       <nav
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col gap-1 overflow-y-auto border-r border-foreground/10 bg-background p-3 transition-transform duration-200 ease-in-out ${
+        className={`print:hidden fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col gap-1 overflow-y-auto border-r border-foreground/10 bg-background p-3 transition-transform duration-200 ease-in-out ${
           open ? "translate-x-0" : ""
         } md:static md:z-auto md:w-60 md:shrink-0 md:translate-x-0`}
       >

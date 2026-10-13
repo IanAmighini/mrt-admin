@@ -185,8 +185,10 @@ export default async function OrdenPagoPage({
         </table>
         </div>
 
-        <h2 className="mt-10 text-sm font-bold">Resumen de cuenta</h2>
-        <table className="mt-3 w-full text-sm">
+        {/* El resumen va entero en la misma hoja: partido, el saldo pendiente quedaba solo arriba de
+            la segunda página. */}
+        <h2 className="mt-10 text-sm font-bold break-after-avoid">Resumen de cuenta</h2>
+        <table className="mt-3 w-full text-sm break-inside-avoid">
           <tbody>
             {comprobantes.map((c) => (
               <tr key={c.id} className="bg-neutral-100">
@@ -219,7 +221,7 @@ export default async function OrdenPagoPage({
 
         {orden.notes && <p className="mt-6 text-sm text-neutral-600">{orden.notes}</p>}
 
-        <div className="mt-24 grid grid-cols-2 gap-16 text-center text-sm">
+        <div className="mt-24 grid grid-cols-2 gap-16 text-center text-sm print:mt-14 print:break-inside-avoid">
           <div>
             <div className="border-t border-neutral-400 pt-2">
               <p className="italic text-neutral-500">Autorizado por</p>
