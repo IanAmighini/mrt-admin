@@ -308,7 +308,7 @@ export default async function AccountLedgerPage({
       const defaultLines = doc.lines.map((l) => lineaDeRemito(l, circuit));
       return (
         <div className="flex items-center gap-2">
-          <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-3xl">
+          <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar remito" action={updateRemito} maxWidthClass="max-w-5xl">
             <RemitoFormFields
               entityId={entityId}
               moneda={monedaCuenta}

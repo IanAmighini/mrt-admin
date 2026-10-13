@@ -36,7 +36,7 @@ export default async function NuevaCompraPage({
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="max-w-5xl space-y-6">
       <div>
         <Link
           href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.slug}` : "/compras"}

@@ -179,7 +179,7 @@ export default async function EntregasPage({
                         iconName="edit"
                         title="Editar remito"
                         action={updateRemito}
-                        maxWidthClass="max-w-3xl"
+                        maxWidthClass="max-w-5xl"
                       >
                         <RemitoFormFields
                           entityId={doc.account.entityId}

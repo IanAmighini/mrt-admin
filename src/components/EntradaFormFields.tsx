@@ -291,7 +291,8 @@ export function EntradaFormFields({
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
+        {/* Sin transferencia no hay N° de operación al lado: la caja ocupa la fila. */}
+        <div className={`space-y-1 ${method === "TRANSFERENCIA" ? "" : "col-span-2"}`}>
           <label className="text-sm" htmlFor="entrada-caja">
             A qué caja entró *
           </label>

@@ -1,4 +1,5 @@
 import type { Entity } from "@prisma/client";
+import { CIRCUIT_LABELS } from "@/lib/labels";
 import { RUBRO_GRUPOS, rubroDeEntidad } from "@/lib/rubro-proveedor";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -68,7 +69,9 @@ export function EntityFormFields({
             className={inputClass}
           />
         </div>
-        <div className="space-y-1">
+        {/* Sin rubro, el CUIT ocupa la fila: si no, los saldos quedaban uno al lado del CUIT y el
+            otro solo abajo. */}
+        <div className={`space-y-1 ${showSupplierCategory ? "" : "col-span-2 sm:col-span-1"}`}>
           <label className="text-sm" htmlFor="taxId">
             CUIT
           </label>
@@ -101,9 +104,12 @@ export function EntityFormFields({
             </select>
           </div>
         )}
+      </div>
+      <p className="text-sm">Saldo inicial <span className="text-foreground/50">(opcional)</span></p>
+      <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-sm" htmlFor="saldoInicialBlanco">
-            Saldo inicial Cuenta 1 (c/factura) (opcional)
+          <label className="text-xs text-foreground/70" htmlFor="saldoInicialBlanco">
+            {CIRCUIT_LABELS.BLANCO}
           </label>
           <input
             id="saldoInicialBlanco"
@@ -115,8 +121,8 @@ export function EntityFormFields({
           />
         </div>
         <div className="space-y-1">
-          <label className="text-sm" htmlFor="saldoInicialNegro">
-            Saldo inicial Cuenta 2 (s/factura) (opcional)
+          <label className="text-xs text-foreground/70" htmlFor="saldoInicialNegro">
+            {CIRCUIT_LABELS.NEGRO}
           </label>
           <input
             id="saldoInicialNegro"

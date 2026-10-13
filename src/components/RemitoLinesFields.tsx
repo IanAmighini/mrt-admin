@@ -137,7 +137,9 @@ export function RemitoLinesFields({
         return (
           <div
             key={row.key}
-            className="grid grid-cols-6 items-end gap-2 rounded-lg md:grid-cols-12 border border-foreground/10 bg-foreground/[0.02] p-2"
+            // Arriba y no abajo: con "items-end", la ayuda de botellas debajo de las cajas subía esa
+            // etiqueta por encima de las otras y la fila quedaba escalonada.
+            className="grid grid-cols-6 items-start gap-2 rounded-lg md:grid-cols-12 border border-foreground/10 bg-foreground/[0.02] p-2"
           >
             <div className="col-span-6 min-w-0 md:col-span-3">
               <label className="text-xs text-foreground/60">Producto</label>
@@ -203,15 +205,16 @@ export function RemitoLinesFields({
                 onChange={(e) => updateRow(row.key, { circuit: e.target.value as Circuit })}
                 className={selectClass}
               >
-                <option value="BLANCO">Cuenta 1 (c/factura)</option>
-                <option value="NEGRO">Cuenta 2 (s/factura)</option>
+                {/* Corto: en la fila no entra "(c/factura)" y se cortaba a la mitad. */}
+                <option value="BLANCO">Cuenta 1</option>
+                <option value="NEGRO">Cuenta 2</option>
               </select>
             </div>
             <div className="col-span-2 min-w-0 md:col-span-2">
               <label className="text-xs text-foreground/60">Subtotal</label>
               <p className="px-2 py-2 text-sm tabular-nums">{formatMoney(subtotal, moneda)}</p>
             </div>
-            <div className="col-span-1 min-w-0 text-right md:text-left">
+            <div className="col-span-1 min-w-0 pt-6 text-right md:text-left">
               {rows.length > 1 && (
                 <button
                   type="button"

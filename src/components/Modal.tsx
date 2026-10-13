@@ -87,9 +87,12 @@ export function FormModal({
         <TriggerIcon size={16} />
         {!soloIcono && triggerLabel}
       </button>
+      {/* El diálogo vive adentro de donde está el botón y hereda su letra: el de editar una
+          producción salía con `whitespace-nowrap` de la fila y todo el formulario en un renglón.
+          Por eso arranca con la letra de la página puesta de nuevo. */}
       <dialog
         ref={dialogRef}
-        className={`fixed inset-0 m-auto w-[calc(100%-1.5rem)] max-h-[calc(100dvh-1.5rem)] ${maxWidthClass} rounded-xl border border-foreground/10 bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50`}
+        className={`fixed inset-0 whitespace-normal text-left text-base font-normal normal-case tracking-normal m-auto w-[calc(100%-1.5rem)] max-h-[calc(100dvh-1.5rem)] ${maxWidthClass} rounded-xl border border-foreground/10 bg-background p-0 text-foreground shadow-xl backdrop:bg-black/50`}
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}
