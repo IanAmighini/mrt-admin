@@ -485,8 +485,15 @@ export async function getRecentPayments(
         ? { date: { ...(filtros.from ? { gte: filtros.from } : {}), ...(filtros.to ? { lt: filtros.to } : {}) } }
         : {}),
     },
-    include: { account: { include: { entity: true } }, allocations: { include: { document: true } } },
-    orderBy: { date: "desc" },
+    include: {
+      account: { include: { entity: true } },
+      allocations: { include: { document: true } },
+      // Para la lista de cobros y pagos: los números de cheque y la orden de pago de cada uno.
+      chequesEntregados: { select: { numero: true, esEcheq: true } },
+      chequeRecibido: { select: { numero: true, esEcheq: true } },
+      ordenPago: { select: { numero: true } },
+    },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     take: limit,
   });
 }

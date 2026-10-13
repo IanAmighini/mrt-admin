@@ -67,7 +67,7 @@ export function TarjetasDeSaldo({ tarjetas }: { tarjetas: TarjetaDeSaldo[] }) {
 const CONECTORES = new Set(["de", "del", "la", "las", "los", "el", "y"]);
 
 /** Dos letras para el circulito: "Gonzalo Morosoli" → GM, "La Campechana" → LC. */
-function iniciales(nombre: string) {
+export function iniciales(nombre: string) {
   const palabras = nombre
     .replace(/["'().,-]/g, " ")
     .split(/\s+/)
