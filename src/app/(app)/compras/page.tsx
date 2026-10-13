@@ -1,18 +1,18 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Package, Plus, ReceiptText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentCompras, getRecentGastos } from "@/lib/ledger";
-import { formatMoney, formatNumeroExacto, formatQuantity, sumDecimals } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, formatQuantity, ZERO } from "@/lib/money";
+import type { Currency, Prisma } from "@prisma/client";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { CompraFormFields, filaDeCompra } from "@/components/CompraForm";
 import { GastoFormFields } from "@/components/GastoFormFields";
 import { desgloseDesdeDocumento } from "@/lib/impuestos";
 import { facturaDeCompra } from "@/lib/compra-factura";
-import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
+import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
-import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import {
   createGasto,
   deleteCompra,
@@ -20,7 +20,7 @@ import {
   updateCompra,
   updateGasto,
 } from "../cuentas-corrientes/[entityId]/actions";
-import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, hoyComoFecha, hoyEnInput, parseFecha, toDateInputValue } from "@/lib/period";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -78,19 +78,59 @@ export default async function ComprasPage({
   );
 
   const rows = [...compras, ...gastos]
-    .map((doc) => ({ doc, pagado: getDocumentPending(doc).lessThanOrEqualTo(0) }))
-    .sort((a, b) => b.doc.date.getTime() - a.doc.date.getTime());
+    .map((doc) => {
+      const pendiente = getDocumentPending(doc);
+      return { doc, pendiente, pagado: pendiente.lessThan(0.005) };
+    })
+    .sort((a, b) => b.doc.date.getTime() - a.doc.date.getTime() || b.doc.createdAt.getTime() - a.doc.createdAt.getTime());
 
-  const filteredRows = rows.filter((r) => {
+  const todasLasFilas = rows.filter((r) => {
     if (pagoFilter === "pagado") return r.pagado;
     if (pagoFilter === "sin_pagar") return !r.pagado;
     return true;
   });
+  // Sin filtro, lo último: es lo que se mira para ver si algo ya se cargó. Para más, se filtra.
+  const filteredRows = hayFiltro ? todasLasFilas : todasLasFilas.slice(0, 60);
+  const sinPagar = todasLasFilas.filter((r) => !r.pagado).length;
 
-  // Cuánto suma lo que se está viendo, y cuánto de eso falta pagar. Sin esto hay que ir a
-  // Reportes para responder "cuánto gasté este mes", que es la pregunta de esta pantalla.
-  const total = sumDecimals(filteredRows.map((r) => r.doc.totalAmount));
-  const pendiente = sumDecimals(filteredRows.map((r) => getDocumentPending(r.doc)));
+  // Los atajos de período, en el día de acá.
+  const hoy = hoyEnInput();
+  const dia = (d: Date) => toDateInputValue(d);
+  const menosDias = (n: number) => dia(new Date(parseFecha(hoy).getTime() - n * 86_400_000));
+  const inicioMes = `${hoy.slice(0, 8)}01`;
+  const finMesPasado = dia(new Date(parseFecha(inicioMes).getTime() - 86_400_000));
+  const atajos = [
+    { label: "Este mes", from: inicioMes, to: hoy },
+    { label: "Mes pasado", from: `${finMesPasado.slice(0, 8)}01`, to: finMesPasado },
+    { label: "Últimos 7 días", from: menosDias(6), to: hoy },
+  ];
+  const conFiltros = (extra: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q, tipo: tipoFilter, pago: pagoFilter, from, to, ...extra })) if (v) qs.set(k, v);
+    const t = qs.toString();
+    return t ? `/compras?${t}` : "/compras";
+  };
+
+  // De a un día por bloque, con su subtotal: es como se controla contra los papeles.
+  const porDia = new Map<string, typeof filteredRows>();
+  for (const r of filteredRows) porDia.set(dia(r.doc.date), [...(porDia.get(dia(r.doc.date)) ?? []), r]);
+  const ayer = menosDias(1);
+  const tituloDelDia = (d: string) => {
+    const fecha = parseFecha(d);
+    const semana = fecha.toLocaleDateString("es-AR", { weekday: "long", timeZone: "UTC" });
+    const corto = fecha.toLocaleDateString("es-AR", { day: "numeric", month: "numeric", timeZone: "UTC" });
+    if (d === hoy) return `Hoy · ${semana} ${corto}`;
+    if (d === ayer) return `Ayer · ${semana} ${corto}`;
+    return `${semana[0].toUpperCase()}${semana.slice(1)} ${corto}${d.slice(0, 4) !== hoy.slice(0, 4) ? `/${d.slice(0, 4)}` : ""}`;
+  };
+  const sumarPorMoneda = (lista: typeof filteredRows, campo: (r: (typeof filteredRows)[number]) => Prisma.Decimal) => {
+    const m = new Map<Currency, Prisma.Decimal>();
+    for (const r of lista) m.set(r.doc.currency, (m.get(r.doc.currency) ?? ZERO).plus(campo(r)));
+    return Array.from(m.entries())
+      .sort(([a]) => (a === "ARS" ? -1 : 1))
+      .map(([moneda, monto]) => formatMoney(monto, moneda))
+      .join(" + ");
+  };
 
   return (
     <div className="space-y-6">
@@ -98,13 +138,16 @@ export default async function ComprasPage({
         <div>
           <h1 className="text-xl font-semibold mb-1">Compras y gastos</h1>
           <p className="text-sm text-foreground/60">
-            {filteredRows.length} {filteredRows.length === 1 ? "comprobante" : "comprobantes"} ·{" "}
-            {formatMoney(total)}
-            {pendiente.greaterThan(0) && (
-              <span className="text-amber-600 dark:text-amber-400">
-                {" "}
-                · {formatMoney(pendiente)} sin pagar
-              </span>
+            {hayFiltro
+              ? `${filteredRows.length} ${filteredRows.length === 1 ? "comprobante" : "comprobantes"} · ${sumarPorMoneda(filteredRows, (r) => r.doc.totalAmount) || formatMoney(0)}`
+              : `Los últimos ${filteredRows.length} comprobantes`}
+            {sinPagar > 0 && !hayFiltro && (
+              <>
+                {" · "}
+                <Link href="/compras?pago=sin_pagar" className="text-amber-700 underline-offset-2 hover:underline dark:text-amber-400">
+                  {sinPagar} sin pagar
+                </Link>
+              </>
             )}
           </p>
         </div>
@@ -147,148 +190,176 @@ export default async function ComprasPage({
         <FiltroFechas from={from} to={to} />
       </FilterBar>
 
-      <Table apilada>
-        <Thead>
-          <Th>Proveedor</Th>
-          <Th>Comprobante</Th>
-          <Th>Fecha</Th>
-          <Th align="derecha">Total</Th>
-          <Th>Pago</Th>
-          {canEdit && <Th>Acciones</Th>}
-        </Thead>
-          <tbody>
-            {filteredRows.map(({ doc, pagado }) => {
-              const esGasto = doc.type === "GASTO";
-              return (
-              <Tr key={doc.id}>
-                <Td>
-                  <Link
-                    href={`/cuentas-corrientes/${doc.account.entity.slug}`}
-                    className="underline underline-offset-2"
-                  >
-                    {doc.account.entity.name}
-                  </Link>
-                </Td>
-                <Td>
-                  <span className="flex items-center gap-1.5">
-                    {esGasto && (
-                      <span className="rounded bg-foreground/10 px-1.5 py-0.5 text-xs font-medium">Gasto</span>
-                    )}
-                    #{doc.number}
-                  </span>
-                  <p className="text-xs font-normal text-foreground/50">
-                    {esGasto
-                      ? [doc.expenseCategory && EXPENSE_CATEGORY_LABELS[doc.expenseCategory], doc.reason]
-                          .filter(Boolean)
-                          .join(" · ")
-                      : doc.purchaseLines
-                          .map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`)
-                          .join(" · ")}
-                  </p>
-                </Td>
-                <Td className="whitespace-nowrap">{formatFecha(doc.date)}</Td>
-                <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
-                <Td>
-                  <span
-                    className={`whitespace-nowrap rounded px-2 py-1 text-xs font-medium ${
-                      pagado
-                        ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-                    }`}
-                  >
-                    {pagado ? "Pagado" : "Sin pagar"}
-                  </span>
-                </Td>
-                {canEdit && (
-                  <Td>
-                    <div className="flex items-center gap-2">
-                      {esGasto ? (
-                        <>
-                          <FormModal
-                            triggerLabel="Editar"
-                            soloIcono
-                            iconName="edit"
-                            title="Editar gasto"
-                            action={updateGasto}
-                            maxWidthClass="max-w-xl"
-                          >
-                            <GastoFormFields
-                              monedaCuenta={doc.account.entity.moneda}
-                              entityId={doc.account.entityId}
-                              editingDocumentId={doc.id}
-                              viajes={subcuentasPorProveedor[doc.account.entityId]?.viajes}
-                              rotuloSubcuenta={subcuentasPorProveedor[doc.account.entityId]?.rotulo}
-                              defaultValues={{
-                                circuit: doc.account.circuit,
-                                expenseCategory: doc.expenseCategory ?? undefined,
-                                reason: doc.reason ?? undefined,
-                                number: doc.number,
-                                date: toDateInputValue(doc.date),
-                                dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
-                                exchangeRate: formatNumeroExacto(doc.exchangeRate),
-                                amount: formatNumeroExacto(doc.totalAmount),
-                                retentionAmount: formatNumeroExacto(doc.retentionAmount),
-                                tributos: desgloseDesdeDocumento(doc),
-                                entregaId: doc.entregaId,
-                              }}
-                            />
-                          </FormModal>
-                          <DeleteButton
-                            action={deleteGasto}
-                            hiddenName="documentId"
-                            hiddenValue={doc.id}
-                            nombre={`el gasto #${doc.number}`}
-                          />
-                        </>
-                      ) : (
-                        <>
-                          <FormModal
-                            triggerLabel="Editar"
-                            soloIcono
-                            iconName="edit"
-                            title="Editar compra"
-                            action={updateCompra}
-                            maxWidthClass="max-w-5xl"
-                          >
-                            <CompraFormFields
-                              entidad={{ id: doc.account.entity.id, name: doc.account.entity.name, moneda: doc.account.entity.moneda }}
-                              items={items}
-                              editingDocumentId={doc.id}
-                              defaultValues={{
-                                number: doc.number,
-                                date: toDateInputValue(doc.date),
-                                dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
-                                exchangeRate: formatNumeroExacto(doc.exchangeRate),
-                              }}
-                              defaultRows={doc.purchaseLines.map((l) => filaDeCompra(l, doc.account.circuit))}
-                              impuestos={desgloseDesdeDocumento(doc)}
-                              factura={facturaDeCompra(doc)}
-                            />
-                          </FormModal>
-                          <DeleteButton
-                            action={deleteCompra}
-                            hiddenName="documentId"
-                            hiddenValue={doc.id}
-                            nombre={`la compra #${doc.number}`}
-                            consecuencia="El stock que sumó se revierte."
-                          />
-                        </>
-                      )}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-foreground/50">Ver:</span>
+        {atajos.map((a) => {
+          const activo = from === a.from && to === a.to;
+          return (
+            <Link
+              key={a.label}
+              href={conFiltros({ from: a.from, to: a.to })}
+              className={`rounded-full border px-3 py-1 transition-colors ${
+                activo ? "border-primary bg-primary/20 font-medium" : "border-foreground/15 text-foreground/70 hover:border-primary"
+              }`}
+            >
+              {a.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="space-y-5">
+        {Array.from(porDia.entries()).map(([d, delDia]) => (
+          <section key={d} className="space-y-2">
+            <div className="flex items-baseline justify-between gap-3 px-1 text-sm">
+              <h2 className="font-medium text-foreground/70">{tituloDelDia(d)}</h2>
+              <span className="tabular-nums text-foreground/60">{sumarPorMoneda(delDia, (r) => r.doc.totalAmount)}</span>
+            </div>
+            <div className="divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-background shadow-sm">
+              {delDia.map(({ doc, pagado, pendiente }) => {
+                const esGasto = doc.type === "GASTO";
+                const Icono = esGasto ? ReceiptText : Package;
+                // El concepto de un gasto, salvo que sea el mismo rubro que ya dice la etiqueta.
+                const detalle = esGasto
+                  ? doc.reason && doc.reason !== (doc.expenseCategory && EXPENSE_CATEGORY_LABELS[doc.expenseCategory])
+                    ? doc.reason
+                    : null
+                  : doc.purchaseLines.map((l) => `${l.item.name} × ${formatQuantity(l.quantity)}`).join(" · ");
+                const vencido = !pagado && doc.dueDate && doc.dueDate < hoyComoFecha();
+                const parcial = !pagado && pendiente.lessThan(doc.totalAmount);
+                return (
+                  <div key={doc.id} className="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
+                    <span
+                      className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground/[0.06] text-foreground/60 sm:flex"
+                      title={esGasto ? "Gasto" : "Compra de insumos"}
+                    >
+                      <Icono size={17} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/cuentas-corrientes/${doc.account.entity.slug}`}
+                        className="font-medium hover:underline hover:underline-offset-2"
+                      >
+                        {doc.account.entity.name}
+                      </Link>
+                      {/* En el celular el monto va acá: a la derecha pisaba las etiquetas. */}
+                      <p className="font-semibold tabular-nums sm:hidden">{formatMoney(doc.totalAmount, doc.currency)}</p>
+                      <div className="mt-1 flex flex-wrap gap-1.5">
+                        <span className={PILL}>
+                          {esGasto ? "Gasto" : DOCUMENT_TYPE_LABELS[doc.type]} #{doc.number}
+                        </span>
+                        {esGasto && doc.expenseCategory && <span className={PILL}>{EXPENSE_CATEGORY_LABELS[doc.expenseCategory]}</span>}
+                        <span className={PILL}>{CIRCUIT_LABELS[doc.account.circuit].split(" (")[0]}</span>
+                        <span
+                          className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-medium ${
+                            pagado
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                          }`}
+                        >
+                          {pagado
+                            ? "Pagado"
+                            : parcial
+                              ? `Falta pagar ${formatMoney(pendiente, doc.currency)}`
+                              : "Sin pagar"}
+                          {!pagado && doc.dueDate && ` · ${vencido ? "venció" : "vence"} el ${formatFecha(doc.dueDate)}`}
+                        </span>
+                      </div>
+                      {detalle && <p className="mt-1 truncate text-xs text-foreground/50">{detalle}</p>}
                     </div>
-                  </Td>
-                )}
-              </Tr>
-              );
-            })}
-            {filteredRows.length === 0 && (
-              <TableEmpty colSpan={canEdit ? 6 : 5}>
-                {hayFiltro
-                  ? "No hay comprobantes con este filtro."
-                  : "Todavía no hay compras ni gastos cargados."}
-              </TableEmpty>
-            )}
-          </tbody>
-        </Table>
+                    <p className="hidden shrink-0 text-right text-lg font-semibold tabular-nums sm:block">
+                      {formatMoney(doc.totalAmount, doc.currency)}
+                    </p>
+                    {canEdit && (
+                      <div className="flex shrink-0 items-center">
+                        {esGasto ? (
+                          <>
+                            <FormModal
+                              triggerLabel="Editar"
+                              soloIcono
+                              iconName="edit"
+                              title="Editar gasto"
+                              action={updateGasto}
+                              maxWidthClass="max-w-xl"
+                            >
+                              <GastoFormFields
+                                monedaCuenta={doc.account.entity.moneda}
+                                entityId={doc.account.entityId}
+                                editingDocumentId={doc.id}
+                                viajes={subcuentasPorProveedor[doc.account.entityId]?.viajes}
+                                rotuloSubcuenta={subcuentasPorProveedor[doc.account.entityId]?.rotulo}
+                                defaultValues={{
+                                  circuit: doc.account.circuit,
+                                  expenseCategory: doc.expenseCategory ?? undefined,
+                                  reason: doc.reason ?? undefined,
+                                  number: doc.number,
+                                  date: toDateInputValue(doc.date),
+                                  dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
+                                  exchangeRate: formatNumeroExacto(doc.exchangeRate),
+                                  amount: formatNumeroExacto(doc.totalAmount),
+                                  retentionAmount: formatNumeroExacto(doc.retentionAmount),
+                                  tributos: desgloseDesdeDocumento(doc),
+                                  entregaId: doc.entregaId,
+                                }}
+                              />
+                            </FormModal>
+                            <DeleteButton
+                              action={deleteGasto}
+                              hiddenName="documentId"
+                              hiddenValue={doc.id}
+                              nombre={`el gasto #${doc.number}`}
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <FormModal
+                              triggerLabel="Editar"
+                              soloIcono
+                              iconName="edit"
+                              title="Editar compra"
+                              action={updateCompra}
+                              maxWidthClass="max-w-5xl"
+                            >
+                              <CompraFormFields
+                                entidad={{ id: doc.account.entity.id, name: doc.account.entity.name, moneda: doc.account.entity.moneda }}
+                                items={items}
+                                editingDocumentId={doc.id}
+                                defaultValues={{
+                                  number: doc.number,
+                                  date: toDateInputValue(doc.date),
+                                  dueDate: doc.dueDate ? toDateInputValue(doc.dueDate) : undefined,
+                                  exchangeRate: formatNumeroExacto(doc.exchangeRate),
+                                }}
+                                defaultRows={doc.purchaseLines.map((l) => filaDeCompra(l, doc.account.circuit))}
+                                impuestos={desgloseDesdeDocumento(doc)}
+                                factura={facturaDeCompra(doc)}
+                              />
+                            </FormModal>
+                            <DeleteButton
+                              action={deleteCompra}
+                              hiddenName="documentId"
+                              hiddenValue={doc.id}
+                              nombre={`la compra #${doc.number}`}
+                              consecuencia="El stock que sumó se revierte."
+                            />
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        {filteredRows.length === 0 && (
+          <p className="rounded-xl border border-foreground/10 px-4 py-8 text-center text-sm text-foreground/40">
+            {hayFiltro ? "No hay comprobantes con este filtro." : "Todavía no hay compras ni gastos cargados."}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
+
+const PILL = "max-w-full truncate whitespace-nowrap rounded-md bg-foreground/[0.05] px-2 py-0.5 text-xs text-foreground/60";

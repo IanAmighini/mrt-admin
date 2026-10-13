@@ -96,15 +96,6 @@ export async function PagosPageContent({
   const inicioMesPasado = `${finMesPasado.slice(0, 8)}01`;
   const hace7 = menosDias(6);
 
-  // Los pagos de la Cuenta 1 que todavía no están en una orden de pago: es lo único de arriba de
-  // la lista, porque es algo para hacer.
-  const sinOrden = isCobro
-    ? []
-    : await prisma.payment.findMany({
-        where: { concepto: null, ordenPagoId: null, account: { circuit: "BLANCO", entity: { type: { in: typeFilter } } } },
-        select: { account: { select: { entity: { select: { name: true } } } } },
-      });
-
   const atajos = [
     { label: "Este mes", from: inicioMes, to: hoy },
     { label: "Mes pasado", from: inicioMesPasado, to: finMesPasado },
@@ -168,15 +159,6 @@ export async function PagosPageContent({
           </FormModal>
         )}
       </div>
-
-      {/* Sólo lo que hay que hacer: los totales del mes no van acá, están en los dashboards. */}
-      {sinOrden.length > 0 && (
-        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
-          {sinOrden.length === 1 ? "Hay 1 pago" : `Hay ${sinOrden.length} pagos`} de la Cuenta 1 sin orden de pago:{" "}
-          {Array.from(new Set(sinOrden.map((p) => p.account.entity.name))).join(", ")}. La orden se arma desde la ficha de
-          cada proveedor.
-        </p>
-      )}
 
       <FilterBar limpiarHref={basePath} hayFiltro={hayFiltro}>
         <FiltroSelect
