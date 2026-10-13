@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Currency, EntityType, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getRecentPayments, getTreasuries, getUltimaCotizacion } from "@/lib/ledger";
+import { getRecentPayments, getTreasuries } from "@/lib/ledger";
 import { formatMoney, formatNumeroExacto, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
@@ -18,7 +18,7 @@ import {
 } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { addDays, formatFecha, hoyEnInput, parseFecha, toDateInputValue } from "@/lib/period";
 import { FilterBar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
-import { TarjetasDeSaldo, iniciales, type TarjetaDeSaldo } from "@/components/CuentasLista";
+import { iniciales } from "@/components/CuentasLista";
 import { formatNumeroOP } from "@/lib/orden-pago";
 
 export type FiltrosDePagos = { entityId?: string; medio?: string; from?: string; to?: string };
@@ -87,15 +87,7 @@ export async function PagosPageContent({
   const linkedPaymentById = new Map(linkedPayments.map((p) => [p.id, p]));
   const treasuryById = new Map(treasuries.map((t) => [t.id, t]));
 
-  // Lo que vale cada pago en pesos, para sumar: en una cuenta en dólares, los pesos que salieron o
-  // entraron (que son el dato), y si no los hay, dólares × la cotización del pago o la última.
-  const ultima = (await getUltimaCotizacion())?.toNumber() ?? null;
-  const enPesos = (p: { amount: Prisma.Decimal; currency: string; amountArs: Prisma.Decimal | null; exchangeRate: Prisma.Decimal | null }) =>
-    p.currency !== "USD"
-      ? p.amount.toNumber()
-      : (p.amountArs?.toNumber() ?? p.amount.toNumber() * (p.exchangeRate?.toNumber() ?? ultima ?? 0));
-
-  // Las fechas de los atajos y de las tarjetas, en el día de acá.
+  // Las fechas de los atajos, en el día de acá.
   const hoy = hoyEnInput();
   const dia = (d: Date) => toDateInputValue(d);
   const menosDias = (n: number) => dia(new Date(parseFecha(hoy).getTime() - n * 86_400_000));
@@ -103,65 +95,15 @@ export async function PagosPageContent({
   const finMesPasado = dia(new Date(parseFecha(inicioMes).getTime() - 86_400_000));
   const inicioMesPasado = `${finMesPasado.slice(0, 8)}01`;
   const hace7 = menosDias(6);
-  const nombreMes = parseFecha(hoy).toLocaleDateString("es-AR", { month: "long", timeZone: "UTC" });
 
-  const [delMes, sinOrden] = await Promise.all([
-    prisma.payment.findMany({
-      where: { concepto: null, date: { gte: parseFecha(inicioMes < hace7 ? inicioMes : hace7) }, account: { entity: { type: { in: typeFilter } } } },
-      select: { date: true, amount: true, currency: true, amountArs: true, exchangeRate: true, method: true, linkedPaymentId: true },
-    }),
-    // Los pagos de la Cuenta 1 que todavía no están en una orden de pago.
-    isCobro
-      ? Promise.resolve([])
-      : prisma.payment.findMany({
-          where: { concepto: null, ordenPagoId: null, account: { circuit: "BLANCO", entity: { type: { in: typeFilter } } } },
-          select: { amount: true, currency: true, amountArs: true, exchangeRate: true, account: { select: { entity: { select: { name: true } } } } },
-        }),
-  ]);
-  const esteMes = delMes.filter((p) => dia(p.date) >= inicioMes);
-  const ultimos7 = delMes.filter((p) => dia(p.date) >= hace7);
-  const suma = (lista: Parameters<typeof enPesos>[0][]) => lista.reduce((a, p) => a + enPesos(p), 0);
-  const directos = esteMes.filter((p) => p.linkedPaymentId);
-
-  // Cuánto del mes entró (o salió) por cada medio, para la barra.
-  const porMedio = Array.from(
-    esteMes.reduce((m, p) => m.set(p.method, (m.get(p.method) ?? 0) + enPesos(p)), new Map<PaymentMethod, number>())
-  ).sort((a, b) => b[1] - a[1]);
-  const totalMes = suma(esteMes);
-
-  const tarjetas: TarjetaDeSaldo[] = [
-    {
-      label: `${isCobro ? "Cobrado" : "Pagado"} en ${nombreMes}`,
-      cantidad: esteMes.length,
-      valor: formatMoney(totalMes),
-      href: `${basePath}?from=${inicioMes}&to=${hoy}`,
-      activa: filtros.from === inicioMes && filtros.to === hoy && !filtros.entityId && !medio,
-    },
-    {
-      label: "Últimos 7 días",
-      cantidad: ultimos7.length,
-      valor: formatMoney(suma(ultimos7)),
-      href: `${basePath}?from=${hace7}&to=${hoy}`,
-      activa: filtros.from === hace7 && filtros.to === hoy && !filtros.entityId && !medio,
-    },
-    isCobro
-      ? {
-          label: "Directo a proveedores",
-          cantidad: directos.length,
-          valor: formatMoney(suma(directos)),
-          detalle: "este mes, sin pasar por ninguna caja",
-        }
-      : {
-          label: "Cuenta 1 sin orden de pago",
-          cantidad: sinOrden.length,
-          valor: formatMoney(suma(sinOrden)),
-          detalle:
-            sinOrden.length > 0
-              ? `${Array.from(new Set(sinOrden.map((p) => p.account.entity.name))).slice(0, 3).join(", ")} — se arma desde su ficha`
-              : "todos tienen su orden",
-          tono: sinOrden.length > 0 ? "deuda" : "neutro",
-        },
-  ];
+  // Los pagos de la Cuenta 1 que todavía no están en una orden de pago: es lo único de arriba de
+  // la lista, porque es algo para hacer.
+  const sinOrden = isCobro
+    ? []
+    : await prisma.payment.findMany({
+        where: { concepto: null, ordenPagoId: null, account: { circuit: "BLANCO", entity: { type: { in: typeFilter } } } },
+        select: { account: { select: { entity: { select: { name: true } } } } },
+      });
 
   const atajos = [
     { label: "Este mes", from: inicioMes, to: hoy },
@@ -227,30 +169,13 @@ export async function PagosPageContent({
         )}
       </div>
 
-      <TarjetasDeSaldo tarjetas={tarjetas} />
-
-      {/* Por qué medio entró (o salió) la plata del mes. Cada medio filtra la lista. */}
-      {totalMes > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm text-foreground/60">Por medio, en {nombreMes}</p>
-          <div className="flex h-2.5 overflow-hidden rounded-full bg-foreground/[0.06]">
-            {porMedio.map(([m, v]) => (
-              <div key={m} className={COLOR_DE_MEDIO[m]} style={{ width: `${(v / totalMes) * 100}%` }} title={PAYMENT_METHOD_LABELS[m]} />
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-            {porMedio.map(([m, v]) => (
-              <Link
-                key={m}
-                href={`${basePath}?medio=${m}&from=${inicioMes}&to=${hoy}`}
-                className={`flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-foreground/5 ${medio === m ? "font-semibold" : "text-foreground/70"}`}
-              >
-                <span className={`inline-block h-2.5 w-2.5 rounded-sm ${COLOR_DE_MEDIO[m]}`} />
-                {PAYMENT_METHOD_LABELS[m]} <span className="tabular-nums text-foreground/50">{formatMoney(v)} · {v / totalMes < 0.01 ? "menos de 1" : Math.round((v / totalMes) * 100)}%</span>
-              </Link>
-            ))}
-          </div>
-        </div>
+      {/* Sólo lo que hay que hacer: los totales del mes no van acá, están en los dashboards. */}
+      {sinOrden.length > 0 && (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+          {sinOrden.length === 1 ? "Hay 1 pago" : `Hay ${sinOrden.length} pagos`} de la Cuenta 1 sin orden de pago:{" "}
+          {Array.from(new Set(sinOrden.map((p) => p.account.entity.name))).join(", ")}. La orden se arma desde la ficha de
+          cada proveedor.
+        </p>
       )}
 
       <FilterBar limpiarHref={basePath} hayFiltro={hayFiltro}>
@@ -433,11 +358,3 @@ const PILL = "max-w-full truncate whitespace-nowrap rounded-md bg-foreground/[0.
 const PILL_DESTACADA =
   "max-w-full truncate whitespace-nowrap rounded-md bg-blue-100 px-2 py-0.5 text-xs text-blue-700 dark:bg-blue-900/40 dark:text-blue-300";
 
-const COLOR_DE_MEDIO: Record<PaymentMethod, string> = {
-  TRANSFERENCIA: "bg-blue-500",
-  EFECTIVO: "bg-emerald-500",
-  CHEQUE: "bg-amber-500",
-  ECHEQ: "bg-rose-400",
-  RETENCION: "bg-violet-400",
-  OTRO: "bg-slate-400",
-};
