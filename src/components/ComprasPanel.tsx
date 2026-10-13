@@ -19,7 +19,7 @@ export function ComprasPanel({
         <h2 className="text-sm font-semibold">Compras</h2>
         {canEdit && (
           <Link
-            href={`/compras/nueva?entityId=${entityId}`}
+            href={`/compras/nueva?entityId=${entityId}&tipo=compra`}
             className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
           >
             <Plus size={16} />

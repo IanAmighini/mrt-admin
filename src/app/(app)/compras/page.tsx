@@ -14,7 +14,6 @@ import { facturaDeCompra } from "@/lib/compra-factura";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import {
-  createGasto,
   deleteCompra,
   deleteGasto,
   updateCompra,
@@ -53,13 +52,8 @@ export default async function ComprasPage({
   };
   const hayFiltro = Boolean(q?.trim() || pagoFilter || tipoFilter || from || to);
 
-  const [items, proveedores, compras, gastos, subcuentas] = await Promise.all([
+  const [items, compras, gastos, subcuentas] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
-    prisma.entity.findMany({
-      where: { type: { in: ["PROVEEDOR", "AMBOS"] } },
-      select: { id: true, name: true, expenseCategory: true, moneda: true },
-      orderBy: { name: "asc" },
-    }),
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
     tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q, period),
     // Los proveedores que dividen su cuenta (Goloeste: alquiler y gastos comunes), para que el gasto
@@ -153,20 +147,12 @@ export default async function ComprasPage({
         </div>
         {canEdit && (
           <div className="flex flex-wrap items-center gap-2">
-            <FormModal
-              triggerLabel="Nuevo gasto"
-              title="Nueva factura de gasto"
-              action={createGasto}
-              maxWidthClass="max-w-xl"
-            >
-              <GastoFormFields proveedores={proveedores} subcuentasPorProveedor={subcuentasPorProveedor} />
-            </FormModal>
             <Link
               href="/compras/nueva"
               className="flex w-fit items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
             >
               <Plus size={16} />
-              Nueva compra
+              Nueva compra o gasto
             </Link>
           </div>
         )}

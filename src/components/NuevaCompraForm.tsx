@@ -84,6 +84,7 @@ export function NuevaCompraFields({
   items,
   fixedEntity,
   textoBoton = "Crear compra",
+  ocultarProveedor = false,
   editingDocumentId,
   defaultValues,
   defaultRows,
@@ -97,6 +98,8 @@ export function NuevaCompraFields({
   /** Si se llega desde la ficha de un proveedor puntual, fija el proveedor y oculta el selector. */
   fixedEntity?: ProveedorInfo;
   textoBoton?: string;
+  /** El proveedor ya se eligió arriba (la pantalla de Compras y gastos): no se repite acá. */
+  ocultarProveedor?: boolean;
   /** Al editar: la compra que se reemplaza. Es el mismo formulario que el alta, a propósito: uno
    * aparte para editar se había quedado atrás y no mostraba ni el precio en pesos derivado. */
   editingDocumentId?: string;
@@ -270,8 +273,10 @@ export function NuevaCompraFields({
     <div className="space-y-6">
       {editingDocumentId && <input type="hidden" name="documentId" value={editingDocumentId} />}
       <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
-        <h2 className="text-sm font-semibold">Información general</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <h2 className="text-sm font-semibold">Comprobante</h2>
+        {ocultarProveedor && fixedEntity ? (
+          <input type="hidden" name="entityId" value={fixedEntity.id} />
+        ) : (
           <div className="space-y-1">
             <label className="text-sm" htmlFor="entityId">
               Proveedor *
@@ -293,7 +298,14 @@ export function NuevaCompraFields({
                 className={inputClass}
               />
             )}
+            {/* La moneda no se elige: es la de la cuenta del proveedor. Elegirla a mano es lo que
+                hacía que una compra a Cristian en dólares entrara en pesos. */}
+            {cuentaEnDolares && (
+              <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Cuenta en U$S: los precios van en dólares.</p>
+            )}
           </div>
+        )}
+        <div className="grid gap-3 sm:grid-cols-3">
           <div className="space-y-1">
             <label className="text-sm" htmlFor="number">
               Número *
@@ -315,21 +327,13 @@ export function NuevaCompraFields({
           </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="dueDate">
-              Vencimiento (opcional)
+              Vencimiento <span className="text-foreground/50">(opcional)</span>
             </label>
             <input id="dueDate" type="date" name="dueDate" defaultValue={defaultValues?.dueDate} className={inputClass} />
           </div>
-          {/* La moneda no se elige: es la de la cuenta del proveedor. Elegirla a mano es lo que
-              hacía que una compra a Cristian en dólares entrara en pesos. */}
-          <div className="space-y-1">
-            <p className="text-sm">Moneda</p>
-            <p className={`${inputClass} bg-foreground/5`}>
-              {cuentaEnDolares ? "Dólares — la cuenta se lleva en U$S" : "Pesos"}
-            </p>
-          </div>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="exchangeRate">
-              Cotización del dólar (opcional)
+              Cotización del dólar <span className="text-foreground/50">(opcional)</span>
             </label>
             <input
               id="exchangeRate"
@@ -340,16 +344,16 @@ export function NuevaCompraFields({
               onChange={(e) => setCotizacion(e.target.value)}
               className={inputClass}
             />
-            <p className="text-xs text-foreground/50">
-              {cuentaEnDolares
-                ? enPesos
-                  ? "Los precios van en pesos y se pasan a dólares con esta cotización. El aceite sigue en U$S por tonelada."
-                  : "Vacía, los precios van en dólares. Cargala si algún precio está en pesos."
-                : enDolares
-                  ? "Las líneas piden el precio en U$S y el peso se calcula con esta cotización."
-                  : "Cargala si el precio está pactado en dólares, como el soplado de los envases o el aceite."}
-            </p>
           </div>
+          <p className="self-end pb-2 text-xs text-foreground/50 sm:col-span-2">
+            {cuentaEnDolares
+              ? enPesos
+                ? "Los precios van en pesos y se pasan a dólares con esta cotización. El aceite sigue en U$S por tonelada."
+                : "Vacía, los precios van en dólares. Cargala si algún precio está en pesos."
+              : enDolares
+                ? "Las líneas piden el precio en U$S y el peso se calcula con esta cotización."
+                : "Cargala si el precio está pactado en dólares, como el soplado de los envases o el aceite."}
+          </p>
         </div>
       </div>
 
@@ -368,10 +372,12 @@ export function NuevaCompraFields({
             // número de columnas cableado se desalinea en cuanto aparece o desaparece uno.
             <div
               key={row.key}
-              className="flex flex-wrap items-end gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
+              // Arriba y no abajo: el desplegable y los campos de texto no miden lo mismo, y con
+              // "items-end" las etiquetas quedaban a distintas alturas.
+              className="flex flex-wrap items-start gap-2 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2"
             >
               <div className="min-w-0 flex-1 basis-[140px]">
-                <label className="text-xs text-foreground/60">Tipo</label>
+                <label className="block text-xs text-foreground/60">Tipo</label>
                 <select
                   value={row.category}
                   onChange={(e) => changeCategory(row.key, e.target.value as SupplierCategory | "")}
@@ -386,7 +392,7 @@ export function NuevaCompraFields({
                 </select>
               </div>
               <div className="min-w-0 flex-[2] basis-[210px]">
-                <label className="text-xs text-foreground/60">Insumo</label>
+                <label className="block text-xs text-foreground/60">Insumo</label>
                 {/* Se puede buscar el insumo directo, sin elegir antes el tipo: el tipo sale del
                     insumo. Con el tipo elegido, la lista se acota a ese tipo. */}
                 <SelectBuscable
@@ -409,7 +415,7 @@ export function NuevaCompraFields({
                   {/* El aceite entra por el ticket de balanza: kilos y precio por tonelada. Los
                       litros y la plata son una cuenta, y se muestran para que se vea si dan. */}
                   <div className="min-w-0 flex-1 basis-[130px]">
-                    <label className="text-xs text-foreground/60">Kilos (ticket)</label>
+                    <label className="block text-xs text-foreground/60">Kilos (ticket)</label>
                     <input
                       value={row.kilos}
                       onChange={(e) => updateRow(row.key, { kilos: e.target.value })}
@@ -419,7 +425,7 @@ export function NuevaCompraFields({
                     />
                   </div>
                   <div className="min-w-0 flex-1 basis-[130px]">
-                    <label className="text-xs text-foreground/60">U$S por tonelada</label>
+                    <label className="block text-xs text-foreground/60">U$S por tonelada</label>
                     <input
                       value={row.precioTonelada}
                       onChange={(e) => updateRow(row.key, { precioTonelada: e.target.value })}
@@ -429,7 +435,7 @@ export function NuevaCompraFields({
                     />
                   </div>
                   <div className="min-w-0 flex-1 basis-[120px]">
-                    <label className="text-xs text-foreground/60">Litros (kilos ÷ {DENSIDAD_TEXTO})</label>
+                    <label className="block text-xs text-foreground/60">Litros (kilos ÷ {DENSIDAD_TEXTO})</label>
                     <p className="px-2 py-2 text-sm tabular-nums">{litros ? formatQuantity(litros, "L") : "—"}</p>
                   </div>
                 </>
@@ -439,7 +445,7 @@ export function NuevaCompraFields({
                 <div className="min-w-0 flex-1 basis-[110px]">
                   {/* Las unidades por pallet van en la etiqueta y no debajo del campo: abajo
                       agrandan la celda y, con items-end, desalinean toda la fila. */}
-                  <label className="text-xs text-foreground/60">
+                  <label className="block text-xs text-foreground/60">
                     Pallets <span className="text-foreground/40">(×{formatQuantity(item.unitsPerPallet)})</span>
                   </label>
                   <input
@@ -451,7 +457,7 @@ export function NuevaCompraFields({
                 </div>
               )}
               <div className="min-w-0 flex-1 basis-[120px]">
-                <label className="text-xs text-foreground/60">Cantidad {item ? `(${item.unit})` : ""}</label>
+                <label className="block text-xs text-foreground/60">Cantidad {item ? `(${item.unit})` : ""}</label>
                 <input
                   value={row.quantity}
                   // Editable aunque haya pallets: si alguna vez llega un pallet incompleto, se
@@ -463,7 +469,7 @@ export function NuevaCompraFields({
               </div>
               {enDolares && (
                 <div className="min-w-0 flex-1 basis-[110px]">
-                  <label className="text-xs text-foreground/60">Precio U$S</label>
+                  <label className="block text-xs text-foreground/60">Precio U$S</label>
                   <input
                     value={row.unitPriceUsd}
                     onChange={(e) => updateRow(row.key, { unitPriceUsd: e.target.value })}
@@ -474,7 +480,7 @@ export function NuevaCompraFields({
                 </div>
               )}
               <div className="min-w-0 flex-1 basis-[120px]">
-                <label className="text-xs text-foreground/60">
+                <label className="block text-xs text-foreground/60">
                   {enPesos ? "Precio $" : cuentaEnDolares ? "Precio U$S" : "Precio unit."}
                 </label>
                 {enDolares && row.unitPriceUsd.trim() ? (
@@ -496,7 +502,7 @@ export function NuevaCompraFields({
                 </>
               )}
               <div className="min-w-0 flex-1 basis-[160px]">
-                <label className="text-xs text-foreground/60">Cuenta</label>
+                <label className="block text-xs text-foreground/60">Cuenta</label>
                 <select
                   value={row.circuit}
                   onChange={(e) => updateRow(row.key, { circuit: e.target.value as Circuit })}
@@ -507,7 +513,7 @@ export function NuevaCompraFields({
                 </select>
               </div>
               <div className="min-w-0 flex-1 basis-[120px]">
-                <label className="text-xs text-foreground/60">Subtotal</label>
+                <label className="block text-xs text-foreground/60">Subtotal</label>
                 {/* Una línea sin precio ya no se descarta: entra sin cargo. Decirlo con palabras y
                     no con "$ 0,00" es lo que diferencia una decisión de un olvido. */}
                 <p className="px-2 py-2 text-sm tabular-nums">
@@ -604,6 +610,7 @@ export function NuevaCompraForm({
   proveedores: ProveedorInfo[];
   items: ItemInfo[];
   fixedEntity?: ProveedorInfo;
+  ocultarProveedor?: boolean;
 }) {
   // Sin esto, un error —que no haya stock, que falte la cotización— reemplazaba la pantalla entera
   // por "This page couldn't load" y se perdía todo lo cargado.
