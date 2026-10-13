@@ -64,14 +64,18 @@ body {
     display: none !important;
   }
 
+  /* El margen de la hoja va adentro de la página y no en @page: el navegador escribe su
+     encabezado y su pie (la fecha, el título, la dirección de la app, "1/1") en el margen de
+     @page. Con ese margen en cero no tiene dónde ponerlos y no salen, aunque la casilla
+     "Encabezados y pies de página" quede tildada. */
   main {
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 10mm !important;
     max-width: none !important;
   }
 
   @page {
     size: A4;
-    margin: 10mm;
+    margin: 0;
   }
 }
