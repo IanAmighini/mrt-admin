@@ -32,6 +32,8 @@ export async function crearChequeRecibido(
     userId: string;
     /** Un cheque que se carga al pagar nace ya entregado: no pasó por la cartera. */
     yaEntregado?: boolean;
+    /** Lo que costó tomarlo, en %. `amount` es igual lo que dice el papel. */
+    costoPct?: Prisma.Decimal | null;
   }
 ) {
   const numero = String(params.formData.get("chequeNumero") || "").trim();
@@ -46,6 +48,7 @@ export async function crearChequeRecibido(
       banco,
       esEcheq: params.esEcheq,
       amount: params.amount,
+      costoPct: params.costoPct ?? null,
       // Sin fecha es un cheque al día: se puede cobrar desde que se recibió.
       fechaCobro: fechaRaw ? parseFecha(fechaRaw) : null,
       estado: params.yaEntregado ? "ENTREGADO" : "EN_CARTERA",

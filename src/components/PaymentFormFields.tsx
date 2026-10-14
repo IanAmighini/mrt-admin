@@ -104,6 +104,10 @@ export function PaymentFormFields({
     setMonto(siguientes.length > 0 ? formatNumeroEditable(suma) : "");
   }
   const [cotizacion, setCotizacion] = useState("");
+  // Lo que cuesta tomar el cheque que entra, en %: se acredita el valor del papel menos eso.
+  const [costoCheque, setCostoCheque] = useState("");
+  const costoNum = esCheque && isCobro ? parseNumeroSuave(costoCheque) : null;
+  const conCosto = costoNum !== null && costoNum.greaterThan(0) && costoNum.lessThan(100);
   const monedaCuenta: Currency =
     moneda ?? entities?.find((e) => e.id === entityId)?.moneda ?? "ARS";
   const enDolares = monedaCuenta === "USD";
@@ -200,7 +204,7 @@ export function PaymentFormFields({
         </div>
         <div className="space-y-1">
           <label className="text-sm" htmlFor="amount">
-            {enDolares ? "Monto en pesos *" : "Monto *"}
+            {esCheque && isCobro ? "Valor del cheque *" : enDolares ? "Monto en pesos *" : "Monto *"}
           </label>
           <input
             id="amount"
@@ -350,6 +354,27 @@ export function PaymentFormFields({
               <p className="text-xs text-foreground/50">
                 Dejá la fecha vacía si es al día.
               </p>
+              <div className="grid grid-cols-2 items-end gap-2 pt-1">
+                <div className="space-y-1">
+                  <label className="text-xs text-foreground/70" htmlFor="chequeCostoPct">
+                    Costo de tomarlo (%)
+                  </label>
+                  <input
+                    id="chequeCostoPct"
+                    name="chequeCostoPct"
+                    inputMode="decimal"
+                    placeholder="1,25"
+                    value={costoCheque}
+                    onChange={(e) => setCostoCheque(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <p className="pb-2 text-xs text-foreground/60">
+                  {conCosto && montoNum
+                    ? <>Se acredita <span className="font-semibold tabular-nums">{formatMoney(montoNum.times(ZERO.plus(100).minus(costoNum!)).dividedBy(100))}</span></>
+                    : "Vacío si no tiene costo."}
+                </p>
+              </div>
             </>
           )}
         </div>

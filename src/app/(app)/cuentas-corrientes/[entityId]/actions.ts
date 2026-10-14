@@ -2215,6 +2215,8 @@ async function aplicarCheque(
     circuit: Circuit;
     userId: string;
     esPago: boolean;
+    /** Lo que costó tomar el cheque que entra, en %. Ver `leerCostoDelCheque`. */
+    costoPct?: Prisma.Decimal | null;
   }
 ) {
   if (!esMetodoCheque(params.method)) return;
@@ -2239,7 +2241,28 @@ async function aplicarCheque(
     esEcheq: params.method === "ECHEQ",
     userId: params.userId,
     yaEntregado: params.esPago,
+    costoPct: params.esPago ? null : params.costoPct,
   });
+}
+
+/**
+ * Lo que cuesta tomar un cheque, en %: hay clientes que pagan con cheques que se toman con un
+ * descuento —un 1,25%— y lo que se les acredita es el valor del papel menos eso. Sólo al cobrar
+ * con un cheque nuevo; vacío o cero, sin costo.
+ */
+function leerCostoDelCheque(formData: FormData, method: PaymentMethod, isCobro: boolean): Prisma.Decimal | null {
+  if (!isCobro || !esMetodoCheque(method)) return null;
+  const pct = parseNumeroOpcional(String(formData.get("chequeCostoPct") ?? ""), "costo del cheque");
+  if (!pct || pct.isZero()) return null;
+  if (pct.lessThan(0) || pct.greaterThanOrEqualTo(100)) {
+    throw new UserError("El costo del cheque tiene que ser un porcentaje entre 0 y 100.");
+  }
+  return pct;
+}
+
+/** Lo neto de un cheque con costo: el valor del papel menos el porcentaje, a centavos. */
+function netoDelCheque(valor: Prisma.Decimal, costoPct: Prisma.Decimal | null) {
+  return costoPct ? valor.times(new Prisma.Decimal(100).minus(costoPct)).dividedBy(100).toDecimalPlaces(2) : valor;
 }
 
 /**
@@ -2431,6 +2454,12 @@ async function applyPaymentDestino(params: {
       where: { id: payment.id },
       data: { linkedPaymentId: linkedPayment.id },
     });
+    // Un cheque que el cliente le dio directo al proveedor no pasa por la cartera: nace entregado,
+    // con el pago al proveedor. Si quedaba en cartera, figuraba en Tesorería como plata nuestra.
+    await prisma.cheque.updateMany({
+      where: { recibidoEnId: payment.id },
+      data: { estado: "ENTREGADO", entregadoEnId: linkedPayment.id },
+    });
     return;
   }
 
@@ -2554,7 +2583,13 @@ export async function createPaymentForEntity(formData: FormData) {
   // En una cuenta en dólares se escribe lo que realmente salió del banco —pesos— y la cotización,
   // y el pago se acredita en dólares. Es la cuenta que hoy se hace a mano; guardarla acá deja
   // reconstruir después cuántos pesos fueron y a cuánto.
-  const { amount, exchangeRate, amountArs } = montoDelPago(formData, account.entity.moneda);
+  // Con un cheque que tiene costo, lo escrito es lo que dice el papel y se acredita lo neto.
+  const costoPct = leerCostoDelCheque(formData, method, isCobro);
+  const escrito = montoDelPago(formData, account.entity.moneda);
+  const valorDelCheque = escrito.amountArs ?? escrito.amount;
+  const amount = costoPct ? netoDelCheque(escrito.amount, costoPct) : escrito.amount;
+  const amountArs = escrito.amountArs && costoPct ? netoDelCheque(escrito.amountArs, costoPct) : escrito.amountArs;
+  const exchangeRate = escrito.exchangeRate;
   // El viaje decide contra qué se imputa: un cobro del camión 4 cancela comprobantes del camión
   // 4 y ninguno más. Sin viaje se imputa contra lo que tampoco lo tiene.
   const { entregaId } = await leerDestinatarioYEntrega(formData, entityId);
@@ -2604,11 +2639,12 @@ export async function createPaymentForEntity(formData: FormData) {
       formData,
       paymentId: payment.id,
       method,
-      // Los cheques son en pesos: en una cuenta en dólares se comparan contra los pesos escritos.
-      amount: amountArs ?? amount,
+      // Los cheques son en pesos y por lo que dice el papel, aunque se acredite lo neto.
+      amount: valorDelCheque,
       circuit,
       userId: user.id,
       esPago: !isCobro,
+      costoPct,
     });
 
     return payment;
@@ -2871,13 +2907,19 @@ export async function updatePayment(formData: FormData) {
       const enPesos = amountArs ?? amount;
       const entregados = await tx.cheque.findMany({ where: { entregadoEnId: paymentId } });
       const recibido = await tx.cheque.findUnique({ where: { recibidoEnId: paymentId } });
+      // Un cheque recibido con costo vale lo neto para el cobro: el papel dice más.
       const valen = entregados.length > 0
         ? entregados.reduce((acc, c) => acc.plus(c.amount), toDecimal(0))
-        : recibido?.amount;
+        : recibido
+          ? netoDelCheque(recibido.amount, recibido.costoPct)
+          : undefined;
       if (valen && !valen.equals(enPesos)) {
         if (recibido && entregados.length === 0 && recibido.estado === "EN_CARTERA") {
           // El de un cobro que todavía está en cartera se corrige junto con el cobro: es el mismo papel.
-          await tx.cheque.update({ where: { id: recibido.id }, data: { amount: enPesos } });
+          const papel = recibido.costoPct
+            ? enPesos.times(100).dividedBy(new Prisma.Decimal(100).minus(recibido.costoPct)).toDecimalPlaces(2)
+            : enPesos;
+          await tx.cheque.update({ where: { id: recibido.id }, data: { amount: papel } });
         } else {
           throw new UserError(
             `Los cheques de este pago valen ${formatMoney(valen)} y el monto quedaría en ${formatMoney(enPesos)}. Para cambiar los cheques, borrá el pago y cargalo de nuevo.`

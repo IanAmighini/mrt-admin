@@ -561,6 +561,10 @@ model Cheque {
   /// Si es un echeq o un cheque de papel. Los dos se pueden entregar en cualquier cuenta.
   esEcheq    Boolean      @default(false)
   amount     Decimal      @db.Decimal(14, 2)
+  /// Lo que cuesta tomarlo, en %: con un 1,25%, de un cheque de $ 100 se cobran $ 98,75. `amount`
+  /// es siempre lo que dice el papel; el cobro (y el pago, si fue directo a un proveedor) va por
+  /// lo neto. Vacío = sin costo.
+  costoPct   Decimal?     @db.Decimal(6, 3)
   /// Desde cuándo se puede cobrar. En uno al día, la fecha en que se recibió.
   fechaCobro DateTime?
   estado     ChequeEstado @default(EN_CARTERA)
