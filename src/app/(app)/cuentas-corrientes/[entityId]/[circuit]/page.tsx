@@ -41,8 +41,8 @@ import { GastoFormFields } from "@/components/GastoFormFields";
 import { EditPaymentFields } from "@/components/EditPaymentFields";
 import { EntradaFormFields } from "@/components/EntradaFormFields";
 import { DocumentFormFields } from "@/components/DocumentFormFields";
-import { GastoDeCajaFields } from "@/components/CajaFormFields";
-import { crearGastoDeCaja } from "@/app/(app)/caja-chica/actions";
+import { EditarMovimientoDeCajaFields, GastoDeCajaFields } from "@/components/CajaFormFields";
+import { crearGastoDeCaja, editarMovimientoDeCaja } from "@/app/(app)/caja-chica/actions";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { addDays, formatFecha, hoyEnInput, parseFecha, toDateInputValue } from "@/lib/period";
 import { getDestinatarios, getEntregasParaElegir } from "@/lib/entregas";
@@ -420,6 +420,34 @@ export default async function AccountLedgerPage({
             hiddenValue={doc.id}
             nombre={`el gasto #${doc.number}`}
           />
+        </div>
+      );
+    }
+
+    // En una caja, un movimiento cargado a mano se corrige con su propio formulario —fecha, monto,
+    // concepto y rubro—, y sólo el administrador. Lo que escribió un pago se corrige en el pago.
+    if (isTreasuryEntity) {
+      const editable = !doc.sourcePaymentId && !doc.number.startsWith("CAMBIO-");
+      return (
+        <div className="flex items-center gap-2">
+          {user.role === "ADMIN" && editable && (
+            <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar movimiento de caja" action={editarMovimientoDeCaja}>
+              <EditarMovimientoDeCajaFields
+                documentId={doc.id}
+                esGasto={doc.treasuryCategory === "GASTO"}
+                esPase={doc.treasuryCategory === "PASE"}
+                defaults={{
+                  date: toDateInputValue(doc.date),
+                  amount: formatNumeroExacto(doc.totalAmount.abs()),
+                  concepto: doc.reason ?? "",
+                  expenseCategory: doc.expenseCategory ?? "",
+                }}
+              />
+            </FormModal>
+          )}
+          {!doc.sourcePaymentId && (
+            <DeleteButton action={deleteDocument} hiddenName="documentId" hiddenValue={doc.id} nombre={`el movimiento #${doc.number}`} />
+          )}
         </div>
       );
     }

@@ -311,3 +311,86 @@ export async function borrarMovimientoDeCaja(formData: FormData) {
   const otraCaja = documento.contraparte?.account.entity;
   revalidarCajas([caja, ...(otraCaja ? [{ ...otraCaja, accountId: "" }] : [])]);
 }
+
+/**
+ * Corrige un movimiento de caja cargado a mano: la fecha, el monto, el concepto y —en un gasto— el
+ * rubro, que es lo que más se carga mal y lo que decide en qué categoría cuenta el gasto del mes.
+ * Sólo el administrador: la secretaría lo puede borrar y volver a cargar.
+ *
+ * El signo no cambia —un gasto sigue saliendo, un sobrante sigue entrando—. En un pase se corrigen
+ * las dos patas juntas, o las dos cajas dejan de coincidir. Lo que escribió un cobro, un pago o un
+ * cambio de cheques se corrige desde ahí.
+ */
+export async function editarMovimientoDeCaja(formData: FormData) {
+  const user = await requireRole(["ADMIN"]);
+
+  const documentId = String(formData.get("documentId") || "");
+  const documento = await prisma.document.findUnique({
+    where: { id: documentId },
+    include: { account: { include: { entity: true } }, contraparte: { include: { account: { include: { entity: true } } } }, contraparteDe: true },
+  });
+  if (!documento) throw new UserError("El movimiento ya no existe.");
+  if (documento.account.entity.type !== "TESORERIA") throw new UserError("Ese movimiento no es de una caja.");
+  if (documento.sourcePaymentId) {
+    throw new UserError("Este movimiento lo generó un cobro o un pago: se corrige editando ese pago.");
+  }
+  if (documento.number.startsWith("CAMBIO-")) {
+    throw new UserError("Este movimiento es de un cambio de cheques: se corrige desde Cheques.");
+  }
+
+  const date = leerFecha(formData.get("date"));
+  const amount = parseNumeroEscrito(String(formData.get("amount") || ""), "monto");
+  if (!amount.greaterThan(0)) throw new UserError("El monto tiene que ser mayor a cero.");
+  const concepto = String(formData.get("concepto") || "").trim();
+  if (!concepto) throw new UserError("Escribí el concepto.");
+  const esGasto = documento.treasuryCategory === "GASTO";
+  const expenseCategory = esGasto ? leerRubro(formData.get("expenseCategory")) : documento.expenseCategory;
+
+  const sale = documento.totalAmount.lessThan(0);
+  const otraPata = documento.contraparte ?? (documento.contraparteDe ? await prisma.document.findUnique({ where: { id: documento.contraparteDe.id }, include: { account: { include: { entity: true } } } }) : null);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.document.update({
+      where: { id: documento.id },
+      data: {
+        date,
+        netAmount: amount,
+        totalAmount: sale ? amount.negated() : amount,
+        reason: concepto,
+        expenseCategory,
+      },
+    });
+    if (otraPata) {
+      await tx.document.update({
+        where: { id: otraPata.id },
+        data: { date, netAmount: amount, totalAmount: sale ? amount : amount.negated() },
+      });
+    }
+    // Subir un gasto o bajar lo que entró puede dejar la caja en rojo en algún día.
+    await asegurarSinNegativos(tx, { cuentas: [documento.accountId, otraPata?.accountId ?? null] });
+  });
+
+  const foto = (d: { number: string; date: Date; reason: string | null; expenseCategory: ExpenseCategory | null; total: string }) => ({
+    numero: d.number,
+    date: d.date,
+    concepto: d.reason,
+    rubro: d.expenseCategory ? EXPENSE_CATEGORY_LABELS[d.expenseCategory] : null,
+    monto: d.total,
+  });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Movimiento de caja",
+    summary: `${documento.account.entity.name} ${documento.number} — ${concepto} — ${formatMoney(sale ? amount.negated() : amount)}`,
+    cambios: diffDeCampos(
+      foto({ ...documento, total: formatMoney(documento.totalAmount) }),
+      foto({ number: documento.number, date, reason: concepto, expenseCategory, total: formatMoney(sale ? amount.negated() : amount) }),
+      CAMPOS_DEL_MOVIMIENTO
+    ),
+  });
+
+  revalidarCajas([
+    { ...documento.account.entity, accountId: documento.accountId },
+    ...(otraPata ? [{ ...otraPata.account.entity, accountId: otraPata.accountId }] : []),
+  ]);
+}

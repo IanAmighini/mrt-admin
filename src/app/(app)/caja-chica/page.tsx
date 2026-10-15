@@ -2,18 +2,18 @@ import { Wallet } from "lucide-react";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAccountStatement } from "@/lib/account-statement";
 import { getCajaChica, getOtrasCajas } from "@/lib/caja";
-import { formatMoney, ZERO } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, ZERO } from "@/lib/money";
 import {
   EXPENSE_CATEGORY_LABELS,
   TREASURY_MOVEMENT_CATEGORY_LABELS,
 } from "@/lib/labels";
-import { formatFecha, formatPeriodLabel, hoyEnInput, periodFromSearchParams, periodLastDay } from "@/lib/period";
+import { formatFecha, formatPeriodLabel, hoyEnInput, periodFromSearchParams, periodLastDay, toDateInputValue } from "@/lib/period";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { AjusteDeCajaFields, GastoDeCajaFields, PaseDeCajaFields } from "@/components/CajaFormFields";
+import { AjusteDeCajaFields, EditarMovimientoDeCajaFields, GastoDeCajaFields, PaseDeCajaFields } from "@/components/CajaFormFields";
 import { PeriodoFilter } from "@/components/ui/PeriodoFilter";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
-import { crearAjusteDeCaja, crearGastoDeCaja, crearPaseDeCaja, borrarMovimientoDeCaja } from "./actions";
+import { crearAjusteDeCaja, crearGastoDeCaja, crearPaseDeCaja, borrarMovimientoDeCaja, editarMovimientoDeCaja } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,7 @@ export default async function CajaChicaPage({
 }) {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
+  const isAdmin = user.role === "ADMIN";
   const params = await searchParams;
   const { period, preset } = periodFromSearchParams(params);
 
@@ -57,6 +58,23 @@ export default async function CajaChicaPage({
         ? TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory]
         : null;
     // Lo que escribió un cobro o un pago se borra desde ese pago, no desde acá.
+    const editable = Boolean(doc && !doc.sourcePaymentId && !doc.number.startsWith("CAMBIO-"));
+    const editar =
+      isAdmin && doc && editable ? (
+        <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar movimiento de caja" action={editarMovimientoDeCaja}>
+          <EditarMovimientoDeCajaFields
+            documentId={doc.id}
+            esGasto={doc.treasuryCategory === "GASTO"}
+            esPase={doc.treasuryCategory === "PASE"}
+            defaults={{
+              date: toDateInputValue(doc.date),
+              amount: formatNumeroExacto(doc.totalAmount.abs()),
+              concepto: doc.reason ?? "",
+              expenseCategory: doc.expenseCategory ?? "",
+            }}
+          />
+        </FormModal>
+      ) : null;
     const borrar =
       canEdit && doc && !doc.sourcePaymentId ? (
         <DeleteButton
@@ -67,7 +85,12 @@ export default async function CajaChicaPage({
           consecuencia={doc.treasuryCategory === "PASE" ? "Se borra también la pata de la otra caja." : undefined}
         />
       ) : null;
-    return { concepto, rubro, borrar };
+    return { concepto, rubro, borrar: (
+      <span className="flex items-center justify-end">
+        {editar}
+        {borrar}
+      </span>
+    ) };
   }
 
   return (

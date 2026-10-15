@@ -246,3 +246,66 @@ export function PaseDeCajaFields({
     </>
   );
 }
+
+/**
+ * Corregir un movimiento de caja: los mismos datos que se cargan, y el rubro sólo si es un gasto.
+ * El signo no se toca: un gasto sigue siendo un gasto.
+ */
+export function EditarMovimientoDeCajaFields({
+  documentId,
+  esGasto,
+  esPase,
+  defaults,
+}: {
+  documentId: string;
+  esGasto: boolean;
+  esPase: boolean;
+  defaults: { date: string; amount: string; concepto: string; expenseCategory: string };
+}) {
+  return (
+    <>
+      <input type="hidden" name="documentId" value={documentId} />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="editar-caja-fecha">
+            Fecha
+          </label>
+          <input id="editar-caja-fecha" type="date" name="date" required defaultValue={defaults.date} className={inputClass} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="editar-caja-monto">
+            Monto *
+          </label>
+          <input id="editar-caja-monto" name="amount" required inputMode="decimal" defaultValue={defaults.amount} className={inputClass} />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <label className="text-sm" htmlFor="editar-caja-concepto">
+          Concepto *
+        </label>
+        <input id="editar-caja-concepto" name="concepto" required defaultValue={defaults.concepto} className={inputClass} />
+      </div>
+      {esGasto && (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="editar-caja-rubro">
+            Rubro
+          </label>
+          <select id="editar-caja-rubro" name="expenseCategory" defaultValue={defaults.expenseCategory} className={inputClass}>
+            <option value="">— Sin rubro —</option>
+            {EXPENSE_CATEGORY_ORDER.map((c) => (
+              <option key={c} value={c}>
+                {EXPENSE_CATEGORY_LABELS[c]}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {esPase && (
+        <p className="text-xs text-foreground/50">Es un pase: la fecha y el monto se corrigen también en la otra caja.</p>
+      )}
+      <button type="submit" className={submitClass}>
+        Guardar cambios
+      </button>
+    </>
+  );
+}
