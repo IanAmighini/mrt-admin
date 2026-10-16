@@ -5,14 +5,18 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentRemitos } from "@/lib/ledger";
 import { getAllCurrentPrices } from "@/lib/pricing";
-import { formatMoney, formatNumeroExacto, sumDecimals } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, ZERO } from "@/lib/money";
+import type { Currency, Prisma } from "@prisma/client";
+import { CIRCUIT_LABELS } from "@/lib/labels";
+import { ETIQUETA, ETIQUETA_DESTACADA, EstadoDePago } from "@/components/Etiquetas";
+import { iniciales } from "@/components/CuentasLista";
+import { agruparPorDia, diasDeReferencia, tituloDelDia } from "@/lib/lista-por-dia";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { RemitoFormFields, lineaDeRemito } from "@/components/RemitoForm";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
-import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { deleteRemito, updateRemito } from "../cuentas-corrientes/[entityId]/actions";
-import { addDays, formatFecha, parseFecha, toDateInputValue } from "@/lib/period";
+import { addDays, formatFecha, hoyComoFecha, parseFecha, toDateInputValue } from "@/lib/period";
 
 const PAGO_FILTERS: { value: "" | "pagado" | "sin_pagar"; label: string }[] = [
   { value: "", label: "Todos" },
@@ -79,22 +83,38 @@ export default async function EntregasPage({
     byCircuit[price.circuit][price.productId] = { amount: price.amount.toNumber(), currency: price.currency };
   }
 
-  const rows = remitos.map((doc) => {
-    const pending = getDocumentPending(doc);
-    const pallets = formatLineasDeRemito(doc.lines);
-    const defaultLines = doc.lines.map((l) => lineaDeRemito(l, doc.account.circuit));
-    return { doc, pallets, pagado: pending.lessThanOrEqualTo(0), defaultLines };
-  });
+  const rows = remitos
+    .map((doc) => {
+      const pendiente = getDocumentPending(doc);
+      const defaultLines = doc.lines.map((l) => lineaDeRemito(l, doc.account.circuit));
+      return { doc, pendiente, pagado: pendiente.lessThan(0.005), defaultLines };
+    })
+    .sort((a, b) => b.doc.date.getTime() - a.doc.date.getTime() || b.doc.createdAt.getTime() - a.doc.createdAt.getTime());
 
-  const filteredRows = rows.filter((r) => {
+  const todasLasFilas = rows.filter((r) => {
     if (pagoFilter === "pagado") return r.pagado;
     if (pagoFilter === "sin_pagar") return !r.pagado;
     return true;
   });
+  // Sin filtro, lo último: es lo que se mira para ver si una entrega ya se cargó. Para más, se filtra.
+  const filteredRows = hayFiltro ? todasLasFilas : todasLasFilas.slice(0, 60);
+  const sinCobrar = rows.filter((r) => !r.pagado).length;
 
-  // Cuánto se entregó y cuánto falta cobrar de lo que se está viendo.
-  const totalEntregado = sumDecimals(filteredRows.map((r) => r.doc.totalAmount));
-  const totalPendiente = sumDecimals(filteredRows.map((r) => getDocumentPending(r.doc)));
+  const { hoy, ayer, atajos } = diasDeReferencia();
+  const conFiltros = (extra: Record<string, string | undefined>) => {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q, pago: pagoFilter, from, to, ...extra })) if (v) qs.set(k, v);
+    const t = qs.toString();
+    return t ? `/entregas?${t}` : "/entregas";
+  };
+  const sumarPorMoneda = (lista: typeof filteredRows) => {
+    const m = new Map<Currency, Prisma.Decimal>();
+    for (const r of lista) m.set(r.doc.currency, (m.get(r.doc.currency) ?? ZERO).plus(r.doc.totalAmount));
+    return Array.from(m.entries())
+      .sort(([a]) => (a === "ARS" ? -1 : 1))
+      .map(([moneda, monto]) => formatMoney(monto, moneda))
+      .join(" + ");
+  };
 
   return (
     <div className="space-y-6">
@@ -102,13 +122,16 @@ export default async function EntregasPage({
         <div>
           <h1 className="text-xl font-semibold mb-1">Entregas</h1>
           <p className="text-sm text-foreground/60">
-            {filteredRows.length} {filteredRows.length === 1 ? "entrega" : "entregas"} ·{" "}
-            {formatMoney(totalEntregado)}
-            {totalPendiente.greaterThan(0) && (
-              <span className="text-amber-600 dark:text-amber-400">
-                {" "}
-                · {formatMoney(totalPendiente)} sin cobrar
-              </span>
+            {hayFiltro
+              ? `${filteredRows.length} ${filteredRows.length === 1 ? "entrega" : "entregas"} · ${sumarPorMoneda(filteredRows) || formatMoney(0)}`
+              : `Las últimas ${filteredRows.length} entregas`}
+            {sinCobrar > 0 && !hayFiltro && (
+              <>
+                {" · "}
+                <Link href="/entregas?pago=sin_pagar" className="text-amber-700 underline-offset-2 hover:underline dark:text-amber-400">
+                  {sinCobrar} sin cobrar
+                </Link>
+              </>
             )}
           </p>
         </div>
@@ -129,50 +152,85 @@ export default async function EntregasPage({
           label="Cobro"
           name="pago"
           defaultValue={pagoFilter}
-          opciones={PAGO_FILTERS.filter((f) => f.value).map((f) => ({ value: f.value, label: f.label }))}
+          opciones={PAGO_FILTERS.filter((f) => f.value).map((f) => ({ value: f.value, label: f.label === "Pagado" ? "Cobrado" : "Sin cobrar" }))}
         />
         <FiltroFechas from={from} to={to} />
       </FilterBar>
 
-      <Table apilada>
-        <Thead>
-          <Th>Remito</Th>
-          <Th>Cliente</Th>
-          <Th>Fecha</Th>
-          <Th align="derecha">Pallets</Th>
-          <Th align="derecha">Total</Th>
-          <Th>Pago</Th>
-          {canEdit && <Th>Acciones</Th>}
-        </Thead>
-          <tbody>
-            {filteredRows.map(({ doc, pallets, pagado, defaultLines }) => (
-              <Tr key={doc.id}>
-                <Td className="whitespace-nowrap">#{doc.number}</Td>
-                <Td>
-                  <Link
-                    href={`/cuentas-corrientes/${doc.account.entity.slug}`}
-                    className="underline underline-offset-2"
-                  >
-                    {doc.account.entity.name}
-                  </Link>
-                </Td>
-                <Td className="whitespace-nowrap">{formatFecha(doc.date)}</Td>
-                <Td numero className="whitespace-nowrap">{pallets}</Td>
-                <Td numero>{formatMoney(doc.totalAmount, doc.currency)}</Td>
-                <Td>
-                  <span
-                    className={`whitespace-nowrap rounded px-2 py-1 text-xs font-medium ${
-                      pagado
-                        ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
-                        : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-                    }`}
-                  >
-                    {pagado ? "Pagado" : "Sin pagar"}
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-foreground/50">Ver:</span>
+        {atajos.map((a) => {
+          const activo = from === a.from && to === a.to;
+          return (
+            <Link
+              key={a.label}
+              href={conFiltros({ from: a.from, to: a.to })}
+              className={`rounded-full border px-3 py-1 transition-colors ${
+                activo ? "border-primary bg-primary/20 font-medium" : "border-foreground/15 text-foreground/70 hover:border-primary"
+              }`}
+            >
+              {a.label}
+            </Link>
+          );
+        })}
+      </div>
+
+      <div className="space-y-5">
+        {agruparPorDia(filteredRows, (r) => r.doc.date).map(([d, delDia]) => (
+          <section key={d} className="space-y-2">
+            <div className="flex items-baseline justify-between gap-3 px-1 text-sm">
+              <h2 className="font-medium text-foreground/70">{tituloDelDia(d, hoy, ayer)}</h2>
+              <span className="tabular-nums text-foreground/60">{sumarPorMoneda(delDia)}</span>
+            </div>
+            <div className="divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-background shadow-sm">
+              {delDia.map(({ doc, pendiente, defaultLines }) => (
+                <div key={doc.id} className="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
+                  <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground/[0.06] text-xs font-semibold text-foreground/60 sm:flex">
+                    {iniciales(doc.account.entity.name)}
                   </span>
-                </Td>
-                {canEdit && (
-                  <Td>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/cuentas-corrientes/${doc.account.entity.slug}`}
+                      className="font-medium hover:underline hover:underline-offset-2"
+                    >
+                      {doc.account.entity.name}
+                    </Link>
+                    {/* En el celular el monto va acá: a la derecha pisaba las etiquetas. */}
+                    <p className="font-semibold tabular-nums sm:hidden">{formatMoney(doc.totalAmount, doc.currency)}</p>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className={ETIQUETA}>Remito #{doc.number}</span>
+                      <span className={ETIQUETA}>{formatLineasDeRemito(doc.lines)}</span>
+                      <span className={ETIQUETA}>{CIRCUIT_LABELS[doc.account.circuit].split(" (")[0]}</span>
+                      {(doc.entrega || doc.destinatario) && (
+                        <span className={ETIQUETA_DESTACADA}>
+                          {[doc.entrega?.nombre, doc.destinatario?.nombre].filter(Boolean).join(" — ")}
+                        </span>
+                      )}
+                      <EstadoDePago pendiente={pendiente} total={doc.totalAmount} moneda={doc.currency} verbo="Cobrado" />
+                      {pendiente.greaterThan(0.005) && doc.dueDate && (
+                        <span
+                          className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs ${
+                            doc.dueDate < hoyComoFecha()
+                              ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                              : "bg-foreground/[0.05] text-foreground/60"
+                          }`}
+                        >
+                          {doc.dueDate < hoyComoFecha() ? "venció" : "vence"} el {formatFecha(doc.dueDate)}
+                        </span>
+                      )}
+                    </div>
+                    {/* Qué se llevó, por formato: el detalle completo está en el remito. */}
+                    <p className="mt-1 truncate text-xs text-foreground/50">
+                      {doc.lines
+                        .map((l) => `${l.product.name} ${l.product.presentation} × ${formatLineasDeRemito([l])}`)
+                        .join(" · ")}
+                    </p>
+                  </div>
+                  <p className="hidden shrink-0 text-right text-lg font-semibold tabular-nums sm:block">
+                    {formatMoney(doc.totalAmount, doc.currency)}
+                  </p>
+                  {canEdit && (
+                    <div className="flex shrink-0 items-center">
                       <FormModal
                         triggerLabel="Editar"
                         soloIcono
@@ -208,17 +266,18 @@ export default async function EntregasPage({
                         nombre={`el remito #${doc.number}`}
                       />
                     </div>
-                  </Td>
-                )}
-              </Tr>
-            ))}
-            {filteredRows.length === 0 && (
-              <TableEmpty colSpan={canEdit ? 7 : 6}>
-                {hayFiltro ? "No hay entregas con este filtro." : "Todavía no hay entregas cargadas."}
-              </TableEmpty>
-            )}
-          </tbody>
-        </Table>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+        {filteredRows.length === 0 && (
+          <p className="rounded-xl border border-foreground/10 px-4 py-8 text-center text-sm text-foreground/40">
+            {hayFiltro ? "No hay entregas con este filtro." : "Todavía no hay entregas cargadas."}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
