@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { parseFecha } from "@/lib/period";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { parseNumeroEscrito, formatQuantity } from "@/lib/money";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { UserError } from "@/lib/user-error";
@@ -32,6 +33,7 @@ const CAMPOS_DE_LA_ENTREGA_DE_PREFORMAS = {
  */
 export async function createEntregaPreforma(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   const preformaId = String(formData.get("preformaId") || "");
@@ -76,6 +78,7 @@ export async function createEntregaPreforma(formData: FormData) {
 
 export async function deleteEntregaPreforma(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entregaId = String(formData.get("entregaId") || "");
   const entrega = await prisma.entregaPreforma.findUnique({
@@ -111,6 +114,7 @@ export async function deleteEntregaPreforma(formData: FormData) {
  */
 export async function guardarSaldosInicialesPreforma(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta el proveedor.");

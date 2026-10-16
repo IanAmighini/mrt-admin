@@ -8,6 +8,7 @@ import { notFound } from "next/navigation";
 import { Prisma, type DocumentType, type EntityType, type ItemMovementType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { formatMoney, formatQuantity, parseNumeroEscrito } from "@/lib/money";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
@@ -258,6 +259,7 @@ async function proximoNumeroDeVenta(tx: Prisma.TransactionClient) {
  */
 async function guardarVenta(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "") || null;
   const itemId = String(formData.get("itemId") || "");
@@ -432,6 +434,7 @@ export async function editarVentaDeInsumo(formData: FormData) {
 /** Borra una venta de insumo entera: la plata sale de la cuenta y el insumo vuelve al stock. */
 export async function borrarVentaDeInsumo(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
   const documentId = String(formData.get("documentId") || "");
   const doc = await prisma.document.findUnique({
     where: { id: documentId },

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { generateUniqueSlug } from "@/lib/slug";
@@ -79,6 +80,7 @@ function fotoDeLaEntidad(e: {
 
 export async function createEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   // Los espacios de más se limpian: "Tablada Goma  de Dattola" con dos espacios parecía otro nombre.
   const name = String(formData.get("name") || "").replace(/\s+/g, " ").trim();
@@ -144,6 +146,7 @@ export async function createEntity(formData: FormData) {
 
 export async function updateEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");
@@ -235,6 +238,7 @@ export async function updateEntity(formData: FormData) {
  */
 export async function deleteEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta la entidad.");

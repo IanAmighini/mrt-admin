@@ -5,6 +5,7 @@ import { hoyEnInput, parseFecha } from "@/lib/period";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { UserError } from "@/lib/user-error";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { formatFecha } from "@/lib/period";
@@ -19,6 +20,7 @@ import { formatNumeroOP, proximoNumero } from "@/lib/orden-pago";
  */
 export async function crearOrdenPago(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   const paymentIds = formData.getAll("paymentId").map(String).filter(Boolean);
@@ -101,6 +103,7 @@ export async function crearOrdenPago(formData: FormData) {
 /** Deshacer una orden: los pagos vuelven a quedar sin orden y se pueden agrupar de nuevo. */
 export async function anularOrdenPago(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const numero = Number(formData.get("numero"));
   const orden = await prisma.ordenPago.findUnique({

@@ -17,6 +17,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { DEFAULT_IVA_RATE, formatMoney, formatNumeroExacto, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
 import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impuestos";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
@@ -183,6 +184,7 @@ async function getAccountOrThrow(accountId: string) {
  * totalAmount (no hay nada desnormalizado que tocar). */
 export async function updateDocument(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
@@ -194,6 +196,11 @@ export async function updateDocument(formData: FormData) {
     },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
+  // El movimiento de caja de un pago nace y muere con el pago: suelto, el pago diría que salió de
+  // una caja que ya no lo muestra. La pantalla no ofrece el lápiz ni el tacho; esto ataja el resto.
+  if (document.sourcePaymentId) {
+    throw new UserError("Es el movimiento de un pago: se corrige o se borra desde el pago.");
+  }
   // Una venta de insumo mueve stock: se corrige en la ficha del insumo, que cambia todo junto.
   if (document._count.itemMovements > 0) {
     throw new UserError("Es una venta de insumo: corregila desde la ficha del insumo (Stock), que ajusta también el stock.");
@@ -336,6 +343,7 @@ export async function updateDocument(formData: FormData) {
 
 export async function deleteDocument(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
@@ -348,6 +356,11 @@ export async function deleteDocument(formData: FormData) {
     },
   });
   if (!document) throw new UserError("El comprobante ya no existe.");
+  // El movimiento de caja de un pago nace y muere con el pago: suelto, el pago diría que salió de
+  // una caja que ya no lo muestra. La pantalla no ofrece el lápiz ni el tacho; esto ataja el resto.
+  if (document.sourcePaymentId) {
+    throw new UserError("Es el movimiento de un pago: se corrige o se borra desde el pago.");
+  }
   if (!NON_FACTURA_TYPES.includes(document.type)) {
     throw new UserError("Este comprobante no es una nota ni un ajuste.");
   }
@@ -391,6 +404,7 @@ export async function deleteDocument(formData: FormData) {
  */
 export async function createDocumentForEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta el cliente o proveedor.");
@@ -1125,6 +1139,7 @@ async function moverStockDeDevolucion(
  */
 export async function crearDevolucion(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   const entity = await prisma.entity.findUnique({ where: { id: entityId } });
@@ -1436,6 +1451,7 @@ async function createRemitoCore(
 
 export async function createRemito(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
   await createRemitoCore(user, formData, "CREATE");
 }
 
@@ -1462,6 +1478,7 @@ async function getRemitoOrThrow(documentId: string) {
 
 export async function deleteRemito(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getRemitoOrThrow(documentId);
@@ -1494,6 +1511,7 @@ export async function deleteRemito(formData: FormData) {
  */
 export async function updateRemito(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const original = await getRemitoOrThrow(documentId);
@@ -1880,6 +1898,7 @@ async function createCompraCore(
 
 export async function createCompra(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
   await createCompraCore(user, formData, "CREATE");
 }
 
@@ -1919,6 +1938,7 @@ async function getCompraOrThrow(documentId: string) {
 
 export async function deleteCompra(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getCompraOrThrow(documentId);
@@ -1950,6 +1970,7 @@ export async function deleteCompra(formData: FormData) {
  * UPDATE. */
 export async function updateCompra(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await getCompraOrThrow(documentId);
@@ -1964,6 +1985,7 @@ export async function updateCompra(formData: FormData) {
 
 export async function createFactura(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const accountId = String(formData.get("accountId") || "");
   const account = await getAccountOrThrow(accountId);
@@ -2092,6 +2114,7 @@ export async function createFactura(formData: FormData) {
  * sale de totalAmount, no hay nada desnormalizado que actualizar. */
 export async function updateFactura(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const factura = await prisma.document.findUnique({
@@ -2173,6 +2196,7 @@ export async function updateFactura(formData: FormData) {
 /** Borrar una factura "desfactura" los remitos que tenía vinculados (vuelven a pendiente). */
 export async function deleteFactura(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const factura = await prisma.document.findUnique({
@@ -2557,6 +2581,7 @@ async function verificarCajaDelPago(params: {
 
 export async function createPaymentForEntity(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   if (!entityId) throw new UserError("Falta el cliente o proveedor.");
@@ -2699,6 +2724,7 @@ export async function createPaymentForEntity(formData: FormData) {
 
 export async function deletePayment(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -2788,6 +2814,7 @@ export async function deletePayment(formData: FormData) {
  * adivinar la transición entre los distintos casos. */
 export async function updatePayment(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -3028,6 +3055,7 @@ export async function updatePayment(formData: FormData) {
 
 export async function moveRemitoToBlanco(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
@@ -3070,6 +3098,7 @@ export async function moveRemitoToBlanco(formData: FormData) {
 
 export async function createPrice(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   const circuit = String(formData.get("circuit") || "") as "BLANCO" | "NEGRO";
@@ -3168,6 +3197,7 @@ async function subcuentaDelGasto(formData: FormData, entityId: string) {
 
 export async function createGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
   const g = await parseGasto(formData);
   const subcuenta = await subcuentaDelGasto(formData, g.account.entityId);
 
@@ -3235,6 +3265,7 @@ function fotoDelGastoCargado(g: Awaited<ReturnType<typeof parseGasto>>, subcuent
 
 export async function updateGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const existente = await prisma.document.findUnique({
@@ -3292,6 +3323,7 @@ export async function updateGasto(formData: FormData) {
 
 export async function deleteGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const documentId = String(formData.get("documentId") || "");
   const gasto = await prisma.document.findUnique({
@@ -3349,6 +3381,7 @@ type Concepto = (typeof CONCEPTOS)[number];
 
 async function guardarEntrada(formData: FormData, editarId: string | null) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const anterior = editarId
     ? await prisma.payment.findUnique({

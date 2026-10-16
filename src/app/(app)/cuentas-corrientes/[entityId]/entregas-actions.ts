@@ -5,6 +5,7 @@ import { parseFecha } from "@/lib/period";
 import { UserError } from "@/lib/user-error";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
+import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 
 function leerFecha(value: FormDataEntryValue | null): Date {
@@ -36,6 +37,7 @@ async function getEntidad(entityId: string) {
  */
 export async function crearEntrega(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   const entity = await getEntidad(entityId);
@@ -64,6 +66,7 @@ export async function crearEntrega(formData: FormData) {
 
 export async function actualizarEntrega(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entregaId = String(formData.get("entregaId") || "");
   const entrega = await prisma.entrega.findUnique({
@@ -106,6 +109,7 @@ export async function actualizarEntrega(formData: FormData) {
  */
 export async function borrarEntrega(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entregaId = String(formData.get("entregaId") || "");
   const entrega = await prisma.entrega.findUnique({
@@ -146,6 +150,7 @@ export async function borrarEntrega(formData: FormData) {
  */
 export async function crearDestinatario(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const entityId = String(formData.get("entityId") || "");
   const entity = await getEntidad(entityId);
@@ -173,6 +178,7 @@ export async function crearDestinatario(formData: FormData) {
 
 export async function actualizarDestinatario(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const destinatarioId = String(formData.get("destinatarioId") || "");
   const destinatario = await prisma.destinatario.findUnique({
@@ -207,6 +213,7 @@ export async function actualizarDestinatario(formData: FormData) {
  */
 export async function borrarDestinatario(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
+  await exigirZonaDelFormulario(user.role, formData);
 
   const destinatarioId = String(formData.get("destinatarioId") || "");
   const destinatario = await prisma.destinatario.findUnique({
