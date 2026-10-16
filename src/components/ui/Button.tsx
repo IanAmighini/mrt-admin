@@ -1,4 +1,3 @@
-import Link from "next/link";
 
 /**
  * Los tres pesos de botón que usa la app, en un solo lugar.
@@ -25,13 +24,4 @@ export function Button({
   ...props
 }: { peso?: PesoDeBoton } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return <button {...props} className={buttonClass(peso, className)} />;
-}
-
-/** El mismo botón cuando en realidad es un link — un filtro, un "ver todo", un volver. */
-export function ButtonLink({
-  peso = "secundario",
-  className,
-  ...props
-}: { peso?: PesoDeBoton } & React.ComponentProps<typeof Link>) {
-  return <Link {...props} className={buttonClass(peso, className)} />;
 }

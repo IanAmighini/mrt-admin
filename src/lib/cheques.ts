@@ -3,7 +3,7 @@ import { formatFecha, parseFecha } from "@/lib/period";
 import { Prisma, type ChequeEstado } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
-import { formatMoney, formatNumeroEditable, parseNumeroEscrito, sumDecimals } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, sumDecimals } from "@/lib/money";
 
 const CHEQUE_METHODS = ["CHEQUE", "ECHEQ"] as const;
 export const esMetodoCheque = (method: string) =>
@@ -117,11 +117,6 @@ export async function marcarCheque(chequeId: string, estado: ChequeEstado) {
     throw new UserError("Este cheque se entregó con un pago: borrá ese pago para devolverlo a la cartera.");
   }
   await prisma.cheque.update({ where: { id: chequeId }, data: { estado } });
-}
-
-/** El monto del cheque elegido, para validar contra el del pago. */
-export function parseMontoCheque(raw: string) {
-  return parseNumeroEscrito(raw, "monto del cheque");
 }
 
 /** La cartera serializada como la espera el formulario de pago. */

@@ -33,6 +33,24 @@ const nextConfig: NextConfig = {
   outputFileTracingExcludes: {
     "**": MOTORES_SIN_USO,
   },
+  /**
+   * Lo básico para que el navegador no haga cosas que esta app nunca necesita: que otra página la
+   * meta en un iframe (para engañar clics), que adivine el tipo de un archivo, o que la dirección
+   * completa —con filtros y nombres de clientes— viaje a otro sitio al seguir un link.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

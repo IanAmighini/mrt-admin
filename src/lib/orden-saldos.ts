@@ -21,10 +21,6 @@ export const ORDENES = [
 
 export type OrdenKey = (typeof ORDENES)[number]["value"];
 
-export function esOrdenValido(value: string | undefined): value is OrdenKey {
-  return ORDENES.some((o) => o.value === (value ?? ""));
-}
-
 type FilaOrdenable = {
   entity: { name: string; moneda: string };
   total: number;

@@ -172,12 +172,6 @@ export function leerGastoDelForm(formData: FormData) {
   return { circuit, expenseCategory, number, reason, taxRows, totals };
 }
 
-/**
- * Los tributos que puede traer una compra de insumos, además del IVA. A diferencia de un gasto no
- * lleva "no gravado" ni "exento": el neto de una compra sale de las líneas, no se escribe a mano.
- */
-/** En una compra el neto sale de las líneas, pero el resto de los renglones es el mismo. */
-export const PERCEPCIONES_COMPRA = OTROS_TRIBUTOS;
 
 /**
  * Lee la grilla de impuestos tal como la manda cualquiera de los tres formularios: el neto abierto

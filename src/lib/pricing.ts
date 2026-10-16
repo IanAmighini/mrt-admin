@@ -2,19 +2,6 @@ import "server-only";
 import type { Circuit } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
-/** Precio vigente de un producto para una entidad+circuito a una fecha dada (por defecto hoy). */
-export async function getCurrentPrice(
-  productId: string,
-  entityId: string,
-  circuit: Circuit,
-  asOf: Date = new Date()
-) {
-  return prisma.price.findFirst({
-    where: { productId, entityId, circuit, validFrom: { lte: asOf } },
-    orderBy: { validFrom: "desc" },
-  });
-}
-
 /**
  * Precio vigente hoy de cada producto para una entidad+circuito — para armar la sugerencia
  * en el formulario de remito (uno por producto, el de `validFrom` más reciente que ya empezó).

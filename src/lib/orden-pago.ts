@@ -41,7 +41,6 @@ export async function getPagosSinOrden(entityId: string) {
   });
 }
 
-export type OrdenPagoImpresa = Awaited<ReturnType<typeof getOrdenPago>>;
 
 /**
  * Todo lo que va en el papel. El saldo anterior se deduce del actual en vez de recorrer la cuenta

@@ -314,7 +314,7 @@ export default async function EntityLedgerPage({
 
   return (
     <div className="space-y-10">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href={volverA.href} className="text-sm underline underline-offset-2">
             ← {volverA.label}
@@ -396,9 +396,11 @@ export default async function EntityLedgerPage({
 
       {/* Sin panel a la izquierda, la cuenta corriente ocupa el ancho entero en vez de dejar media
           pantalla vacía al lado. */}
-      <div className={`grid items-start gap-6 ${hayPanelIzquierdo ? "lg:grid-cols-5" : ""}`}>
-        <div className={hayPanelIzquierdo ? "lg:col-span-3" : ""}>{panelDeCuenta("movimientos")}</div>
-        <div className={hayPanelIzquierdo ? "space-y-6 lg:col-span-2" : "hidden"}>
+      {/* `minmax(0,1fr)`: sin esto, en el celular una fila larga estiraba la columna y la página se
+          corría de costado. */}
+      <div className={`grid grid-cols-[minmax(0,1fr)] items-start gap-6 ${hayPanelIzquierdo ? "lg:grid-cols-5" : ""}`}>
+        <div className={`min-w-0 ${hayPanelIzquierdo ? "lg:col-span-3" : ""}`}>{panelDeCuenta("movimientos")}</div>
+        <div className={hayPanelIzquierdo ? "min-w-0 space-y-6 lg:col-span-2" : "hidden"}>
           {isCliente && <EntregasPanel entityId={entity.id} entityName={entity.name} remitos={recentRemitos} canEdit={canEdit} />}
           {entity.llevaViajes && (
             <ViajesPanel

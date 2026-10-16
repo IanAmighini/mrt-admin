@@ -43,10 +43,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt: ({ token, user }) => {
+    jwt: async ({ token, user }) => {
       if (user) {
         token.role = user.role as UserRole;
         token.id = user.id as string;
+        token.revisadoEn = Date.now();
+        return token;
+      }
+      // La sesión dura mientras se use, así que sin esto un usuario desactivado —o al que se le
+      // bajó el rol— seguía entrando con lo que tenía hasta que dejara la app un rato. Se vuelve a
+      // mirar en la base cada minuto: si ya no está activo la sesión se corta, y el rol es el de ahora.
+      if (token.id && Date.now() - Number(token.revisadoEn ?? 0) > 60_000) {
+        const actual = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { active: true, role: true, name: true },
+        });
+        if (!actual || !actual.active) return null;
+        token.role = actual.role;
+        token.name = actual.name;
+        token.revisadoEn = Date.now();
       }
       return token;
     },

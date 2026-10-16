@@ -2,10 +2,8 @@ import type { CajaMovementType,
   EstadoDevolucion,
   ChequeEstado,
   Circuit,
-  Currency,
   DocumentType,
   ExpenseCategory,
-  TaxKind,
   ItemMovementType,
   PaymentConcepto,
   PaymentMethod,
@@ -88,25 +86,6 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   OTRO: "Otro",
 };
 
-export const TAX_KIND_LABELS: Record<TaxKind, string> = {
-  IVA: "IVA",
-  NO_GRAVADO: "No gravado",
-  EXENTO: "Exento",
-  PERCEPCION_IVA: "Percepción IVA",
-  PERCEPCION_IIBB_BSAS: "Ing. Brutos BsAs",
-  PERCEPCION_IIBB_CABA: "Ing. Brutos CABA",
-  PERCEPCION_IIBB_SANTA_FE: "Ing. Brutos Santa Fe",
-  CONTRIBUCION_MUNICIPAL: "Contrib municipal",
-  CONTRIBUCION_PROVINCIAL: "Contrib provincial",
-  RG_3337: "RG 3337",
-  CEF: "CEF",
-  OTRO_TRIBUTO: "Otro tributo",
-  // Previos a la apertura por jurisdicción: ya no se ofrecen, pero el Record es exhaustivo.
-  PERCEPCION_IIBB: "Percepción IIBB",
-  PERCEPCION_MUNICIPAL: "Percepción municipal",
-  IMPUESTO_INTERNO: "Impuestos internos",
-};
-
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   EFECTIVO: "Efectivo",
   TRANSFERENCIA: "Transferencia",
@@ -138,11 +117,6 @@ export const RETENTION_KIND_LABELS: Record<RetentionKind, string> = {
 
 /** Los tipos de retención en el orden en que se ofrecen y se listan. */
 export const RETENTION_KIND_ORDER: RetentionKind[] = ["IVA", "GANANCIAS", "IIBB", "OTRA"];
-
-export const CURRENCY_LABELS: Record<Currency, string> = {
-  ARS: "ARS",
-  USD: "USD",
-};
 
 export const ITEM_MOVEMENT_TYPE_LABELS: Record<ItemMovementType, string> = {
   INGRESO: "Ingreso",

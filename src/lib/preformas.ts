@@ -83,11 +83,3 @@ export async function getDeudaPreformas(entityId: string): Promise<DeudaPreforma
     // Un tipo sin nada de ningún lado no aporta nada a la pantalla.
     .filter((d) => !d.recibidas.isZero() || !d.entregadas.isZero() || !d.saldoInicial.isZero());
 }
-
-/** Unidades que trae una cantidad de pallets del proveedor. Pallets puede tener decimales. */
-export function unidadesDesdePallets(
-  pallets: Prisma.Decimal | number | string,
-  unitsPerPallet: number
-): Prisma.Decimal {
-  return new Prisma.Decimal(pallets).times(unitsPerPallet);
-}
