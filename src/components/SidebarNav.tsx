@@ -26,12 +26,15 @@ import {
   Users,
   Wallet,
   X,
-  type LucideIcon, DatabaseBackup } from "lucide-react";
+  type LucideIcon, DatabaseBackup, LayoutDashboard } from "lucide-react";
 import { NAV_GROUPS, type NavEntry, type NavItem } from "@/lib/nav";
 
 const ICONS_BY_GROUP: Record<string, LucideIcon> = {
-  [NAV_GROUPS.CAJA]: Coins,
+  [NAV_GROUPS.CUENTAS]: Contact,
+  [NAV_GROUPS.OPERACION]: Package,
+  [NAV_GROUPS.PLATA]: Wallet,
   [NAV_GROUPS.ADMINISTRACION]: FileText,
+  [NAV_GROUPS.ANALISIS]: LayoutDashboard,
 };
 
 const ICONS_BY_HREF: Record<string, LucideIcon> = {
@@ -86,7 +89,8 @@ export function SidebarNav({ entries }: { entries: NavEntry[] }) {
     );
   };
 
-  const links = entries.map((entry) => {
+  const esDelPie = (e: NavEntry) => e.kind === "item" && Boolean(e.item.alPie);
+  const dibujar = (entry: NavEntry) => {
     if (entry.kind === "item") return link(entry.item);
 
     const tieneActiva = entry.items.some((i) => esActiva(i.href));
@@ -101,7 +105,9 @@ export function SidebarNav({ entries }: { entries: NavEntry[] }) {
           className={`${filaClass} ${tieneActiva && !abierto ? filaActiva : filaQuieta}`}
         >
           <Icon size={17} strokeWidth={2} className="shrink-0" />
-          {entry.label}
+          {/* A la izquierda y en un renglón: un botón centra su texto, y "Clientes y proveedores"
+              quedaba partido y al medio. */}
+          <span className="min-w-0 truncate text-left">{entry.label}</span>
           {abierto ? (
             <ChevronDown size={15} className="ml-auto shrink-0 opacity-50" />
           ) : (
@@ -115,7 +121,16 @@ export function SidebarNav({ entries }: { entries: NavEntry[] }) {
         )}
       </div>
     );
-  });
+  };
+  const delPie = entries.filter(esDelPie);
+  const links = (
+    <>
+      {entries.filter((e) => !esDelPie(e)).map(dibujar)}
+      {delPie.length > 0 && (
+        <div className="mt-2 flex flex-col gap-1 border-t border-foreground/10 pt-2">{delPie.map(dibujar)}</div>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -141,7 +156,7 @@ export function SidebarNav({ entries }: { entries: NavEntry[] }) {
       <nav
         className={`print:hidden fixed inset-y-0 left-0 z-50 flex w-64 -translate-x-full flex-col gap-1 overflow-y-auto border-r border-foreground/10 bg-background p-3 transition-transform duration-200 ease-in-out ${
           open ? "translate-x-0" : ""
-        } md:static md:z-auto md:w-60 md:shrink-0 md:translate-x-0`}
+        } md:static md:z-auto md:w-64 md:shrink-0 md:translate-x-0`}
       >
         <div className="mb-2 flex items-center justify-between md:hidden">
           <span className="text-sm font-semibold">Menú</span>

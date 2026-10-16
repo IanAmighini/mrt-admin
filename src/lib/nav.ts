@@ -21,12 +21,17 @@ export type NavItem = {
    * sigue resolviendo cada ítem por su cuenta, y el middleware nunca ve el grupo.
    */
   group?: string;
+  /** Va al final del menú, separado del resto: lo que se usa poco y es del administrador. */
+  alPie?: boolean;
 };
 
 /** Los grupos del menú, con el orden en que se despliegan adentro. */
 export const NAV_GROUPS = {
-  CAJA: "Caja y cheques",
+  CUENTAS: "Clientes y proveedores",
+  OPERACION: "Operación",
+  PLATA: "Cobros y pagos",
   ADMINISTRACION: "Administración",
+  ANALISIS: "Dashboards y reportes",
 } as const;
 
 const ALL_ROLES: UserRole[] = ["ADMIN", "SOLO_LECTURA", "SECRETARIA", "ENCARGADO_PRODUCCION"];
@@ -36,18 +41,43 @@ const ADMINISTRATIVOS: UserRole[] = ["ADMIN", "SOLO_LECTURA", "SECRETARIA"];
 const GERENCIALES: UserRole[] = ["ADMIN", "SOLO_LECTURA"];
 
 export const NAV_ITEMS: NavItem[] = [
+  // El orden es el del menú, y un grupo aparece donde está su primer ítem: arriba lo del día a día,
+  // abajo lo que se mira de vez en cuando.
   { href: "/", label: "Inicio", roles: ALL_ROLES },
-  { href: "/dashboard-clientes", label: "Dashboard Clientes", roles: GERENCIALES },
-  { href: "/dashboard-proveedores", label: "Dashboard Proveedores", roles: GERENCIALES },
-  { href: "/reportes", label: "Reportes", roles: GERENCIALES },
-  { href: "/stock", label: "Stock", roles: ALL_ROLES },
-  { href: "/clientes", label: "Clientes", roles: ADMINISTRATIVOS },
-  { href: "/proveedores", label: "Proveedores", roles: ADMINISTRATIVOS },
-  { href: "/pedidos", label: "Pedidos", roles: ALL_ROLES },
-  { href: "/entregas", label: "Entregas", roles: ADMINISTRATIVOS },
-  { href: "/compras", label: "Compras y gastos", roles: ADMINISTRATIVOS },
-  { href: "/pagos-clientes", label: "Cobros de Clientes", roles: ADMINISTRATIVOS },
-  { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS },
+
+  { href: "/clientes", label: "Clientes", roles: ADMINISTRATIVOS, group: NAV_GROUPS.CUENTAS },
+  { href: "/proveedores", label: "Proveedores", roles: ADMINISTRATIVOS, group: NAV_GROUPS.CUENTAS },
+
+  { href: "/stock", label: "Stock", roles: ALL_ROLES, group: NAV_GROUPS.OPERACION },
+  { href: "/pedidos", label: "Pedidos", roles: ALL_ROLES, group: NAV_GROUPS.OPERACION },
+  { href: "/entregas", label: "Entregas", roles: ADMINISTRATIVOS, group: NAV_GROUPS.OPERACION },
+  { href: "/compras", label: "Compras y gastos", roles: ADMINISTRATIVOS, group: NAV_GROUPS.OPERACION },
+  { href: "/produccion", label: "Producción", roles: ALL_ROLES, group: NAV_GROUPS.OPERACION },
+
+  { href: "/pagos-clientes", label: "Cobros de Clientes", roles: ADMINISTRATIVOS, group: NAV_GROUPS.PLATA },
+  { href: "/pagos-proveedores", label: "Pagos a Proveedores", roles: ADMINISTRATIVOS, group: NAV_GROUPS.PLATA },
+  { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES, group: NAV_GROUPS.PLATA },
+  // Cuelga de Tesorería, igual que Cheques: quien ve Tesorería llega por la tarjeta de la caja y
+  // tenerlo además en el menú es repetirlo. La secretaría no ve Tesorería —ahí están el banco y la
+  // caja grande— pero la caja chica la maneja ella, así que a ella sí se le muestra.
+  {
+    href: "/caja-chica",
+    label: "Caja chica",
+    roles: ADMINISTRATIVOS,
+    hidden: ["ADMIN", "SOLO_LECTURA"],
+    group: NAV_GROUPS.PLATA,
+  },
+  // Cuelga de Tesorería, así que quien ve Tesorería llega por ahí y no necesita el ítem. La
+  // secretaría no la ve pero igual tiene que poder marcar un cheque rechazado —a ella le avisan—
+  // así que a ella sí se le muestra en el menú.
+  {
+    href: "/tesoreria/cheques",
+    label: "Cheques",
+    roles: ADMINISTRATIVOS,
+    hidden: ["ADMIN", "SOLO_LECTURA"],
+    group: NAV_GROUPS.PLATA,
+  },
+
   // Los dos papeles que se emiten y se le entregan a alguien: la orden al proveedor, el libro al
   // contador. El libro queda fuera de Reportes, que es gerencial, porque la secretaría lo coteja
   // con ARCA antes de pasárselo al contador sin ver el resto de los reportes.
@@ -58,32 +88,15 @@ export const NAV_ITEMS: NavItem[] = [
     group: NAV_GROUPS.ADMINISTRACION,
   },
   { href: "/libro-iva", label: "Libro de IVA", roles: ADMINISTRATIVOS, group: NAV_GROUPS.ADMINISTRACION },
+
+  { href: "/dashboard-clientes", label: "Dashboard Clientes", roles: GERENCIALES, group: NAV_GROUPS.ANALISIS },
+  { href: "/dashboard-proveedores", label: "Dashboard Proveedores", roles: GERENCIALES, group: NAV_GROUPS.ANALISIS },
+  { href: "/reportes", label: "Reportes", roles: GERENCIALES, group: NAV_GROUPS.ANALISIS },
   // La copia de toda la base, para bajar y guardar. Sólo Admin: el archivo lleva también los usuarios.
-  { href: "/respaldo", label: "Respaldo", roles: ["ADMIN"], group: NAV_GROUPS.ADMINISTRACION },
-  { href: "/tesoreria", label: "Tesorería", roles: GERENCIALES },
-  // Cuelga de Tesorería, igual que Cheques: quien ve Tesorería llega por la tarjeta de la caja y
-  // tenerlo además en el menú es repetirlo. La secretaría no ve Tesorería —ahí están el banco y la
-  // caja grande— pero la caja chica la maneja ella, así que a ella sí se le muestra.
-  {
-    href: "/caja-chica",
-    label: "Caja chica",
-    roles: ADMINISTRATIVOS,
-    hidden: ["ADMIN", "SOLO_LECTURA"],
-    group: NAV_GROUPS.CAJA,
-  },
-  // Cuelga de Tesorería, así que quien ve Tesorería llega por ahí y no necesita el ítem. La
-  // secretaría no la ve pero igual tiene que poder marcar un cheque rechazado —a ella le avisan—
-  // así que a ella sí se le muestra en el menú.
-  {
-    href: "/tesoreria/cheques",
-    label: "Cheques",
-    roles: ADMINISTRATIVOS,
-    hidden: ["ADMIN", "SOLO_LECTURA"],
-    group: NAV_GROUPS.CAJA,
-  },
-  { href: "/produccion", label: "Producción", roles: ALL_ROLES },
-  { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"] },
-  { href: "/actividad", label: "Actividad", roles: ["ADMIN"] },
+  { href: "/respaldo", label: "Respaldo", roles: ["ADMIN"], group: NAV_GROUPS.ANALISIS },
+
+  { href: "/usuarios", label: "Usuarios", roles: ["ADMIN"], alPie: true },
+  { href: "/actividad", label: "Actividad", roles: ["ADMIN"], alPie: true },
   // Se llega desde Clientes y Proveedores, no desde el menú, pero muestra saldos y movimientos:
   // sin esta entrada el middleware la dejaba pasar a cualquiera con sesión.
   { href: "/cuentas-corrientes", label: "Cuenta corriente", roles: ADMINISTRATIVOS, hidden: true },
@@ -132,7 +145,8 @@ export function navEntriesForRole(role: UserRole): NavEntry[] {
     if (abierto && abierto.kind === "group") abierto.items.push(item);
     else entries.push({ kind: "group", label: item.group, items: [item] });
   }
-  return entries;
+  // Un grupo que para este rol tiene un solo ítem es un clic de más: va suelto.
+  return entries.map((e) => (e.kind === "group" && e.items.length === 1 ? { kind: "item" as const, item: e.items[0] } : e));
 }
 
 /** Los ítems que le corresponden a un rol en el menú lateral. */
