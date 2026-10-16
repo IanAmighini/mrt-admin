@@ -8,7 +8,7 @@ import { circuitoDeTesoreria } from "@/lib/pagos";
 import { requireUser } from "@/lib/auth-helpers";
 import { puedeVerRuta } from "@/lib/nav";
 import { CAJA_CHICA_SLUG } from "@/lib/caja";
-import { findBySlugOrId } from "@/lib/slug-lookup";
+import { findBySlugOrId, slugDeEntidad } from "@/lib/slug-lookup";
 import {
   getAccountBalance,
   getComprasSummary,
@@ -64,7 +64,7 @@ export default async function EntityLedgerPage({
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
   const entity = await findBySlugOrId(
-    () => prisma.entity.findUnique({ where: { slug: entityId }, include: { accounts: true } }),
+    () => prisma.entity.findFirst({ where: slugDeEntidad(entityId), include: { accounts: true } }),
     (id) => prisma.entity.findUnique({ where: { id }, include: { accounts: true } }),
     entityId
   );
@@ -187,7 +187,7 @@ export default async function EntityLedgerPage({
     isCliente ? proximoNumeroDevolucion() : Promise.resolve(""),
   ]);
 
-  const hayPanelIzquierdo = isCliente || recentCompras.length > 0 || entity.llevaViajes;
+  const hayPanelIzquierdo = isCliente || (isProveedor && recentCompras.length > 0);
 
   let card3Label = "Entregas";
   let card3Value = "0";
@@ -384,6 +384,35 @@ export default async function EntityLedgerPage({
           un cliente quedaba en dos renglones al costado de la lista. */}
       {canEdit && <div className="-mt-4">{panelDeCuenta("acciones")}</div>}
 
+      {entity.llevaViajes && (
+        <ViajesPanel
+          entityId={entity.id}
+          entitySlug={entity.slug}
+          entityName={entity.name}
+          moneda={entity.moneda}
+          viajes={viajes}
+          destinatarios={destinatarios}
+          canEdit={canEdit}
+          rotulo={entity.rotuloSubcuenta ?? "Viaje"}
+          mostrarDestinatarios={isCliente}
+          esProveedor={!isCliente}
+          sinAsignar={[
+            {
+              circuito: "BLANCO" as const,
+              monto: toDecimal(blancoSaldo).minus(
+                sumDecimals(viajes.map((v) => v.saldoPorCircuito.BLANCO))
+              ),
+            },
+            {
+              circuito: "NEGRO" as const,
+              monto: toDecimal(negroSaldo).minus(
+                sumDecimals(viajes.map((v) => v.saldoPorCircuito.NEGRO))
+              ),
+            },
+          ]}
+        />
+      )}
+
       {entity.llevaCuentaPreformas && (
         <PreformasPanel
           entityId={entity.id}
@@ -402,33 +431,6 @@ export default async function EntityLedgerPage({
         <div className={`min-w-0 ${hayPanelIzquierdo ? "lg:col-span-3" : ""}`}>{panelDeCuenta("movimientos")}</div>
         <div className={hayPanelIzquierdo ? "min-w-0 space-y-6 lg:col-span-2" : "hidden"}>
           {isCliente && <EntregasPanel entityId={entity.id} entityName={entity.name} remitos={recentRemitos} canEdit={canEdit} />}
-          {entity.llevaViajes && (
-            <ViajesPanel
-              entityId={entity.id}
-              entitySlug={entity.slug}
-              entityName={entity.name}
-              moneda={entity.moneda}
-              viajes={viajes}
-              destinatarios={destinatarios}
-              canEdit={canEdit}
-              rotulo={entity.rotuloSubcuenta ?? "Viaje"}
-              mostrarDestinatarios={isCliente}
-              sinAsignar={[
-                {
-                  circuito: "BLANCO" as const,
-                  monto: toDecimal(blancoSaldo).minus(
-                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.BLANCO))
-                  ),
-                },
-                {
-                  circuito: "NEGRO" as const,
-                  monto: toDecimal(negroSaldo).minus(
-                    sumDecimals(viajes.map((v) => v.saldoPorCircuito.NEGRO))
-                  ),
-                },
-              ]}
-            />
-          )}
           {/* Sin compras el panel no tiene nada que mostrar, y en la mitad de los proveedores
               —los de servicios— nunca va a tenerlo. Se esconde en vez de ocupar media pantalla
               diciendo que está vacío; el botón para cargar una sigue en "Cargar". */}

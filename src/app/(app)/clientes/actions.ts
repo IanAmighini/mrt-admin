@@ -9,7 +9,8 @@ import { requireRole } from "@/lib/auth-helpers";
 import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
-import { generateUniqueSlug } from "@/lib/slug";
+import { generateUniqueSlug, slugify } from "@/lib/slug";
+import { slugDeEntidad } from "@/lib/slug-lookup";
 import { aplicarSaldoInicial, NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 import { parseRubro, rubroLabel } from "@/lib/rubro-proveedor";
 import type { EntityType, ExpenseCategory, SupplierCategory } from "@prisma/client";
@@ -109,7 +110,8 @@ export async function createEntity(formData: FormData) {
   await prisma.$transaction(async (tx) => {
     const slug = await generateUniqueSlug(
       name,
-      (candidate) => tx.entity.findUnique({ where: { slug: candidate } }).then(Boolean),
+      // Tampoco el slug viejo de otro: ese link tiene que seguir llevando a su ficha.
+      (candidate) => tx.entity.findFirst({ where: slugDeEntidad(candidate) }).then(Boolean),
       "entidad"
     );
     const entity = await tx.entity.create({
@@ -186,9 +188,25 @@ export async function updateEntity(formData: FormData) {
   if (!previa) throw new UserError("El cliente o proveedor ya no existe.");
 
   const entity = await prisma.$transaction(async (tx) => {
+    // El link sigue al nombre: con el slug viejo, FEDERICO KEES quedaba en /bernardo-carpaneto. El
+    // anterior se guarda para que un link viejo siga llegando.
+    const slugNuevo =
+      // Sólo si cambió el nombre: editar el teléfono no tiene por qué mover el link de nadie.
+      name === previa.name || slugify(name) === previa.slug
+        ? previa.slug
+        : await generateUniqueSlug(
+            name,
+            (candidate) =>
+              tx.entity.findFirst({ where: { AND: [slugDeEntidad(candidate), { id: { not: entityId } }] } }).then(Boolean),
+            "entidad"
+          );
+    const slugCambia = slugNuevo !== previa.slug;
     const entity = await tx.entity.update({
       where: { id: entityId },
       data: {
+        ...(slugCambia
+          ? { slug: slugNuevo, slugsAnteriores: [...previa.slugsAnteriores.filter((s) => s !== slugNuevo), previa.slug] }
+          : {}),
         name, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
         isWithholdingAgent, llevaCuentaPreformas, llevaViajes, rotuloSubcuenta, moneda,
         ...(retiroSocietario !== undefined ? { retiroSocietario } : {}),

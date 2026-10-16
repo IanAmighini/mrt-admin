@@ -137,6 +137,9 @@ enum SupplierCategory {
 model Entity {
   id                   String                 @id @default(cuid())
   slug                 String                 @unique
+  /// Los slugs que tuvo antes de un cambio de nombre: un link viejo (guardado, compartido) lleva
+  /// a la ficha en vez de dar "no encontrado".
+  slugsAnteriores      String[]               @default([])
   name                 String
   type                 EntityType
   taxId                String?

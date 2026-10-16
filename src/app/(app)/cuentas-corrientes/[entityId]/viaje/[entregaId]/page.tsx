@@ -17,7 +17,7 @@ export default async function ViajePage({
 }: {
   params: Promise<{ entityId: string; entregaId: string }>;
 }) {
-  const { entityId: entitySlug, entregaId } = await params;
+  const { entregaId } = await params;
   await requireUser();
 
   const detalle = await getEntregaDetalle(entregaId);
@@ -30,7 +30,7 @@ export default async function ViajePage({
   return (
     <div className="space-y-6">
       <div>
-        <Link href={`/cuentas-corrientes/${entitySlug}`} className="text-sm underline underline-offset-2">
+        <Link href={`/cuentas-corrientes/${entrega.entity.slug}`} className="text-sm underline underline-offset-2">
           ← {entrega.entity.name}
         </Link>
         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">

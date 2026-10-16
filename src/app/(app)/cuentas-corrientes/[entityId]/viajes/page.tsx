@@ -4,7 +4,7 @@ import { ETIQUETA } from "@/components/Etiquetas";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { findBySlugOrId } from "@/lib/slug-lookup";
+import { findBySlugOrId, slugDeEntidad } from "@/lib/slug-lookup";
 import { getCuadrosDeViajes } from "@/lib/entregas";
 import { formatMoney, formatQuantity, sumDecimals } from "@/lib/money";
 import { formatFecha } from "@/lib/period";
@@ -21,7 +21,7 @@ export default async function ViajesJuntosPage({ params }: { params: Promise<{ e
   await requireUser();
 
   const entity = await findBySlugOrId(
-    () => prisma.entity.findUnique({ where: { slug: entityParam } }),
+    () => prisma.entity.findFirst({ where: slugDeEntidad(entityParam) }),
     (id) => prisma.entity.findUnique({ where: { id } }),
     entityParam
   );

@@ -3,7 +3,7 @@ import { Download } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { findBySlugOrId } from "@/lib/slug-lookup";
+import { findBySlugOrId, slugDeEntidad } from "@/lib/slug-lookup";
 import { getTreasuries } from "@/lib/ledger";
 import { circuitoDeTesoreria } from "@/lib/pagos";
 import { puedeVerRuta } from "@/lib/nav";
@@ -69,7 +69,7 @@ export default async function AccountLedgerPage({
   if (!circuit) notFound();
 
   const entity = await findBySlugOrId(
-    () => prisma.entity.findUnique({ where: { slug: entityParam } }),
+    () => prisma.entity.findFirst({ where: slugDeEntidad(entityParam) }),
     (id) => prisma.entity.findUnique({ where: { id } }),
     entityParam
   );

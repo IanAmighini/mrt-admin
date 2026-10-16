@@ -15,3 +15,11 @@ export async function findBySlugOrId<T>(
   if (bySlugResult) return bySlugResult;
   return CUID_RE.test(param) ? byId(param) : null;
 }
+
+/**
+ * Cómo se busca un cliente o proveedor por el slug del link: el actual y, si no, uno que tuvo antes
+ * de que le cambiaran el nombre. La página después redirige al actual.
+ */
+export function slugDeEntidad(slug: string) {
+  return { OR: [{ slug }, { slugsAnteriores: { has: slug } }] };
+}

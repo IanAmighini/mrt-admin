@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/auth-helpers";
-import { findBySlugOrId } from "@/lib/slug-lookup";
+import { findBySlugOrId, slugDeEntidad } from "@/lib/slug-lookup";
 import { CIRCUIT_BY_SLUG } from "@/lib/labels";
 import { addDays, parseFecha } from "@/lib/period";
 import { getAccountStatement } from "@/lib/account-statement";
@@ -25,7 +25,7 @@ export async function GET(
   if (!circuit) return new Response("Circuito inválido", { status: 404 });
 
   const entity = await findBySlugOrId(
-    () => prisma.entity.findUnique({ where: { slug: entityParam } }),
+    () => prisma.entity.findFirst({ where: slugDeEntidad(entityParam) }),
     (id) => prisma.entity.findUnique({ where: { id } }),
     entityParam
   );
