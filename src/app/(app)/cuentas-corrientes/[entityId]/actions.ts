@@ -41,6 +41,7 @@ import type { AuditAction } from "@prisma/client";
 import { proximoNumeroDeCaja } from "@/lib/caja";
 import { proximoNumeroDeDevolucion } from "@/lib/devoluciones";
 import { reimputarEntidades } from "@/lib/imputacion";
+import { formatNumeroOP } from "@/lib/orden-pago";
 
 const NON_FACTURA_TYPES: DocumentType[] = ["NOTA_CREDITO", "NOTA_DEBITO", "AJUSTE"];
 
@@ -2844,6 +2845,25 @@ export async function updatePayment(formData: FormData) {
         include: { account: { include: { entity: true } } },
       })
     : null;
+
+  // Una orden de pago no se puede quedar sin pagos —así quedó vacía la 0003—. Si este pago, o el que
+  // generó en la cuenta del proveedor, está en una orden, no puede salir de la Cuenta 1 de ese
+  // proveedor: primero se anula la orden.
+  const ordenAfectada =
+    (payment.ordenPagoId && circuit !== "BLANCO" ? payment.ordenPagoId : null) ??
+    (oldLinkedPayment?.ordenPagoId &&
+    isCobro &&
+    (destino !== PROVEEDOR_DIRECTO_VALUE ||
+      proveedorId !== oldLinkedPayment.account.entityId ||
+      (proveedorCircuit ?? circuit) !== oldLinkedPayment.account.circuit)
+      ? oldLinkedPayment.ordenPagoId
+      : null);
+  if (ordenAfectada) {
+    const orden = await prisma.ordenPago.findUnique({ where: { id: ordenAfectada }, select: { numero: true } });
+    throw new UserError(
+      `Este pago está en la orden de pago N° ${formatNumeroOP(orden?.numero ?? 0)}: con este cambio la orden se quedaría sin él. Anulá la orden primero (desde Órdenes de pago) y después editá el pago.`
+    );
+  }
 
   // Editar un pago borra su movimiento de caja y lo vuelve a crear: se simula eso entero, con la caja
   // vieja y la nueva, antes de tocar nada.
