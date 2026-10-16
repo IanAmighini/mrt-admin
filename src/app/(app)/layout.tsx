@@ -1,8 +1,8 @@
-import { LogOut } from "lucide-react";
 import { requireUser } from "@/lib/auth-helpers";
 import { navEntriesForRole, ROLE_LABELS } from "@/lib/nav";
 import { SidebarNav } from "@/components/SidebarNav";
 import { SearchPalette } from "@/components/SearchPalette";
+import { CerrarSesion } from "@/components/CerrarSesion";
 import { AbrirCalendario } from "@/components/AbrirCalendario";
 import { signOut } from "@/auth";
 import { cookies } from "next/headers";
@@ -37,7 +37,7 @@ export default async function AppLayout({
           <SearchPalette />
         </div>
         <div className="flex shrink-0 items-center">
-          <form
+          <CerrarSesion
             action={async () => {
               "use server";
               // Primero la marca: si queda, el login diría que la sesión se cerró por inactividad
@@ -46,18 +46,7 @@ export default async function AppLayout({
               (await cookies()).delete(COOKIE_HUBO_SESION);
               await signOut({ redirectTo: "/login" });
             }}
-          >
-            {/* Solo el ícono: el encabezado ya está apretado en el celular. El nombre accesible
-                lo dan title y aria-label, que si no el botón queda sin etiqueta. */}
-            <button
-              type="submit"
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-              className="flex items-center rounded-lg px-3 py-2 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
-            >
-              <LogOut size={16} />
-            </button>
-          </form>
+          />
         </div>
       </header>
       <div className="flex flex-1 flex-col md:flex-row">
