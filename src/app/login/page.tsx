@@ -2,11 +2,15 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { MOTIVO_INACTIVIDAD } from "@/lib/sesion";
+import { bloqueadoHasta, horaDeDesbloqueo, intentosQueQuedan } from "@/lib/intentos-login";
+
+/** Desde cuántos intentos restantes se avisa: antes es ruido para quien se equivocó una vez. */
+const MAX_AVISO = 2;
 
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ callbackUrl?: string; error?: string; motivo?: string }>;
+  searchParams: Promise<{ callbackUrl?: string; error?: string; motivo?: string; hasta?: string; quedan?: string }>;
 }) {
   const params = await searchParams;
   const callbackUrl = params.callbackUrl || "/";
@@ -16,6 +20,16 @@ export default async function LoginPage({
     const email = formData.get("email");
     const password = formData.get("password");
 
+    // Va a la URL sólo la hora y cuántos intentos quedan, nunca el email.
+    const volver = async (extra: Record<string, string>) => {
+      const query = new URLSearchParams(extra);
+      if (params.callbackUrl) query.set("callbackUrl", params.callbackUrl);
+      redirect(`/login?${query.toString()}`);
+    };
+    const correo = typeof email === "string" ? email : "";
+    const yaBloqueado = correo ? await bloqueadoHasta(correo) : null;
+    if (yaBloqueado) await volver({ error: "bloqueado", hasta: horaDeDesbloqueo(yaBloqueado) });
+
     try {
       await signIn("credentials", {
         email,
@@ -24,9 +38,11 @@ export default async function LoginPage({
       });
     } catch (error) {
       if (error instanceof AuthError) {
-        const query = new URLSearchParams({ error: "1" });
-        if (params.callbackUrl) query.set("callbackUrl", params.callbackUrl);
-        redirect(`/login?${query.toString()}`);
+        // Este fallo pudo ser el quinto: entonces se dice que quedó bloqueado, no "incorrectos".
+        const hasta = correo ? await bloqueadoHasta(correo) : null;
+        if (hasta) await volver({ error: "bloqueado", hasta: horaDeDesbloqueo(hasta) });
+        const quedan = correo ? await intentosQueQuedan(correo) : MAX_AVISO + 1;
+        await volver({ error: "1", ...(quedan <= MAX_AVISO ? { quedan: String(quedan) } : {}) });
       }
       throw error;
     }
@@ -50,11 +66,24 @@ export default async function LoginPage({
             estabas.
           </p>
         )}
-        {params.error && (
+        {params.error === "bloqueado" ? (
+          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
+            Demasiados intentos fallidos. Por seguridad, este usuario queda bloqueado una hora
+            {params.hasta ? <>: podés volver a probar a las {params.hasta}.</> : "."} Si es urgente,
+            pedile a un administrador que lo desbloquee.
+          </p>
+        ) : params.error ? (
           <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
             Email o contraseña incorrectos.
+            {params.quedan && (
+              <>
+                {" "}
+                {params.quedan === "1" ? "Te queda 1 intento" : `Te quedan ${params.quedan} intentos`} antes de que se
+                bloquee por una hora.
+              </>
+            )}
           </p>
-        )}
+        ) : null}
         <div className="space-y-1">
           <label htmlFor="email" className="text-sm font-medium">
             Email

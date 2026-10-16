@@ -16,6 +16,16 @@ enum UserRole {
   ENCARGADO_PRODUCCION
 }
 
+/// Los intentos fallidos de entrar, por email (en minúsculas). Va por email y no por usuario para
+/// que un email que no existe se frene igual que uno que sí: si no, la diferencia delataría cuáles
+/// son de verdad. Se borra al entrar bien o al desbloquearlo desde Usuarios.
+model IntentoDeLogin {
+  email          String    @id
+  fallidos       Int       @default(0)
+  ultimoFallo    DateTime
+  bloqueadoHasta DateTime?
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique

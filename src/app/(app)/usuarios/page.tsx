@@ -6,7 +6,8 @@ import { BotonConError } from "@/components/BotonConError";
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/nav";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { createUser, toggleUserActive, updateUser } from "./actions";
+import { createUser, desbloquearUsuario, toggleUserActive, updateUser } from "./actions";
+import { bloqueosVigentes, horaDeDesbloqueo } from "@/lib/intentos-login";
 import { APILADA } from "@/components/ui/Table";
 
 const ESTADO_FILTERS: { value: "" | "activos" | "inactivos"; label: string }[] = [
@@ -29,7 +30,7 @@ export default async function UsuariosPage({
   const estadoFilter = ESTADO_FILTERS.some((f) => f.value === estado) ? (estado as "" | "activos" | "inactivos") : "";
   const searchTerm = q?.trim().toLowerCase();
 
-  const users = await prisma.user.findMany({ orderBy: { createdAt: "asc" } });
+  const [users, bloqueos] = await Promise.all([prisma.user.findMany({ orderBy: { createdAt: "asc" } }), bloqueosVigentes()]);
 
   const filteredUsers = users.filter((u) => {
     if (estadoFilter === "activos" && !u.active) return false;
@@ -150,6 +151,14 @@ export default async function UsuariosPage({
                   >
                     {u.active ? "Activo" : "Inactivo"}
                   </span>
+                  {bloqueos.has(u.email.trim().toLowerCase()) && (
+                    <span className="ml-1.5 inline-flex flex-wrap items-center gap-x-2 rounded bg-red-100 px-2 py-1 text-xs font-medium text-red-800 dark:bg-red-900/40 dark:text-red-300">
+                      Bloqueado hasta las {horaDeDesbloqueo(bloqueos.get(u.email.trim().toLowerCase())!)}
+                      <BotonConError action={desbloquearUsuario} hidden={{ id: u.id }} className="underline underline-offset-2">
+                        Desbloquear
+                      </BotonConError>
+                    </span>
+                  )}
                 </td>
                 <td className="py-2 pr-4">
                   <div className="flex items-center gap-3">

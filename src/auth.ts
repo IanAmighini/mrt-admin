@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/lib/password";
 import type { UserRole } from "@prisma/client";
 import { INACTIVIDAD_SEGUNDOS } from "@/lib/sesion";
+import { bloqueadoHasta, limpiarIntentos, registrarFallo } from "@/lib/intentos-login";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // `maxAge` sobre una sesión JWT es un plazo que se renueva: cada pedido vuelve a emitir la cookie
@@ -23,15 +24,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
+        // Bloqueado por intentos fallidos: ni se mira la contraseña, así una hora de espera es una
+        // hora sin poder probar. El login lo explica; acá basta con no dejar pasar.
+        if (await bloqueadoHasta(email)) {
+          return null;
+        }
+
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user || !user.active) {
+          await registrarFallo(email);
           return null;
         }
 
         const valid = await verifyPassword(password, user.passwordHash);
         if (!valid) {
+          await registrarFallo(email);
           return null;
         }
+        await limpiarIntentos(email);
 
         return {
           id: user.id,

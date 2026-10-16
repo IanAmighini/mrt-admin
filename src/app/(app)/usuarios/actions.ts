@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { hashPassword } from "@/lib/password";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/nav";
+import { limpiarIntentos } from "@/lib/intentos-login";
 
 // Misma lista que ofrecen los desplegables: un rol nuevo se agrega en un solo lugar.
 const ROLES: UserRole[] = ASSIGNABLE_ROLES;
@@ -138,6 +139,27 @@ export async function toggleUserActive(formData: FormData) {
     entityId: id,
     summary: `${target.name} — ${active ? "eliminado (desactivado)" : "reactivado"}`,
     cambios: [{ campo: "Activo", antes: active ? "s\u00ed" : "no", despues: active ? "no" : "s\u00ed" }],
+  });
+
+  revalidatePath("/usuarios");
+}
+
+/** Le saca el bloqueo por intentos fallidos a un usuario, sin esperar la hora. */
+export async function desbloquearUsuario(formData: FormData) {
+  const admin = await requireRole(["ADMIN"]);
+
+  const id = String(formData.get("id") || "");
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) throw new UserError("El usuario ya no existe.");
+  await limpiarIntentos(target.email);
+
+  await logAudit(prisma, {
+    userId: admin.id,
+    action: "UPDATE",
+    entityType: "Usuario",
+    entityId: id,
+    summary: `${target.name} — desbloqueado (intentos de entrada fallidos)`,
+    cambios: [{ campo: "Bloqueado", antes: "s\u00ed", despues: "no" }],
   });
 
   revalidatePath("/usuarios");
