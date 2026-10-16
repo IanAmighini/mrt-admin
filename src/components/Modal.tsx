@@ -21,6 +21,7 @@ export function FormModal({
   iconName = "plus",
   peso = "primario",
   soloIcono = false,
+  triggerClassName,
 }: {
   triggerLabel: string;
   title: string;
@@ -37,6 +38,8 @@ export function FormModal({
    * pantalla. El texto queda como `title` y `aria-label`, con el título del diálogo.
    */
   soloIcono?: boolean;
+  /** Un botón a medida en vez de los de siempre, sin ícono: el chico de una fila de acciones. */
+  triggerClassName?: string;
 }) {
   const TriggerIcon = TRIGGER_ICONS[iconName];
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -81,10 +84,10 @@ export function FormModal({
           setResetKey((k) => k + 1);
           dialogRef.current?.showModal();
         }}
-        className={soloIcono ? ICONO : buttonClass(peso, "flex w-fit items-center gap-1.5")}
+        className={triggerClassName ?? (soloIcono ? ICONO : buttonClass(peso, "flex w-fit items-center gap-1.5"))}
         {...(soloIcono ? { "aria-label": title, title } : {})}
       >
-        <TriggerIcon size={16} />
+        {!triggerClassName && <TriggerIcon size={16} />}
         {!soloIcono && triggerLabel}
       </button>
       {/* El diálogo vive adentro de donde está el botón y hereda su letra: el de editar una
