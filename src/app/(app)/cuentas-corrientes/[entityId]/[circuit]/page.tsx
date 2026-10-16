@@ -436,10 +436,13 @@ export default async function AccountLedgerPage({
                 documentId={doc.id}
                 esGasto={doc.treasuryCategory === "GASTO"}
                 esPase={doc.treasuryCategory === "PASE"}
+                esArqueo={doc.treasuryCategory === "AJUSTE_ARQUEO"}
                 defaults={{
                   date: toDateInputValue(doc.date),
                   amount: formatNumeroExacto(doc.totalAmount.abs()),
-                  concepto: doc.reason ?? "",
+                  // En un arqueo se edita sólo el motivo: si faltó o sobró va en los botones.
+                  concepto: (doc.reason ?? "").replace(/^(Sobrante|Faltante) de arqueo · /, ""),
+                  sobra: doc.totalAmount.greaterThan(0),
                   expenseCategory: doc.expenseCategory ?? "",
                 }}
               />

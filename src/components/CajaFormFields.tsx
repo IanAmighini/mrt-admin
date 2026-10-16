@@ -255,16 +255,35 @@ export function EditarMovimientoDeCajaFields({
   documentId,
   esGasto,
   esPase,
+  esArqueo = false,
   defaults,
 }: {
   documentId: string;
   esGasto: boolean;
   esPase: boolean;
-  defaults: { date: string; amount: string; concepto: string; expenseCategory: string };
+  /** Un ajuste por arqueo: se puede dar vuelta entre faltante y sobrante. */
+  esArqueo?: boolean;
+  defaults: { date: string; amount: string; concepto: string; expenseCategory: string; sobra?: boolean };
 }) {
+  const [sobra, setSobra] = useState(defaults.sobra ?? false);
   return (
     <>
       <input type="hidden" name="documentId" value={documentId} />
+      {esArqueo && (
+        <div className="space-y-1">
+          <p className="text-sm">¿Qué dio el arqueo?</p>
+          <div className="grid grid-cols-2 gap-2">
+            <label className={toggleClass}>
+              <input type="radio" name="sentido" value="FALTA" checked={!sobra} onChange={() => setSobra(false)} className="sr-only" />
+              Faltó plata
+            </label>
+            <label className={toggleClass}>
+              <input type="radio" name="sentido" value="SOBRA" checked={sobra} onChange={() => setSobra(true)} className="sr-only" />
+              Sobró plata
+            </label>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <label className="text-sm" htmlFor="editar-caja-fecha">

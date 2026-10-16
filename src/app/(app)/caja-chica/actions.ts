@@ -317,8 +317,9 @@ export async function borrarMovimientoDeCaja(formData: FormData) {
  * rubro, que es lo que más se carga mal y lo que decide en qué categoría cuenta el gasto del mes.
  * Sólo el administrador: la secretaría lo puede borrar y volver a cargar.
  *
- * El signo no cambia —un gasto sigue saliendo, un sobrante sigue entrando—. En un pase se corrigen
- * las dos patas juntas, o las dos cajas dejan de coincidir. Lo que escribió un cobro, un pago o un
+ * El signo no cambia —un gasto sigue saliendo—, salvo en un ajuste por arqueo, que se puede pasar
+ * de faltante a sobrante o al revés: es lo que más se carga al revés. En un pase se corrigen las
+ * dos patas juntas, o las dos cajas dejan de coincidir. Lo que escribió un cobro, un pago o un
  * cambio de cheques se corrige desde ahí.
  */
 export async function editarMovimientoDeCaja(formData: FormData) {
@@ -341,12 +342,19 @@ export async function editarMovimientoDeCaja(formData: FormData) {
   const date = leerFecha(formData.get("date"));
   const amount = parseNumeroEscrito(String(formData.get("amount") || ""), "monto");
   if (!amount.greaterThan(0)) throw new UserError("El monto tiene que ser mayor a cero.");
-  const concepto = String(formData.get("concepto") || "").trim();
-  if (!concepto) throw new UserError("Escribí el concepto.");
+  const escrito = String(formData.get("concepto") || "").trim();
+  if (!escrito) throw new UserError("Escribí el concepto.");
   const esGasto = documento.treasuryCategory === "GASTO";
   const expenseCategory = esGasto ? leerRubro(formData.get("expenseCategory")) : documento.expenseCategory;
 
-  const sale = documento.totalAmount.lessThan(0);
+  // Un arqueo dice en el concepto si faltó o sobró: se arma de nuevo con lo elegido.
+  const esArqueo = documento.treasuryCategory === "AJUSTE_ARQUEO";
+  const sentido = String(formData.get("sentido") || "");
+  if (esArqueo && sentido !== "FALTA" && sentido !== "SOBRA") throw new UserError("Indicá si en el arqueo sobró o faltó plata.");
+  const sale = esArqueo ? sentido === "FALTA" : documento.totalAmount.lessThan(0);
+  const concepto = esArqueo
+    ? `${sentido === "SOBRA" ? "Sobrante" : "Faltante"} de arqueo · ${escrito.replace(/^(Sobrante|Faltante) de arqueo · /, "")}`
+    : escrito;
   const otraPata = documento.contraparte ?? (documento.contraparteDe ? await prisma.document.findUnique({ where: { id: documento.contraparteDe.id }, include: { account: { include: { entity: true } } } }) : null);
 
   await prisma.$transaction(async (tx) => {
