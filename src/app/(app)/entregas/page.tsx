@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DiaPlegable } from "@/components/DiaPlegable";
 import { formatLineasDeRemito } from "@/lib/product-label";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
@@ -175,14 +176,16 @@ export default async function EntregasPage({
         })}
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-2">
         {agruparPorDia(filteredRows, (r) => r.doc.date).map(([d, delDia]) => (
-          <section key={d} className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3 px-1 text-sm">
-              <h2 className="font-medium text-foreground/70">{tituloDelDia(d, hoy, ayer)}</h2>
-              <span className="tabular-nums text-foreground/60">{sumarPorMoneda(delDia)}</span>
-            </div>
-            <div className="divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-background shadow-sm">
+          <DiaPlegable
+            key={d}
+            titulo={tituloDelDia(d, hoy, ayer)}
+            cantidad={`${delDia.length} ${delDia.length === 1 ? "entrega" : "entregas"}`}
+            nombres={delDia.map((r) => r.doc.account.entity.name)}
+            pendientes={delDia.some((r) => !r.pagado) ? `${delDia.filter((r) => !r.pagado).length} sin cobrar` : null}
+            subtotal={sumarPorMoneda(delDia)}
+          >
               {delDia.map(({ doc, pendiente, defaultLines }) => (
                 <div key={doc.id} className="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
                   <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground/[0.06] text-xs font-semibold text-foreground/60 sm:flex">
@@ -269,8 +272,7 @@ export default async function EntregasPage({
                   )}
                 </div>
               ))}
-            </div>
-          </section>
+          </DiaPlegable>
         ))}
         {filteredRows.length === 0 && (
           <p className="rounded-xl border border-foreground/10 px-4 py-8 text-center text-sm text-foreground/40">

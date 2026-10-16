@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DiaPlegable } from "@/components/DiaPlegable";
 import type { Currency, EntityType, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
@@ -195,14 +196,15 @@ export async function PagosPageContent({
         })}
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-2">
         {Array.from(porDia.entries()).map(([d, delDia]) => (
-          <section key={d} className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3 px-1 text-sm">
-              <h2 className="font-medium text-foreground/70">{tituloDelDia(d)}</h2>
-              <span className="tabular-nums text-foreground/60">{sumarPorMoneda(delDia)}</span>
-            </div>
-            <div className="divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-background shadow-sm">
+          <DiaPlegable
+            key={d}
+            titulo={tituloDelDia(d)}
+            cantidad={`${delDia.length} ${delDia.length === 1 ? pago : `${pago}s`}`}
+            nombres={delDia.map((p) => p.account.entity.name)}
+            subtotal={sumarPorMoneda(delDia)}
+          >
               {delDia.map((payment) => {
                 const linkedPayment = payment.linkedPaymentId ? linkedPaymentById.get(payment.linkedPaymentId) : undefined;
                 const destinoLabel = payment.treasuryId
@@ -323,8 +325,7 @@ export async function PagosPageContent({
                   </div>
                 );
               })}
-            </div>
-          </section>
+          </DiaPlegable>
         ))}
         {pagos.length === 0 && (
           <p className="rounded-xl border border-foreground/10 px-4 py-8 text-center text-sm text-foreground/40">

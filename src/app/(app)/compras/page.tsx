@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DiaPlegable } from "@/components/DiaPlegable";
 import { Package, Plus, ReceiptText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
@@ -194,14 +195,16 @@ export default async function ComprasPage({
         })}
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-2">
         {Array.from(porDia.entries()).map(([d, delDia]) => (
-          <section key={d} className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3 px-1 text-sm">
-              <h2 className="font-medium text-foreground/70">{tituloDelDia(d)}</h2>
-              <span className="tabular-nums text-foreground/60">{sumarPorMoneda(delDia, (r) => r.doc.totalAmount)}</span>
-            </div>
-            <div className="divide-y divide-foreground/10 rounded-xl border border-foreground/10 bg-background shadow-sm">
+          <DiaPlegable
+            key={d}
+            titulo={tituloDelDia(d)}
+            cantidad={`${delDia.length} ${delDia.length === 1 ? "comprobante" : "comprobantes"}`}
+            nombres={delDia.map((r) => r.doc.account.entity.name)}
+            pendientes={delDia.some((r) => !r.pagado) ? `${delDia.filter((r) => !r.pagado).length} sin pagar` : null}
+            subtotal={sumarPorMoneda(delDia, (r) => r.doc.totalAmount)}
+          >
               {delDia.map(({ doc, pagado, pendiente }) => {
                 const esGasto = doc.type === "GASTO";
                 const Icono = esGasto ? ReceiptText : Package;
@@ -335,8 +338,7 @@ export default async function ComprasPage({
                   </div>
                 );
               })}
-            </div>
-          </section>
+          </DiaPlegable>
         ))}
         {filteredRows.length === 0 && (
           <p className="rounded-xl border border-foreground/10 px-4 py-8 text-center text-sm text-foreground/40">
