@@ -6,7 +6,7 @@ import { BotonConError } from "@/components/BotonConError";
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/nav";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { createUser, desbloquearUsuario, toggleUserActive, updateUser } from "./actions";
+import { cambiarContrasena, createUser, desbloquearUsuario, toggleUserActive, updateUser } from "./actions";
 import { bloqueosVigentes, horaDeDesbloqueo } from "@/lib/intentos-login";
 import { APILADA } from "@/components/ui/Table";
 
@@ -196,26 +196,46 @@ export default async function UsuariosPage({
                             ))}
                           </select>
                         </div>
-                        <div className="space-y-1">
-                          <label className="text-sm" htmlFor={`password-${u.id}`}>
-                            Contraseña nueva
-                          </label>
-                          <input
-                            id={`password-${u.id}`}
-                            name="password"
-                            type="password"
-                            minLength={8}
-                            autoComplete="new-password"
-                            placeholder="Dejar vacío para no cambiarla"
-                            className={inputClass}
-                          />
-                        </div>
                       </div>
                       <button
                         type="submit"
                         className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
                       >
                         Guardar cambios
+                      </button>
+                    </FormModal>
+                    <FormModal
+                      triggerLabel="Cambiar contraseña"
+                      soloIcono
+                      iconName="key"
+                      title={`Contraseña de ${u.name}`}
+                      action={cambiarContrasena}
+                      maxWidthClass="max-w-sm"
+                    >
+                      <input type="hidden" name="id" value={u.id} />
+                      <p className="text-xs text-foreground/50">
+                        {u.id === admin.id
+                          ? "La vas a usar la próxima vez que entres."
+                          : `Después pasásela a ${u.name}: nadie puede cambiar la suya desde su sesión.`}
+                      </p>
+                      <div className="space-y-1">
+                        <label className="text-sm" htmlFor={`nueva-${u.id}`}>
+                          Contraseña nueva
+                        </label>
+                        <input id={`nueva-${u.id}`} name="nueva" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
+                        <p className="text-xs text-foreground/50">Al menos 8 caracteres.</p>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm" htmlFor={`repetida-${u.id}`}>
+                          Repetila
+                        </label>
+                        <input id={`repetida-${u.id}`} name="repetida" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
+                      </div>
+                      <button
+                        type="submit"
+                        className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
+                      >
+                        Cambiar contraseña
                       </button>
                     </FormModal>
                     {u.active ? (

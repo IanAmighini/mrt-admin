@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -41,6 +41,8 @@ const DEBOUNCE_MS = 200;
 
 type Status = "idle" | "loading" | "done" | "error";
 
+const sinSuscripcion = () => () => {};
+
 export function SearchPalette() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
@@ -52,6 +54,13 @@ export function SearchPalette() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [status, setStatus] = useState<Status>("idle");
   const [activeIndex, setActiveIndex] = useState(0);
+  // El atajo como se escribe en esta compu: ⌘K en una Mac, Ctrl K en Windows. En el servidor no
+  // se sabe, así que ahí no se muestra (y no hay diferencia al hidratar).
+  const atajo = useSyncExternalStore(
+    sinSuscripcion,
+    () => (/Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? "⌘K" : "Ctrl K"),
+    () => null
+  );
 
   const abrir = useCallback(() => {
     setQuery("");
@@ -156,15 +165,23 @@ export function SearchPalette() {
 
   return (
     <>
+      {/* Con forma de barra de búsqueda y al centro: como botoncito en la esquina pasaba de largo. */}
       <button
         type="button"
         onClick={abrir}
         title="Buscar (⌘K / Ctrl K)"
         aria-label="Buscar"
-        className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
+        className="flex w-full max-w-xl items-center gap-2 rounded-lg border border-foreground/15 bg-foreground/[0.03] px-3 py-2 text-left text-sm text-foreground/50 transition-colors hover:border-foreground/30 hover:bg-foreground/[0.05] hover:text-foreground/70"
       >
-        <Search size={16} />
-        <span className="hidden sm:inline">Buscar</span>
+        <Search size={16} className="shrink-0" />
+        <span className="min-w-0 flex-1 truncate">
+          Buscar<span className="hidden sm:inline"> cliente, insumo, producto o remito…</span>
+        </span>
+        {atajo && (
+          <kbd className="hidden shrink-0 rounded border border-foreground/15 px-1.5 py-0.5 font-sans text-[11px] text-foreground/40 md:inline">
+            {atajo}
+          </kbd>
+        )}
       </button>
 
       <dialog

@@ -69,8 +69,6 @@ export async function updateUser(formData: FormData) {
     .trim()
     .toLowerCase();
   const role = String(formData.get("role") || "") as UserRole;
-  // Opcional: para cuando alguien se olvidó la suya. Vacío deja la que tiene.
-  const nuevaContrasena = String(formData.get("password") || "");
 
   if (!id || !name || !email) {
     throw new UserError("Faltan datos obligatorios.");
@@ -79,17 +77,13 @@ export async function updateUser(formData: FormData) {
     throw new UserError("Rol inválido.");
   }
 
-  if (nuevaContrasena && nuevaContrasena.length < 8) {
-    throw new UserError("La contraseña debe tener al menos 8 caracteres.");
-  }
-
   const antes = await prisma.user.findUnique({ where: { id } });
   if (!antes) throw new UserError("El usuario ya no existe.");
 
   try {
     await prisma.user.update({
       where: { id },
-      data: { name, email, role, ...(nuevaContrasena ? { passwordHash: await hashPassword(nuevaContrasena) } : {}) },
+      data: { name, email, role },
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -110,8 +104,6 @@ export async function updateUser(formData: FormData) {
         { name, email, rol: ROLE_LABELS[role] },
         CAMPOS_DEL_USUARIO
       ),
-      // Que se cambió, nunca cuál es.
-      ...(nuevaContrasena ? [{ campo: "Contrase\u00f1a", antes: null, despues: "cambiada" }] : []),
     ],
   });
 
@@ -160,6 +152,39 @@ export async function desbloquearUsuario(formData: FormData) {
     entityId: id,
     summary: `${target.name} — desbloqueado (intentos de entrada fallidos)`,
     cambios: [{ campo: "Bloqueado", antes: "s\u00ed", despues: "no" }],
+  });
+
+  revalidatePath("/usuarios");
+}
+
+/**
+ * Le pone una contraseña nueva a un usuario. Es la única manera de cambiar una: nadie cambia la
+ * suya desde su sesión, la pone el administrador —también la propia— desde Usuarios. De paso le
+ * saca el bloqueo por intentos fallidos, que es casi siempre por qué se la están cambiando.
+ */
+export async function cambiarContrasena(formData: FormData) {
+  const admin = await requireRole(["ADMIN"]);
+
+  const id = String(formData.get("id") || "");
+  const nueva = String(formData.get("nueva") || "");
+  const repetida = String(formData.get("repetida") || "");
+  if (nueva.length < 8) throw new UserError("La contraseña tiene que tener al menos 8 caracteres.");
+  if (nueva !== repetida) throw new UserError("La contraseña y la repetida no coinciden.");
+
+  const target = await prisma.user.findUnique({ where: { id } });
+  if (!target) throw new UserError("El usuario ya no existe.");
+
+  await prisma.user.update({ where: { id }, data: { passwordHash: await hashPassword(nueva) } });
+  await limpiarIntentos(target.email);
+
+  await logAudit(prisma, {
+    userId: admin.id,
+    action: "UPDATE",
+    entityType: "Usuario",
+    entityId: id,
+    summary: `${target.name} — contraseña cambiada`,
+    // Que se cambió, nunca cuál es.
+    cambios: [{ campo: "Contrase\u00f1a", antes: null, despues: "cambiada" }],
   });
 
   revalidatePath("/usuarios");

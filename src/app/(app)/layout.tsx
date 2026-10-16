@@ -7,11 +7,6 @@ import { AbrirCalendario } from "@/components/AbrirCalendario";
 import { signOut } from "@/auth";
 import { cookies } from "next/headers";
 import { COOKIE_HUBO_SESION } from "@/lib/sesion";
-import { FormModal } from "@/components/Modal";
-import { cambiarMiContrasena } from "./cuenta/actions";
-
-const inputClass =
-  "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 
 export default async function AppLayout({
   children,
@@ -25,48 +20,23 @@ export default async function AppLayout({
     <div className="flex min-h-screen flex-col print:min-h-0">
       <AbrirCalendario />
       <div className="h-1 bg-primary print:hidden" />
-      <header className="flex items-center justify-between print:hidden border-b border-foreground/10 bg-background px-6 py-3.5 shadow-sm">
-        <div className="flex items-center gap-3">
+      <header className="flex items-center gap-3 border-b border-foreground/10 bg-background px-4 py-3.5 shadow-sm sm:gap-6 md:px-6 print:hidden">
+        <div className="flex shrink-0 items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" width={32} height={32} className="shrink-0 rounded-lg" />
           <div>
             <p className="font-semibold">MRT</p>
-            <p className="text-sm text-foreground/60">
+            <p className="hidden text-sm text-foreground/60 sm:block">
               {user.name} · {ROLE_LABELS[user.role]}
             </p>
           </div>
         </div>
         {/* Montada acá y no en cada página: un solo listener global de ⌘K para toda la app, y la
             paleta sobrevive a la navegación sin volver a registrarlo. */}
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 flex-1 justify-center">
           <SearchPalette />
-          <FormModal triggerLabel="Cambiar contraseña" title="Cambiar mi contraseña" action={cambiarMiContrasena} soloIcono iconName="key" maxWidthClass="max-w-sm">
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="pass-actual">
-                Contraseña actual
-              </label>
-              <input id="pass-actual" name="actual" type="password" required autoComplete="current-password" className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="pass-nueva">
-                Contraseña nueva
-              </label>
-              <input id="pass-nueva" name="nueva" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
-              <p className="text-xs text-foreground/50">Al menos 8 caracteres.</p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="pass-repetida">
-                Repetí la nueva
-              </label>
-              <input id="pass-repetida" name="repetida" type="password" required minLength={8} autoComplete="new-password" className={inputClass} />
-            </div>
-            <button
-              type="submit"
-              className="w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover"
-            >
-              Cambiar contraseña
-            </button>
-          </FormModal>
+        </div>
+        <div className="flex shrink-0 items-center">
           <form
             action={async () => {
               "use server";
