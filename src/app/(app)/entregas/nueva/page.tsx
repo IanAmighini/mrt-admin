@@ -8,6 +8,7 @@ import { formatProductBrandLabel } from "@/lib/product-label";
 import { createRemito } from "@/app/(app)/cuentas-corrientes/[entityId]/actions";
 import { NuevaEntregaForm } from "@/components/NuevaEntregaForm";
 import { getStockParaFormulario } from "@/lib/cajas";
+import { getEntitySaldos } from "@/lib/ledger";
 
 export default async function NuevaEntregaPage({
   searchParams,
@@ -18,11 +19,8 @@ export default async function NuevaEntregaPage({
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
-  const [clientes, products, allPrices, allPedidos, todosLosViajes, todosLosDestinatarios, stock] = await Promise.all([
-    prisma.entity.findMany({
-      where: { type: { in: ["CLIENTE", "AMBOS"] } },
-      orderBy: { name: "asc" },
-    }),
+  const [conSaldo, products, allPrices, allPedidos, todosLosViajes, todosLosDestinatarios, stock] = await Promise.all([
+    getEntitySaldos(["CLIENTE", "AMBOS"]),
     prisma.product.findMany({
       orderBy: [{ name: "asc" }, { oilType: "asc" }, { bottleCapacityMl: "asc" }, { boxesPerPallet: "asc" }],
     }),
@@ -40,6 +38,14 @@ export default async function NuevaEntregaPage({
     }),
     getStockParaFormulario(),
   ]);
+
+  const clientes = conSaldo.map((c) => c.entity);
+  // Lo que debe cada uno, para mostrarlo apenas se lo elige: es lo primero que se mira antes de
+  // mandarle más mercadería.
+  const saldosByEntity: Record<string, { blanco: number; negro: number }> = {};
+  for (const c of conSaldo) {
+    saldosByEntity[c.entity.id] = { blanco: c.blancoSaldo?.toNumber() ?? 0, negro: c.negroSaldo?.toNumber() ?? 0 };
+  }
 
   const viajesByEntity: Record<string, { id: string; nombre: string; destino: string | null }[]> = {};
   for (const v of todosLosViajes) {
@@ -71,7 +77,7 @@ export default async function NuevaEntregaPage({
       lines: pedido.lines.map((l) => ({
         productId: l.productId,
         pallets: l.pallets.toNumber(),
-        label: formatProductBrandLabel(l.product),
+        label: `${formatProductBrandLabel(l.product)} ${l.product.presentation}`,
       })),
     });
   }
@@ -85,7 +91,7 @@ export default async function NuevaEntregaPage({
   }
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-6xl space-y-6">
       <div>
         <Link
           href={fixedEntity ? `/cuentas-corrientes/${fixedEntity.slug}` : "/entregas"}
@@ -111,6 +117,7 @@ export default async function NuevaEntregaPage({
             unitsPerBox: p.unitsPerBox,
           }))}
           pricesByEntity={pricesByEntity}
+          saldosByEntity={saldosByEntity}
           stock={stock}
           pedidosByEntity={pedidosByEntity}
           viajesByEntity={viajesByEntity}

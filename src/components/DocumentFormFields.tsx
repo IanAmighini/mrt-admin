@@ -2,6 +2,7 @@
 
 import type { Currency } from "@prisma/client";
 import { MonedaEscritaFields } from "./MonedaEscritaFields";
+import { segmentoClass, segmentosClass } from "./ui/Segmentos";
 
 import { useState } from "react";
 import {
@@ -18,8 +19,6 @@ import { hoyEnInput } from "@/lib/period";
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
-const toggleClass =
-  "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
 // "Pase entre cajas" no está: un pase tiene dos patas y se carga desde la pantalla de caja, que
 // escribe las dos juntas. Cargado acá quedaría media plata en el aire.
@@ -108,8 +107,8 @@ export function DocumentFormFields({
       {!esEdicion && !isTreasury && (
         <div className="space-y-1">
           <p className="text-sm">Cuenta</p>
-          <div className="grid grid-cols-2 gap-2">
-            <label className={toggleClass}>
+          <div className={segmentosClass}>
+            <label className={segmentoClass}>
               <input
                 type="radio"
                 name="circuit"
@@ -120,7 +119,7 @@ export function DocumentFormFields({
               />
               Cuenta 1 (c/factura)
             </label>
-            <label className={toggleClass}>
+            <label className={segmentoClass}>
               <input
                 type="radio"
                 name="circuit"
@@ -270,6 +269,7 @@ export function DocumentFormFields({
             defaults={defaultValues?.impuestos}
             onChange={setImpuestos}
             titulo="Desglose de la nota"
+            plegarOtros
             aclaracion="Una nota de la Cuenta 1 (c/factura) es un comprobante fiscal: el neto va abierto por alícuota y entra así al libro de IVA."
           />
           <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">

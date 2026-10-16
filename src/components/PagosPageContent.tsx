@@ -3,7 +3,7 @@ import { DiaPlegable } from "@/components/DiaPlegable";
 import type { Currency, EntityType, PaymentMethod, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
-import { getRecentPayments, getTreasuries } from "@/lib/ledger";
+import { getEntitySaldos, getRecentPayments, getTreasuries } from "@/lib/ledger";
 import { formatMoney, formatNumeroExacto, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { FormModal } from "./Modal";
@@ -47,8 +47,8 @@ export async function PagosPageContent({
   const medio = filtros.medio && filtros.medio in PAYMENT_METHOD_LABELS ? (filtros.medio as PaymentMethod) : undefined;
   const hayFiltro = Boolean(filtros.entityId || medio || filtros.from || filtros.to);
 
-  const [entities, pagos, treasuries, proveedores, cartera, conSubcuentas] = await Promise.all([
-    prisma.entity.findMany({ where: { type: { in: typeFilter } }, orderBy: { name: "asc" } }),
+  const [conSaldo, pagos, treasuries, proveedores, cartera, conSubcuentas] = await Promise.all([
+    getEntitySaldos(typeFilter),
     // Sin filtros, los últimos 30, que es lo que se mira para ver si ya se cargó algo. Con filtros,
     // todo lo que coincida: es para sumar un período o un cliente, y cortar en 30 daría mal el total.
     getRecentPayments(typeFilter, hayFiltro ? 2000 : 30, {
@@ -74,6 +74,16 @@ export async function PagosPageContent({
       },
     }),
   ]);
+  // Sin las cuentas adentro: van al formulario del navegador y sólo hace falta el nombre y la moneda.
+  const entities = conSaldo.map((c) => {
+    const { accounts, ...entity } = c.entity;
+    void accounts;
+    return entity;
+  });
+  // Lo que tiene cada cuenta, para que el formulario lo muestre al elegir a quién y en qué cuenta.
+  const saldos = Object.fromEntries(
+    conSaldo.map((c) => [c.entity.id, { blanco: c.blancoSaldo?.toNumber() ?? 0, negro: c.negroSaldo?.toNumber() ?? 0 }])
+  );
   const subcuentasPorEntidad = Object.fromEntries(
     conSubcuentas.map((e) => [e.id, { viajes: e.entregas, rotulo: e.rotuloSubcuenta ?? "Viaje" }])
   );
@@ -156,6 +166,7 @@ export async function PagosPageContent({
               cartera={isCobro ? undefined : cartera}
               proveedores={isCobro ? proveedores : undefined}
               subcuentasPorEntidad={subcuentasPorEntidad}
+              saldos={saldos}
             />
           </FormModal>
         )}
@@ -297,11 +308,13 @@ export async function PagosPageContent({
                               method: payment.method,
                               date: toDateInputValue(payment.date),
                               // En una cuenta en dólares se edita en pesos, igual que se cargó.
-                              amount: (payment.amountArs ??
-                                (payment.exchangeRate
-                                  ? payment.amount.times(payment.exchangeRate).toDecimalPlaces(2)
-                                  : payment.amount)
-                              ).toString(),
+                              // Con el punto de miles, como se escribe acá: "51861198.35" no se leía.
+                              amount: formatNumeroExacto(
+                                payment.amountArs ??
+                                  (payment.exchangeRate
+                                    ? payment.amount.times(payment.exchangeRate).toDecimalPlaces(2)
+                                    : payment.amount)
+                              ),
                               exchangeRate: formatNumeroExacto(payment.exchangeRate),
                               reference: payment.reference ?? undefined,
                               numeroOperacion: payment.numeroOperacion ?? undefined,

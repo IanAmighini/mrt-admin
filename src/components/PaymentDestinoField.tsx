@@ -5,10 +5,10 @@ import type { Circuit, Entity } from "@prisma/client";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
+import { segmentoClass, segmentosClass } from "./ui/Segmentos";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
-const toggleClass =
-  "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
+
 
 /** Selector de Destino/Origen de un cobro o pago. Si se elige "Proveedor" (solo disponible para
  * cobros, con la opción "directo a un proveedor"), despliega el selector de a qué proveedor fue. */
@@ -71,27 +71,51 @@ export function PaymentDestinoField({
 
   return (
     <>
+      {/* Las cajas como botones: son tres y se elige con un clic, en vez de abrir una lista. */}
       <div className="space-y-1">
-        <label className="text-sm" htmlFor="destino">
-          {isCobro ? "Destino" : "Origen"}
-        </label>
-        <select
-          id="destino"
-          name="destino"
-          value={destino}
-          onChange={(e) => setDestino(e.target.value)}
-          className={inputClass}
-        >
-          <option value="">Sin asignar</option>
+        <p className="text-sm">{isCobro ? "Entra a" : "Sale de"}</p>
+        <div className={segmentosClass} role="radiogroup" aria-label={isCobro ? "Destino" : "Origen"}>
           {disponibles.map((t) => (
-            <option key={t.id} value={t.id}>
+            <label key={t.id} className={segmentoClass}>
+              <input
+                type="radio"
+                name="destino"
+                value={t.id}
+                checked={destino === t.id}
+                onChange={() => setDestino(t.id)}
+                className="sr-only"
+              />
               {t.name}
-            </option>
+            </label>
           ))}
           {isCobro && proveedores && proveedores.length > 0 && (
-            <option value={PROVEEDOR_DIRECTO_VALUE}>Proveedor</option>
+            <label className={segmentoClass}>
+              <input
+                type="radio"
+                name="destino"
+                value={PROVEEDOR_DIRECTO_VALUE}
+                checked={destino === PROVEEDOR_DIRECTO_VALUE}
+                onChange={() => setDestino(PROVEEDOR_DIRECTO_VALUE)}
+                className="sr-only"
+              />
+              Directo a un proveedor
+            </label>
           )}
-        </select>
+          {/* Sólo para corregir uno viejo que quedó sin caja: uno nuevo siempre entra o sale de alguna. */}
+          {defaultDestino === "" && (
+            <label className={segmentoClass}>
+              <input
+                type="radio"
+                name="destino"
+                value=""
+                checked={destino === ""}
+                onChange={() => setDestino("")}
+                className="sr-only"
+              />
+              Sin asignar
+            </label>
+          )}
+        </div>
       </div>
 
       {showProveedores && (
@@ -123,9 +147,9 @@ export function PaymentDestinoField({
               cuentas distintas. Por eso se pregunta en vez de copiar la del cobro. */}
           <div className="space-y-1">
             <p className="text-sm">Cuenta del proveedor</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={segmentosClass}>
               {(["BLANCO", "NEGRO"] as const).map((c) => (
-                <label key={c} className={toggleClass}>
+                <label key={c} className={segmentoClass}>
                   <input
                     type="radio"
                     name="proveedorCircuit"

@@ -255,6 +255,7 @@ export default async function EntityLedgerPage({
           ventasACobrar={ventasACobrar}
           rubroGasto={entity.expenseCategory}
           moneda={entity.moneda}
+          saldos={{ blanco: toDecimal(blancoSaldo).toNumber(), negro: toDecimal(negroSaldo).toNumber() }}
           movements={recentMovements}
           canEdit={canEdit}
           treasuries={treasuries}

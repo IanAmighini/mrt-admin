@@ -9,6 +9,7 @@ import { desarmadosPorLinea, type StockParaPlan } from "@/lib/plan-de-entrega";
 import { useEnvioUnico } from "./useEnvioUnico";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
 import { hoyEnInput } from "@/lib/period";
+import { Plus, X } from "lucide-react";
 
 const IVA_RATE = 21;
 
@@ -61,6 +62,7 @@ export function NuevaEntregaForm({
   clientes,
   products,
   pricesByEntity,
+  saldosByEntity,
   stock,
   pedidosByEntity,
   viajesByEntity,
@@ -71,6 +73,8 @@ export function NuevaEntregaForm({
   clientes: ClienteInfo[];
   products: ProductInfo[];
   pricesByEntity: PricesByEntity;
+  /** Lo que ya debe cada cliente, por cuenta, en su moneda. */
+  saldosByEntity: Record<string, { blanco: number; negro: number }>;
   /** Lo que hay de cada producto: pallets de su formato y cajas sueltas de su caja. */
   stock: Record<string, StockParaPlan>;
   pedidosByEntity: PedidosByEntity;
@@ -222,47 +226,103 @@ export function NuevaEntregaForm({
   const viajes = entityId ? (viajesByEntity[entityId] ?? []) : [];
   const destinatarios = entityId ? (destinatariosByEntity[entityId] ?? []) : [];
 
+  const saldo = entityId ? saldosByEntity[entityId] : undefined;
+  const usaCuenta1 = computedRows.some((r) => r.row.facturado && r.subtotal > 0);
+  const usaCuenta2 = computedRows.some((r) => !r.row.facturado && r.subtotal > 0);
+
   return (
-    <form action={formAction} onSubmit={unaVez} className="space-y-6">
-      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
-        <h2 className="text-sm font-semibold">Información general</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="entityId">
-              Cliente *
-            </label>
-            {fixedEntity ? (
-              <>
-                <p className={`${inputClass} bg-foreground/5`}>{fixedEntity.name}</p>
-                <input type="hidden" name="entityId" value={fixedEntity.id} />
-              </>
-            ) : (
-              <SelectBuscable
-                id="entityId"
-                name="entityId"
-                required
-                value={entityId}
-                onChange={setEntityId}
-                opciones={clientes.map((c) => ({ value: c.id, label: c.name }))}
-                placeholder="Escribí el cliente…"
-                className={inputClass}
-              />
-            )}
+    <form action={formAction} onSubmit={unaVez} className="grid grid-cols-[minmax(0,1fr)] items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="min-w-0 space-y-6">
+        {/* El papel: a quién, qué número y cuándo. Elegido el cliente, lo que ya debe — es lo
+            primero que se mira antes de mandarle más mercadería. */}
+        <section className={cardClass}>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="space-y-1">
+              <label className={labelClass} htmlFor="entityId">
+                Cliente
+              </label>
+              {fixedEntity ? (
+                <>
+                  <p className={`${inputClass} bg-foreground/5 font-medium`}>{fixedEntity.name}</p>
+                  <input type="hidden" name="entityId" value={fixedEntity.id} />
+                </>
+              ) : (
+                <SelectBuscable
+                  id="entityId"
+                  name="entityId"
+                  required
+                  value={entityId}
+                  onChange={setEntityId}
+                  opciones={clientes.map((c) => ({ value: c.id, label: c.name }))}
+                  placeholder="Escribí el cliente…"
+                  className={inputClass}
+                />
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className={labelClass} htmlFor="number">
+                N° de remito
+              </label>
+              <input id="number" name="number" required placeholder="Ej: 991" className={inputClass} />
+            </div>
+            <div className="space-y-1">
+              <label className={labelClass} htmlFor="date">
+                Fecha
+              </label>
+              <input id="date" type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
+            </div>
           </div>
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="number">
-              Remito *
-            </label>
-            <input id="number" name="number" required placeholder="Ej: 991" className={inputClass} />
-          </div>
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="date">
-              Fecha *
-            </label>
-            <input id="date" type="date" name="date" required defaultValue={hoyEnInput()} className={inputClass} />
-          </div>
-          <div className="space-y-1">
-            <label className="flex items-center gap-2 pt-7 text-sm">
+
+          {saldo && (
+            <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 rounded-lg bg-foreground/[0.03] px-3 py-2 text-sm">
+              <span className="text-foreground/60">
+                {saldo.blanco + saldo.negro < 0 ? "A favor del cliente" : "Ya nos debe"}{" "}
+                <strong className="tabular-nums text-foreground">{formatMoney(Math.abs(saldo.blanco + saldo.negro), monedaCuenta)}</strong>
+              </span>
+              <span className="text-xs tabular-nums text-foreground/50">
+                Cuenta 1 {formatMoney(saldo.blanco, monedaCuenta)} · Cuenta 2 {formatMoney(saldo.negro, monedaCuenta)}
+              </span>
+            </div>
+          )}
+
+          {(viajes.length > 0 || destinatarios.length > 0) && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {viajes.length > 0 && (
+                <div className="space-y-1">
+                  <label className={labelClass} htmlFor="entregaId">
+                    Viaje
+                  </label>
+                  <select id="entregaId" name="entregaId" className={inputClass} defaultValue="">
+                    <option value="">— Sin viaje —</option>
+                    {viajes.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.destino ? `${v.nombre} · ${v.destino}` : v.nombre}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {destinatarios.length > 0 && (
+                <div className="space-y-1">
+                  <label className={labelClass} htmlFor="destinatarioId">
+                    A nombre de
+                  </label>
+                  <select id="destinatarioId" name="destinatarioId" className={inputClass} defaultValue="">
+                    <option value="">— El cliente mismo —</option>
+                    {destinatarios.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.nombre}
+                        {d.taxId ? ` · ${d.taxId}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <label className="flex w-fit items-center gap-2 text-sm text-foreground/70">
               <input
                 type="checkbox"
                 checked={otraMoneda}
@@ -272,7 +332,7 @@ export function NuevaEntregaForm({
               {cuentaEnDolares ? "El precio está en pesos" : "El precio está en dólares"}
             </label>
             {otraMoneda && (
-              <>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <input
                   id="exchangeRate"
                   name="exchangeRate"
@@ -282,178 +342,161 @@ export function NuevaEntregaForm({
                   required
                   value={cotizacion}
                   onChange={(e) => setCotizacion(e.target.value)}
-                  className={inputClass}
+                  className={`${inputClass} sm:w-48`}
                 />
                 <p className="text-xs text-foreground/50">
                   {cuentaEnDolares
                     ? "El precio por botella va en pesos; se pasa a dólares con esta cotización."
                     : "El precio por botella va en U$S; los pesos se calculan con esta cotización."}
                 </p>
-              </>
+              </div>
             )}
           </div>
-          {viajes.length > 0 && (
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="entregaId">
-                Viaje
-              </label>
-              <select id="entregaId" name="entregaId" className={inputClass} defaultValue="">
-                <option value="">— Sin viaje —</option>
-                {viajes.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.destino ? `${v.nombre} · ${v.destino}` : v.nombre}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-          {destinatarios.length > 0 && (
-            <div className="space-y-1">
-              <label className="text-sm" htmlFor="destinatarioId">
-                A nombre de
-              </label>
-              <select id="destinatarioId" name="destinatarioId" className={inputClass} defaultValue="">
-                <option value="">— El cliente mismo —</option>
-                {destinatarios.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.nombre}
-                    {d.taxId ? ` · ${d.taxId}` : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-      </div>
+        </section>
 
-      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Ítems del remito</h2>
-          <button type="button" onClick={addRow} className={secondaryButtonClass}>
-            + Agregar ítem
-          </button>
-        </div>
-
-        <div className="space-y-3">
+        {/* Lo que se lleva: un producto por tarjeta, con los números grandes y el subtotal a la
+            vista. Antes era un renglón de nueve casilleros donde el subtotal se perdía. */}
+        <section className="space-y-3">
+          <h2 className="px-1 text-sm font-semibold">Qué se lleva</h2>
           {computedRows.map(({ row, product, cajas, botellas, subtotal, iva, pricePerBottle, perPallet }, idx) => {
             const hay = row.productId ? stock[row.productId] : undefined;
             const { aDesarmar, sobran, faltanPallets, faltanCajas } = plan[idx];
             const formatoOptions = productsByMarca.get(row.marcaKey) ?? [];
             return (
-              <div key={row.key} className="grid grid-cols-6 items-end gap-2 md:grid-cols-12 rounded-lg border border-foreground/10 bg-foreground/[0.02] p-2">
-                <div className="col-span-3 min-w-0 md:col-span-3">
-                  <label className="text-xs text-foreground/60">Marca</label>
-                  <select
-                    value={row.marcaKey}
-                    onChange={(e) => updateRow(row.key, { marcaKey: e.target.value })}
-                    className={inputClass}
-                  >
-                    <option value="">— Marca —</option>
-                    {marcas.map((m) => (
-                      <option key={m.key} value={m.key}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-span-3 min-w-0 md:col-span-2">
-                  <label className="text-xs text-foreground/60">Formato</label>
-                  <select
-                    value={row.productId}
-                    onChange={(e) => updateRow(row.key, { productId: e.target.value })}
-                    disabled={!row.marcaKey}
-                    className={inputClass}
-                  >
-                    <option value="">— Formato —</option>
-                    {formatoOptions.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.presentation}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="col-span-2 min-w-0 md:col-span-1">
-                  <label className="text-xs text-foreground/60">Pallets</label>
-                  <input
-                    value={row.pallets}
-                    onChange={(e) => updateRow(row.key, { pallets: e.target.value })}
-                    inputMode="numeric"
-                    placeholder="0"
-                    className={inputClass}
-                  />
-                </div>
-                <div className="col-span-2 min-w-0 md:col-span-1">
-                  <label className="text-xs text-foreground/60">Cajas</label>
-                  <input
-                    value={row.cajas}
-                    onChange={(e) => updateRow(row.key, { cajas: e.target.value })}
-                    inputMode="numeric"
-                    placeholder="0"
-                    className={inputClass}
-                  />
-                </div>
-                <div className="col-span-2 min-w-0 md:col-span-2">
-                  <label className="text-xs text-foreground/60">
-                    {enPesos ? "$/bot." : enDolares || cuentaEnDolares ? "U$S/bot." : "Precio/bot."}
-                  </label>
-                  <input
-                    value={row.pricePerBottle}
-                    onChange={(e) => updateRow(row.key, { pricePerBottle: e.target.value })}
-                    inputMode="decimal"
-                    className={inputClass}
-                  />
-                  {(enDolares || enPesos) && pricePerBottle > 0 && (
-                    <p className="text-xs text-foreground/50 tabular-nums">
-                      = {formatMoney(pricePerBottle, monedaCuenta)}/bot.
-                      {perPallet > 0 && ` · ${formatMoney(pricePerBottle * perPallet, monedaCuenta)}/pallet`}
-                    </p>
-                  )}
-                </div>
-                <div className="col-span-2 min-w-0 md:col-span-1">
-                  <label className="text-xs text-foreground/60">Fact.</label>
-                  <button
-                    type="button"
-                    onClick={() => updateRow(row.key, { facturado: !row.facturado })}
-                    className={`w-full rounded border px-2 py-2 text-xs font-medium ${
-                      row.facturado
-                        ? "border-green-600 bg-green-100 text-green-800 dark:border-green-500 dark:bg-green-900/40 dark:text-green-300"
-                        : "border-foreground/20 bg-foreground/5 text-foreground/60"
-                    }`}
-                  >
-                    {row.facturado ? "C/Fact" : "S/Fact"}
-                  </button>
-                </div>
-                <div className="col-span-3 min-w-0 md:col-span-1">
-                  <label className="text-xs text-foreground/60">Subtotal</label>
-                  <p className="px-2 py-2 text-sm">
-                    {formatMoney(subtotal, monedaCuenta)}
-                    {row.facturado && iva > 0 && (
-                      <span className="block text-xs text-green-700 dark:text-green-400">+IVA {formatMoney(iva, monedaCuenta)}</span>
-                    )}
-                  </p>
-                </div>
-                <div className="col-span-1 min-w-0 text-right md:text-left">
+              <div key={row.key} className={`${cardClass} space-y-3`}>
+                <div className="flex items-start gap-2">
+                  <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+                    <div className="space-y-1">
+                      <label className={labelClass}>Marca</label>
+                      <select
+                        value={row.marcaKey}
+                        onChange={(e) => updateRow(row.key, { marcaKey: e.target.value })}
+                        className={inputClass}
+                      >
+                        <option value="">— Marca —</option>
+                        {marcas.map((m) => (
+                          <option key={m.key} value={m.key}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className={labelClass}>Formato</label>
+                      <select
+                        value={row.productId}
+                        onChange={(e) => updateRow(row.key, { productId: e.target.value })}
+                        disabled={!row.marcaKey}
+                        className={inputClass}
+                      >
+                        <option value="">— Formato —</option>
+                        {formatoOptions.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.presentation}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   {rows.length > 1 && (
                     <button
                       type="button"
                       onClick={() => removeRow(row.key)}
-                      className="px-2 text-foreground/40 hover:text-foreground"
-                      aria-label="Quitar línea"
+                      className="mt-6 rounded-lg p-2 text-foreground/40 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400"
+                      aria-label="Quitar este producto"
+                      title="Quitar este producto"
                     >
-                      ×
+                      <X size={16} />
                     </button>
                   )}
                 </div>
 
-                {/* Lo que hay, y si hace falta desarmar un pallet para sacar las cajas: se ve antes de
-                    guardar, en vez de enterarse después mirando el stock. */}
-                {hay && (
-                  <p className="col-span-6 -mt-1 text-xs text-foreground/50 md:col-span-12">
-                    Hay {formatPallets(hay.pallets, product?.boxesPerPallet ?? null)} de este formato y{" "}
-                    {formatQuantity(hay.sueltas)} {hay.sueltas === 1 ? "caja suelta" : "cajas sueltas"} · {formatQuantity(botellas)} botellas
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-[6rem_6rem_minmax(0,1fr)_auto]">
+                  <div className="space-y-1">
+                    <label className={labelClass}>Pallets</label>
+                    <input
+                      value={row.pallets}
+                      onChange={(e) => updateRow(row.key, { pallets: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="0"
+                      className={`${inputClass} text-right tabular-nums`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className={labelClass}>Cajas sueltas</label>
+                    <input
+                      value={row.cajas}
+                      onChange={(e) => updateRow(row.key, { cajas: e.target.value })}
+                      inputMode="numeric"
+                      placeholder="0"
+                      className={`${inputClass} text-right tabular-nums`}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className={labelClass}>
+                      {enPesos ? "Precio por botella ($)" : enDolares || cuentaEnDolares ? "Precio por botella (U$S)" : "Precio por botella"}
+                    </label>
+                    <input
+                      value={row.pricePerBottle}
+                      onChange={(e) => updateRow(row.key, { pricePerBottle: e.target.value })}
+                      inputMode="decimal"
+                      className={`${inputClass} text-right tabular-nums`}
+                    />
+                    {(enDolares || enPesos) && pricePerBottle > 0 && (
+                      <p className="text-xs text-foreground/50 tabular-nums">
+                        = {formatMoney(pricePerBottle, monedaCuenta)}/bot.
+                        {perPallet > 0 && ` · ${formatMoney(pricePerBottle * perPallet, monedaCuenta)}/pallet`}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <span className={labelClass}>Va a</span>
+                    {/* La cuenta de este producto: lo de la Cuenta 1 se factura y lleva IVA. */}
+                    <div className="flex rounded-lg border border-foreground/20 p-0.5" role="group" aria-label="Cuenta">
+                      {([true, false] as const).map((fact) => (
+                        <button
+                          key={String(fact)}
+                          type="button"
+                          aria-pressed={row.facturado === fact}
+                          onClick={() => updateRow(row.key, { facturado: fact })}
+                          className={`whitespace-nowrap rounded-md px-2.5 py-1.5 text-xs transition-colors ${
+                            row.facturado === fact
+                              ? "bg-primary font-medium text-primary-foreground shadow-sm"
+                              : "text-foreground/60 hover:bg-foreground/5 hover:text-foreground"
+                          }`}
+                        >
+                          {fact ? "Cuenta 1" : "Cuenta 2"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-t border-foreground/10 pt-3">
+                  {/* Lo que hay, y si hace falta desarmar un pallet para sacar las cajas: se ve antes
+                      de guardar, en vez de enterarse después mirando el stock. */}
+                  <div className="min-w-0 flex-1 text-xs text-foreground/50">
+                    {botellas > 0 && (
+                      <p>
+                        {formatQuantity(botellas)} botellas
+                        {hay && (
+                          <>
+                            {" "}
+                            · hay {formatPallets(hay.pallets, product?.boxesPerPallet ?? null)} y {formatQuantity(hay.sueltas)}{" "}
+                            {hay.sueltas === 1 ? "caja suelta" : "cajas sueltas"}
+                          </>
+                        )}
+                      </p>
+                    )}
+                    {!botellas && hay && (
+                      <p>
+                        Hay {formatPallets(hay.pallets, product?.boxesPerPallet ?? null)} y {formatQuantity(hay.sueltas)}{" "}
+                        {hay.sueltas === 1 ? "caja suelta" : "cajas sueltas"}
+                      </p>
+                    )}
                     {/* No frena: lo que se produce y se entrega en el día se carga a la noche. */}
-                    {(faltanPallets > 0 || faltanCajas > 0) && (
-                      <span className="block text-amber-700 dark:text-amber-400">
+                    {hay && (faltanPallets > 0 || faltanCajas > 0) && (
+                      <p className="text-amber-700 dark:text-amber-400">
                         Todavía no está cargado:{" "}
                         {[
                           faltanPallets > 0 && `${formatQuantity(faltanPallets)} ${faltanPallets === 1 ? "pallet" : "pallets"}`,
@@ -462,16 +505,23 @@ export function NuevaEntregaForm({
                           .filter(Boolean)
                           .join(" y ")}
                         . Se puede entregar igual: queda en negativo hasta que se cargue la producción.
-                      </span>
+                      </p>
                     )}
-                    {aDesarmar > 0 && (
-                      <span className="block text-amber-700 dark:text-amber-400">
-                        Se desarma{aDesarmar === 1 ? "" : "n"} {aDesarmar} {aDesarmar === 1 ? "pallet" : "pallets"}{" "}
-                        de {product?.presentation} para sacar las {formatQuantity(cajas)} cajas: quedan {formatQuantity(sobran)} sueltas.
-                      </span>
+                    {hay && aDesarmar > 0 && (
+                      <p className="text-amber-700 dark:text-amber-400">
+                        Se desarma{aDesarmar === 1 ? "" : "n"} {aDesarmar} {aDesarmar === 1 ? "pallet" : "pallets"} de{" "}
+                        {product?.presentation} para sacar las {formatQuantity(cajas)} cajas: quedan {formatQuantity(sobran)} sueltas.
+                      </p>
                     )}
-                  </p>
-                )}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-semibold tabular-nums">{formatMoney(subtotal, monedaCuenta)}</p>
+                    {row.facturado && iva > 0 && (
+                      <p className="text-xs tabular-nums text-foreground/50">+ IVA {formatMoney(iva, monedaCuenta)}</p>
+                    )}
+                  </div>
+                </div>
+
                 {/* El precio va tal como se escribió y el servidor hace la cuenta del pallet. Los dos
                     campos van siempre, uno vacío: se aparean por posición. */}
                 <input type="hidden" name="lineProductId" value={row.productId} />
@@ -483,97 +533,117 @@ export function NuevaEntregaForm({
               </div>
             );
           })}
-        </div>
+          <button
+            type="button"
+            onClick={addRow}
+            className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-foreground/20 py-3 text-sm text-foreground/60 transition-colors hover:border-foreground/40 hover:text-foreground"
+          >
+            <Plus size={16} />
+            Agregar otro producto
+          </button>
+        </section>
 
-        <div className="flex flex-wrap justify-end gap-6 border-t border-foreground/10 pt-3 text-sm">
-          <div className="text-center">
-            <p className="text-xs text-foreground/50">Total</p>
-            <p className="font-semibold">
-              {formatQuantity(totals.pallets)} pallets
-              {totals.cajas > 0 && ` + ${formatQuantity(totals.cajas)} cajas`}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-foreground/50">Total botellas</p>
-            <p className="font-semibold">{formatQuantity(totals.botellas)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-green-700 dark:text-green-400">Facturado (s/IVA)</p>
-            <p className="font-semibold text-green-700 dark:text-green-400">{formatMoney(totals.facturado, monedaCuenta)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-foreground/50">IVA {IVA_RATE}%</p>
-            <p className="font-semibold">{formatMoney(totals.iva, monedaCuenta)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-foreground/50">No facturado</p>
-            <p className="font-semibold">{formatMoney(totals.noFacturado, monedaCuenta)}</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-foreground/50">Total</p>
-            <p className="text-lg font-bold">{formatMoney(total, monedaCuenta)}</p>
-          </div>
-        </div>
+        {pedidosPendientes.length > 0 && (
+          <section className={cardClass}>
+            <div>
+              <p className="text-sm font-semibold">¿Este remito entrega alguno de estos pedidos?</p>
+              <p className="text-xs text-foreground/50">Los que tildes se marcan como «Entregado» al crear el remito.</p>
+            </div>
+            <div className="space-y-1">
+              {pedidosPendientes.map((pedido) => (
+                <label
+                  key={pedido.id}
+                  className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-foreground/[0.03]"
+                >
+                  <input
+                    type="checkbox"
+                    name="pedidoId"
+                    value={pedido.id}
+                    checked={checkedPedidos.has(pedido.id)}
+                    onChange={(e) =>
+                      setCheckedPedidos((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(pedido.id);
+                        else next.delete(pedido.id);
+                        return next;
+                      })
+                    }
+                    className="mt-1 size-4 accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="font-medium">#{pedido.orderNumber}</span>
+                    <span className="text-foreground/50"> · {STATUS_LABELS[pedido.status] ?? pedido.status}</span>
+                    <span className="block text-xs text-foreground/60">
+                      {pedido.lines.map((l) => `${l.label} (${formatQuantity(l.pallets, "pallets")})`).join(", ")}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <section className={cardClass}>
+          <label className="text-sm font-semibold" htmlFor="reason">
+            Notas <span className="font-normal text-foreground/40">(opcional)</span>
+          </label>
+          <textarea id="reason" name="reason" rows={2} placeholder="Chofer, patente, algo que haya que recordar…" className={inputClass} />
+        </section>
       </div>
 
-      {pedidosPendientes.length > 0 && (
-        <div className="space-y-2 rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
-          <p className="text-sm font-medium">¿Este remito entrega alguno de estos pedidos?</p>
-          <p className="text-xs text-foreground/50">
-            Los que tildes se marcan como &quot;Entregado&quot; automáticamente al crear el remito.
-          </p>
-          <div className="space-y-1">
-            {pedidosPendientes.map((pedido) => (
-              <label key={pedido.id} className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="pedidoId"
-                  value={pedido.id}
-                  checked={checkedPedidos.has(pedido.id)}
-                  onChange={(e) =>
-                    setCheckedPedidos((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) next.add(pedido.id);
-                      else next.delete(pedido.id);
-                      return next;
-                    })
-                  }
-                  className="mt-1"
-                />
-                <span>
-                  #{pedido.orderNumber} — {STATUS_LABELS[pedido.status] ?? pedido.status} —{" "}
-                  {pedido.lines.map((l) => `${l.label} (${formatQuantity(l.pallets, "pallets")})`).join(", ")}
-                </span>
-              </label>
-            ))}
-          </div>
+      {/* El resumen queda a la vista mientras se cargan los productos, con el botón al pie: así se
+          ve el total antes de guardar sin bajar hasta el final. */}
+      <aside className={`${cardClass} lg:sticky lg:top-6`}>
+        <h2 className="text-sm font-semibold">Resumen</h2>
+        <div className="flex items-baseline justify-between text-sm">
+          <span className="text-foreground/60">Lleva</span>
+          <span className="text-right font-medium tabular-nums">
+            {formatQuantity(totals.pallets)} {totals.pallets === 1 ? "pallet" : "pallets"}
+            {totals.cajas > 0 && ` + ${formatQuantity(totals.cajas)} cajas`}
+            <span className="block text-xs font-normal text-foreground/50">{formatQuantity(totals.botellas)} botellas</span>
+          </span>
         </div>
-      )}
-
-      <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4 space-y-2">
-        <label className="text-sm font-semibold" htmlFor="reason">
-          Notas
-        </label>
-        <textarea id="reason" name="reason" rows={2} placeholder="Notas adicionales…" className={inputClass} />
-      </div>
-
-      {error && (
-        <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">
-          {error}
-        </p>
-      )}
-      <div className="flex justify-end">
+        {usaCuenta1 && (
+          <div className="space-y-1 border-t border-foreground/10 pt-3 text-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-foreground/40">Cuenta 1 (c/factura)</p>
+            <div className="flex justify-between">
+              <span className="text-foreground/60">Neto</span>
+              <span className="tabular-nums">{formatMoney(totals.facturado, monedaCuenta)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-foreground/60">IVA {IVA_RATE}%</span>
+              <span className="tabular-nums">{formatMoney(totals.iva, monedaCuenta)}</span>
+            </div>
+          </div>
+        )}
+        {usaCuenta2 && (
+          <div className="space-y-1 border-t border-foreground/10 pt-3 text-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-foreground/40">Cuenta 2 (s/factura)</p>
+            <div className="flex justify-between">
+              <span className="text-foreground/60">Total</span>
+              <span className="tabular-nums">{formatMoney(totals.noFacturado, monedaCuenta)}</span>
+            </div>
+          </div>
+        )}
+        <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
+          <span className="text-sm font-medium">Total del remito</span>
+          <span className="text-2xl font-semibold tabular-nums">{formatMoney(total, monedaCuenta)}</span>
+        </div>
+        {error && (
+          <p className="rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">{error}</p>
+        )}
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:opacity-50"
+          className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover disabled:opacity-50"
         >
           {pending ? "Creando…" : "Crear entrega"}
         </button>
-      </div>
+      </aside>
     </form>
   );
 }
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
-const secondaryButtonClass = "rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-1.5 text-sm hover:bg-foreground/5";
+const cardClass = "space-y-4 rounded-xl border border-foreground/10 bg-background p-4 shadow-sm";
+const labelClass = "text-xs text-foreground/60";

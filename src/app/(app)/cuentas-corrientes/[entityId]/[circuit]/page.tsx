@@ -220,9 +220,11 @@ export default async function AccountLedgerPage({
                 date: toDateInputValue(payment.date),
                 // En una cuenta en dólares se edita en pesos, igual que se cargó: los pesos guardados,
                 // no dólares × cotización, que por el redondeo daba otro número y al guardar lo pisaba.
-                amount: (payment.amountArs ??
-                  (payment.exchangeRate ? payment.amount.times(payment.exchangeRate).toDecimalPlaces(2) : payment.amount)
-                ).toString(),
+                // Con el punto de miles, como se escribe acá: "51861198.35" no se leía.
+                amount: formatNumeroExacto(
+                  payment.amountArs ??
+                    (payment.exchangeRate ? payment.amount.times(payment.exchangeRate).toDecimalPlaces(2) : payment.amount)
+                ),
                 exchangeRate: formatNumeroExacto(payment.exchangeRate),
                 reference: payment.reference ?? undefined,
                 numeroOperacion: payment.numeroOperacion ?? undefined,

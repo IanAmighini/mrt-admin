@@ -10,12 +10,11 @@ import { ImpuestosFields } from "./ImpuestosFields";
 import { formatMoney, parseNumeroSuave, ZERO } from "@/lib/money";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
 import { hoyEnInput } from "@/lib/period";
+import { segmentoClass, segmentosClass } from "./ui/Segmentos";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
-const toggleClass =
-  "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
 export type GastoDefaults = {
   entityId?: string;
@@ -122,8 +121,8 @@ export function GastoFormFields({
 
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>
-        <div className="grid grid-cols-2 gap-2">
-          <label className={toggleClass}>
+        <div className={segmentosClass}>
+          <label className={segmentoClass}>
             <input
               type="radio"
               name="circuit"
@@ -134,7 +133,7 @@ export function GastoFormFields({
             />
             Cuenta 1 (c/factura)
           </label>
-          <label className={toggleClass}>
+          <label className={segmentoClass}>
             <input
               type="radio"
               name="circuit"

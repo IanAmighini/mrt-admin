@@ -9,6 +9,7 @@ import { formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib
 import { PaymentDestinoField } from "./PaymentDestinoField";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
 import { hoyEnInput } from "@/lib/period";
+import { segmentoClass, segmentosClass } from "./ui/Segmentos";
 
 /** Lo mínimo de un cheque para poder elegirlo; ya serializado, porque esto corre en el navegador. */
 export type ChequeEnCartera = {
@@ -26,8 +27,6 @@ export type ChequeEnCartera = {
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
-const toggleClass =
-  "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
 export function PaymentFormFields({
   entities,
@@ -41,6 +40,7 @@ export function PaymentFormFields({
   defaultViajeId,
   rotuloSubcuenta,
   subcuentasPorEntidad,
+  saldos,
 }: {
   entities?: Entity[];
   entityNoun?: string;
@@ -60,6 +60,9 @@ export function PaymentFormFields({
   /** Desde Cobros y Pagos, donde se elige a quién: las subcuentas de los que las tienen (Gonzalo
    * Morosoli por camión, Goloeste el alquiler). El selector aparece sólo si el elegido tiene. */
   subcuentasPorEntidad?: Record<string, { viajes: ViajeOption[]; rotulo: string }>;
+  /** Lo que tiene cada cuenta antes de cargar, por entidad: positivo es lo que nos deben (cliente)
+   * o lo que les debemos (proveedor). */
+  saldos?: Record<string, { blanco: number; negro: number }>;
 }) {
   const isCobro = entityNoun === "Cliente";
 
@@ -112,6 +115,9 @@ export function PaymentFormFields({
     moneda ?? entities?.find((e) => e.id === entityId)?.moneda ?? "ARS";
   const enDolares = monedaCuenta === "USD";
 
+  const saldoEntidad = entityId ? saldos?.[entityId] : undefined;
+  const saldoDeLaCuenta = saldoEntidad ? (circuit === "BLANCO" ? saldoEntidad.blanco : saldoEntidad.negro) : null;
+
   const montoNum = parseNumeroSuave(monto);
   const cotizacionNum = parseNumeroSuave(cotizacion);
   const acreditado =
@@ -144,9 +150,9 @@ export function PaymentFormFields({
 
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className={segmentosClass}>
           {(["BLANCO", "NEGRO"] as const).map((c) => (
-            <label key={c} className={toggleClass}>
+            <label key={c} className={segmentoClass}>
               <input
                 type="radio"
                 name="circuit"
@@ -166,13 +172,23 @@ export function PaymentFormFields({
             </label>
           ))}
         </div>
+        {/* Lo que hay en esa cuenta antes de cargar: contra eso se está cobrando o pagando. */}
+        {saldoDeLaCuenta !== null && (
+          <p className="text-xs text-foreground/60">
+            {saldoDeLaCuenta === 0
+              ? "En esta cuenta no hay nada pendiente."
+              : (saldoDeLaCuenta > 0) === isCobro
+                ? <>En esta cuenta nos debe <strong className="tabular-nums text-foreground">{formatMoney(Math.abs(saldoDeLaCuenta), monedaCuenta)}</strong>{isCobro ? "" : " (a favor nuestro)"}.</>
+                : <>En esta cuenta {isCobro ? "tiene a favor" : "le debemos"} <strong className="tabular-nums text-foreground">{formatMoney(Math.abs(saldoDeLaCuenta), monedaCuenta)}</strong>.</>}
+          </p>
+        )}
       </div>
 
       <div className="space-y-1">
         <p className="text-sm">Método de pago</p>
-        <div className="flex flex-wrap gap-2">
+        <div className={segmentosClass}>
           {metodos.map((m) => (
-            <label key={m} className={toggleClass}>
+            <label key={m} className={segmentoClass}>
               <input
                 type="radio"
                 name="method"
@@ -391,9 +407,9 @@ export function PaymentFormFields({
               crédito contra tu propio impuesto.
             </span>
           </p>
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className={`${segmentosClass} mt-1`}>
             {RETENTION_KIND_ORDER.map((kind, i) => (
-              <label key={kind} className={toggleClass}>
+              <label key={kind} className={segmentoClass}>
                 <input
                   type="radio"
                   name="retentionKind"

@@ -9,6 +9,7 @@ import {
   computeGastoTotals,
 } from "@/lib/impuestos";
 import { formatMoney, formatNumeroEditable, parseNumeroSuave, ZERO } from "@/lib/money";
+import { ChevronRight } from "lucide-react";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-2 py-1 text-sm";
 
@@ -30,6 +31,7 @@ export function ImpuestosFields({
   netoDeLineas,
   titulo = "Desglose de la factura",
   aclaracion = "El neto sale de las líneas. Casi siempre va entero al 21%; repartilo sólo si la factura trae más de una alícuota.",
+  plegarOtros = false,
 }: {
   defaults?: ImpuestosValores;
   onChange?: (valores: ImpuestosValores) => void;
@@ -37,6 +39,12 @@ export function ImpuestosFields({
   netoDeLineas?: number;
   titulo?: string;
   aclaracion?: string;
+  /**
+   * Deja a la vista sólo el 21% y pliega las otras alícuotas y los tributos. En una nota casi nunca
+   * se usan, y abiertos eran quince casilleros vacíos; en una factura de compra las percepciones
+   * son de todos los días y van abiertas.
+   */
+  plegarOtros?: boolean;
 }) {
   const [valores, setValores] = useState<ImpuestosValores>(() => impuestosIniciales(defaults));
 
@@ -61,69 +69,88 @@ export function ImpuestosFields({
   const descuadre =
     netoDeLineas !== undefined && hayReparto ? totals.netAmount.toNumber() - netoDeLineas : 0;
 
+  // Los mismos casilleros de siempre; lo único que cambia con `plegarOtros` es dónde van.
+  const filaDeAlicuota = (alicuota: string) => {
+    const campo = `ivaBase_${alicuota}`;
+    const base = parseNumeroSuave(valores[campo] ?? "") ?? ZERO;
+    const iva = base.times(parseNumeroSuave(alicuota)!).dividedBy(100);
+    return (
+      <div key={alicuota} className="grid grid-cols-[6rem_1fr_7rem] items-center gap-2">
+        <span className="text-sm text-foreground/70">N.G. {alicuota}%</span>
+        <input
+          name={campo}
+          inputMode="decimal"
+          value={valores[campo] ?? ""}
+          onChange={(e) => set(campo, e.target.value)}
+          placeholder={alicuota === "21" && netoDeLineas !== undefined ? formatNumeroEditable(netoDeLineas) : "Neto gravado"}
+          className={inputClass}
+        />
+        <span className="text-right text-sm tabular-nums text-foreground/60">{base.isZero() ? "—" : formatMoney(iva)}</span>
+      </div>
+    );
+  };
+  const otrosTributos = (
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+      {OTROS_TRIBUTOS.map((tributo) => (
+        <div key={tributo.name} className="space-y-1">
+          <label className="text-xs text-foreground/70" htmlFor={tributo.name}>
+            {tributo.label}
+          </label>
+          <input
+            id={tributo.name}
+            name={tributo.name}
+            inputMode="decimal"
+            value={valores[tributo.name] ?? ""}
+            onChange={(e) => set(tributo.name, e.target.value)}
+            className={inputClass}
+          />
+        </div>
+      ))}
+      <div className="space-y-1">
+        <label className="text-xs text-foreground/70" htmlFor="retentionAmount">
+          Retención
+        </label>
+        <input
+          id="retentionAmount"
+          name="retentionAmount"
+          inputMode="decimal"
+          value={valores.retentionAmount ?? ""}
+          onChange={(e) => set("retentionAmount", e.target.value)}
+          className={inputClass}
+        />
+      </div>
+    </div>
+  );
+  const hayOtros =
+    ALICUOTAS_IVA.some((a) => a !== "21" && Boolean(valores[`ivaBase_${a}`])) ||
+    OTROS_TRIBUTOS.some((t) => Boolean(valores[t.name])) ||
+    Boolean(valores.retentionAmount);
+
   return (
     <div className="space-y-2 rounded-lg border border-foreground/10 p-3">
       <p className="text-sm font-medium">{titulo}</p>
       <p className="text-xs text-foreground/50">{aclaracion}</p>
 
-      <div className="space-y-1">
-        {ALICUOTAS_IVA.map((alicuota) => {
-          const campo = `ivaBase_${alicuota}`;
-          const base = parseNumeroSuave(valores[campo] ?? "") ?? ZERO;
-          const iva = base.times(parseNumeroSuave(alicuota)!).dividedBy(100);
-          return (
-            <div key={alicuota} className="grid grid-cols-[6rem_1fr_7rem] items-center gap-2">
-              <span className="text-sm text-foreground/70">N.G. {alicuota}%</span>
-              <input
-                name={campo}
-                inputMode="decimal"
-                value={valores[campo] ?? ""}
-                onChange={(e) => set(campo, e.target.value)}
-                placeholder={
-                  alicuota === "21" && netoDeLineas !== undefined
-                    ? formatNumeroEditable(netoDeLineas)
-                    : "Neto gravado"
-                }
-                className={inputClass}
-              />
-              <span className="text-right text-sm tabular-nums text-foreground/60">
-                {base.isZero() ? "—" : formatMoney(iva)}
-              </span>
+      {plegarOtros ? (
+        <>
+          <div className="space-y-1">{ALICUOTAS_IVA.filter((a) => a === "21").map(filaDeAlicuota)}</div>
+          <details open={hayOtros} className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-foreground/60 hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
+              Otras alícuotas, percepciones y retención
+            </summary>
+            <div className="mt-2 space-y-2">
+              <div className="space-y-1">{ALICUOTAS_IVA.filter((a) => a !== "21").map(filaDeAlicuota)}</div>
+              {otrosTributos}
             </div>
-          );
-        })}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {OTROS_TRIBUTOS.map((tributo) => (
-          <div key={tributo.name} className="space-y-1">
-            <label className="text-xs text-foreground/70" htmlFor={tributo.name}>
-              {tributo.label}
-            </label>
-            <input
-              id={tributo.name}
-              name={tributo.name}
-              inputMode="decimal"
-              value={valores[tributo.name] ?? ""}
-              onChange={(e) => set(tributo.name, e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        ))}
-        <div className="space-y-1">
-          <label className="text-xs text-foreground/70" htmlFor="retentionAmount">
-            Retención
-          </label>
-          <input
-            id="retentionAmount"
-            name="retentionAmount"
-            inputMode="decimal"
-            value={valores.retentionAmount ?? ""}
-            onChange={(e) => set("retentionAmount", e.target.value)}
-            className={inputClass}
-          />
-        </div>
-      </div>
+          </details>
+        </>
+      ) : (
+        <>
+          <div className="space-y-1">{ALICUOTAS_IVA.map(filaDeAlicuota)}</div>
+          {otrosTributos}
+        </>
+      )}
 
       {/* El comodín sólo pide su nombre cuando tiene monto: si no, es una pregunta sin sentido. */}
       {(parseNumeroSuave(valores.otroTributo ?? "") ?? ZERO).isZero() ? null : (

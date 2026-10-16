@@ -6,11 +6,10 @@ import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { metodoValidoEn, metodosDePago } from "@/lib/pagos";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { hoyEnInput } from "@/lib/period";
+import { segmentoClass, segmentosClass } from "./ui/Segmentos";
 
 const inputClass =
   "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
-const toggleClass =
-  "cursor-pointer rounded-lg border border-foreground/20 px-4 py-2 text-center text-sm has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground";
 
 export type EntradaDefaults = {
   paymentId: string;
@@ -90,14 +89,14 @@ export function EntradaFormFields({
       {esSocio ? (
         <div className="space-y-1">
           <p className="text-sm">Qué es</p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className={segmentosClass}>
             {(
               [
                 ["APORTE_CAPITAL", "Aporte de capital"],
                 ["COBRO_PROVEEDOR", "Nos paga algo"],
               ] as const
             ).map(([valor, label]) => (
-              <label key={valor} className={toggleClass}>
+              <label key={valor} className={segmentoClass}>
                 <input
                   type="radio"
                   name="concepto"
@@ -128,9 +127,9 @@ export function EntradaFormFields({
 
       <div className="space-y-1">
         <p className="text-sm">Cuenta</p>
-        <div className="grid grid-cols-2 gap-2">
+        <div className={segmentosClass}>
           {(["BLANCO", "NEGRO"] as const).map((c) => (
-            <label key={c} className={toggleClass}>
+            <label key={c} className={segmentoClass}>
               <input
                 type="radio"
                 name="circuit"
@@ -150,9 +149,9 @@ export function EntradaFormFields({
 
       <div className="space-y-1">
         <p className="text-sm">Cómo entró</p>
-        <div className="flex flex-wrap gap-2">
+        <div className={segmentosClass}>
           {metodos.map((m) => (
-            <label key={m} className={toggleClass}>
+            <label key={m} className={segmentoClass}>
               <input
                 type="radio"
                 name="method"
@@ -290,41 +289,27 @@ export function EntradaFormFields({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        {/* Sin transferencia no hay N° de operación al lado: la caja ocupa la fila. */}
-        <div className={`space-y-1 ${method === "TRANSFERENCIA" ? "" : "col-span-2"}`}>
-          <label className="text-sm" htmlFor="entrada-caja">
-            A qué caja entró *
-          </label>
-          <select
-            key={circuit}
-            id="entrada-caja"
-            name="destino"
-            required
-            defaultValue={cajaPorDefecto}
-            className={inputClass}
-          >
-            {treasuries.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        {method === "TRANSFERENCIA" && (
-          <div className="space-y-1">
-            <label className="text-sm" htmlFor="entrada-operacion">
-              N° de operación
+      {/* Las cajas como botones, igual que en el cobro de un cliente: un clic en vez de abrir una
+          lista. La `key` vuelve a la caja por defecto al cambiar de cuenta. */}
+      <div className="space-y-1" key={circuit}>
+        <p className="text-sm">Entró a</p>
+        <div className={segmentosClass} role="radiogroup" aria-label="A qué caja entró">
+          {treasuries.map((t) => (
+            <label key={t.id} className={segmentoClass}>
+              <input type="radio" name="destino" value={t.id} required defaultChecked={t.id === cajaPorDefecto} className="sr-only" />
+              {t.name}
             </label>
-            <input
-              id="entrada-operacion"
-              name="numeroOperacion"
-              defaultValue={defaults?.numeroOperacion}
-              className={inputClass}
-            />
-          </div>
-        )}
+          ))}
+        </div>
       </div>
+      {method === "TRANSFERENCIA" && (
+        <div className="space-y-1">
+          <label className="text-sm" htmlFor="entrada-operacion">
+            N° de operación
+          </label>
+          <input id="entrada-operacion" name="numeroOperacion" defaultValue={defaults?.numeroOperacion} className={inputClass} />
+        </div>
+      )}
 
       <div className="space-y-1">
         <label className="text-sm" htmlFor="entrada-referencia">

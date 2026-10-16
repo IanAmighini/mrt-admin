@@ -45,6 +45,7 @@ export function CuentaCorrientePanel({
   treasuries,
   proveedores,
   cartera,
+  saldos,
   pagosSinOrden,
   items,
   viajes,
@@ -83,6 +84,8 @@ export function CuentaCorrientePanel({
   treasuries: Entity[];
   /** Los cheques en cartera, para poder entregarle uno a un proveedor. */
   cartera?: ChequeEnCartera[];
+  /** Lo que tiene cada cuenta ahora: el formulario de cobro o pago lo muestra al elegir la cuenta. */
+  saldos?: { blanco: number; negro: number };
   /** Los pagos en Blanco que todavía no están en una orden de pago. Sólo proveedores. */
   pagosSinOrden?: PagoSinOrden[];
   /** Los insumos, para cargar una compra sin salir de la ficha. Sólo proveedores. */
@@ -114,6 +117,7 @@ export function CuentaCorrientePanel({
                 triggerLabel={isCliente ? "Registrar cobro" : "Registrar pago"}
                 title={isCliente ? "Registrar cobro" : "Registrar pago"}
                 action={createPaymentForEntity}
+                maxWidthClass="max-w-xl"
               >
                 <PaymentFormFields
                   fixedEntityId={entityId}
@@ -124,6 +128,7 @@ export function CuentaCorrientePanel({
                   cartera={cartera}
                   viajes={viajes}
                   rotuloSubcuenta={rotuloSubcuenta}
+                  saldos={saldos ? { [entityId]: saldos } : undefined}
                 />
               </FormModal>
             )}
