@@ -4,6 +4,7 @@ import { Prisma, type Currency } from "@prisma/client";
 import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
+import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getComprasReport } from "@/lib/reports";
 import type { Period } from "@/lib/period";
 
@@ -45,7 +46,7 @@ export async function ComprasSection({ period }: { period: Period }) {
                     </Link>
                   </td>
                   <td className="py-2 pr-4">{p.count}</td>
-                  <td className="py-2 pr-4 font-medium">{formatMoney(ars(p.byCurrency))}</td>
+                  <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={p.byCurrency} /></td>
                 </tr>
               ))}
               {report.porProveedor.length === 0 && (
@@ -81,7 +82,7 @@ export async function ComprasSection({ period }: { period: Period }) {
                         .map(([unit, qty]) => formatQuantity(qty, unit))
                         .join(" · ")}
                     </td>
-                    <td className="py-2 pr-4 font-medium">{formatMoney(ars(c.byCurrency))}</td>
+                    <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={c.byCurrency} /></td>
                   </tr>
                 ))}
               </tbody>
@@ -111,7 +112,7 @@ export async function ComprasSection({ period }: { period: Period }) {
                       </Link>
                     </td>
                     <td className="py-2 pr-4">{formatQuantity(i.quantity, i.unit)}</td>
-                    <td className="py-2 pr-4 font-medium">{formatMoney(ars(i.byCurrency))}</td>
+                    <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={i.byCurrency} /></td>
                   </tr>
                 ))}
               </tbody>

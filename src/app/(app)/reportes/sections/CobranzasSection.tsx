@@ -4,6 +4,7 @@ import { Prisma, type Currency } from "@prisma/client";
 import { formatMoney, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
+import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getCobranzasReport, type CobranzasLado } from "@/lib/reports";
 import type { Period } from "@/lib/period";
 import { formatFecha } from "@/lib/period";
@@ -51,7 +52,7 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
                 <tr key={m.method} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{PAYMENT_METHOD_LABELS[m.method]}</td>
                   <td className="py-2 pr-4">{m.count}</td>
-                  <td className="py-2 pr-4 font-medium">{formatMoney(ars(m.byCurrency))}</td>
+                  <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={m.byCurrency} /></td>
                 </tr>
               ))}
               {report.porMetodo.length === 0 && (
@@ -87,7 +88,7 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
                       </Link>
                     </td>
                     <td className="py-2 pr-4">{e.count}</td>
-                    <td className="py-2 pr-4 font-medium">{formatMoney(ars(e.byCurrency))}</td>
+                    <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={e.byCurrency} /></td>
                   </tr>
                 ))}
               </tbody>

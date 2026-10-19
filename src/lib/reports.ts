@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getRetirosDelPeriodo, getVencimientos, litrosDeLinea } from "@/lib/ledger";
 import { getCostoInsumos, getRentabilidad } from "@/lib/dashboard-kpis";
+import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
 import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
@@ -54,6 +55,24 @@ export function isReportKey(value: string | undefined): value is ReportKey {
 /** Suma `amount` en el mapa por moneda (los importes nunca se mezclan entre monedas). */
 function addByCurrency(map: Map<Currency, Prisma.Decimal>, currency: Currency, amount: Prisma.Decimal) {
   map.set(currency, (map.get(currency) ?? ZERO).plus(amount));
+}
+
+/**
+ * Suma un monto en pesos: lo que está en dólares entra a "ARS" ya convertido con la cotización del
+ * día, y además queda en "USD" tal cual, para poder decir cuánto de ese total eran dólares. Así cada
+ * fila de un reporte da el total en pesos sin dejar afuera las cuentas en dólares (Cristian quedaba
+ * en $ 0 aunque se le compraba todo el aceite).
+ */
+function addEnPesos(
+  map: Map<Currency, Prisma.Decimal>,
+  cot: Cotizador,
+  currency: Currency,
+  amount: Prisma.Decimal,
+  fecha: Date,
+  propia?: Prisma.Decimal | null
+) {
+  addByCurrency(map, "ARS", cot.aPesos(amount, currency, fecha, propia));
+  if (currency === "USD") addByCurrency(map, "USD", amount);
 }
 
 // ---------------------------------------------------------------------------
@@ -341,6 +360,7 @@ export async function getVentasReport(
     },
     orderBy: { date: "asc" },
   });
+  const cot = await getCotizador();
 
   const porCliente = new Map<string, VentasAgg & { entityName: string; entitySlug: string }>();
   const porMarca = new Map<string, VentasAgg & { marca: string }>();
@@ -349,13 +369,16 @@ export async function getVentasReport(
   const totales = emptyAgg();
   const detalle: VentasReport["detalle"] = [];
 
+  // Lo vendido en dólares (Víctor Dilver) entra en pesos con la cotización del remito o del día.
+  let docActual: { currency: Currency; date: Date; exchangeRate: Prisma.Decimal | null } | null = null;
   function accumulate(agg: VentasAgg, pallets: Prisma.Decimal, litros: Prisma.Decimal, currency: Currency, amount: Prisma.Decimal) {
     agg.pallets = agg.pallets.plus(pallets);
     agg.litros = agg.litros.plus(litros);
-    addByCurrency(agg.byCurrency, currency, amount);
+    addEnPesos(agg.byCurrency, cot, currency, amount, docActual!.date, docActual!.exchangeRate);
   }
 
   for (const doc of documents) {
+    docActual = doc;
     const { entity, circuit } = doc.account;
     const signo = doc.type === "NOTA_CREDITO" ? -1 : 1;
     for (const rawLine of doc.lines) {
@@ -449,6 +472,7 @@ export async function getCobranzasReport(period: Period, lado: CobranzasLado): P
     include: { account: { include: { entity: true } }, allocations: true, treasury: true },
     orderBy: { date: "asc" },
   });
+  const cot = await getCotizador();
 
   const porMetodo = new Map<PaymentMethod, { method: PaymentMethod; count: number; byCurrency: Map<Currency, Prisma.Decimal> }>();
   const porEntidad = new Map<string, { entityName: string; entitySlug: string; count: number; byCurrency: Map<Currency, Prisma.Decimal> }>();
@@ -457,10 +481,18 @@ export async function getCobranzasReport(period: Period, lado: CobranzasLado): P
   const rows = payments.map((payment) => {
     const { entity, circuit } = payment.account;
     const imputado = sumDecimals(payment.allocations.map((a) => a.amount));
+    // Un pago en dólares vale en pesos lo que salió de la caja (`amountArs`), que es exacto; sin eso,
+    // la cotización del pago o del día.
+    const sumar = (map: Map<Currency, Prisma.Decimal>) => {
+      if (payment.currency === "USD" && payment.amountArs) {
+        addByCurrency(map, "ARS", payment.amountArs);
+        addByCurrency(map, "USD", payment.amount);
+      } else addEnPesos(map, cot, payment.currency, payment.amount, payment.date, payment.exchangeRate);
+    };
 
     const metodo = porMetodo.get(payment.method) ?? { method: payment.method, count: 0, byCurrency: new Map() };
     metodo.count++;
-    addByCurrency(metodo.byCurrency, payment.currency, payment.amount);
+    sumar(metodo.byCurrency);
     porMetodo.set(payment.method, metodo);
 
     const entidad = porEntidad.get(entity.slug) ?? {
@@ -470,10 +502,10 @@ export async function getCobranzasReport(period: Period, lado: CobranzasLado): P
       byCurrency: new Map(),
     };
     entidad.count++;
-    addByCurrency(entidad.byCurrency, payment.currency, payment.amount);
+    sumar(entidad.byCurrency);
     porEntidad.set(entity.slug, entidad);
 
-    addByCurrency(totales, payment.currency, payment.amount);
+    sumar(totales);
 
     return {
       date: payment.date,
@@ -545,6 +577,7 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
     },
     orderBy: { date: "asc" },
   });
+  const cot = await getCotizador();
 
   const porProveedor = new Map<string, { entityName: string; entitySlug: string; count: number; byCurrency: Map<Currency, Prisma.Decimal> }>();
   const porCategoria = new Map<SupplierCategory, { category: SupplierCategory; byCurrency: Map<Currency, Prisma.Decimal>; qtyByUnit: Map<string, Prisma.Decimal> }>();
@@ -556,8 +589,9 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
 
   for (const doc of documents) {
     const { entity, circuit } = doc.account;
-    addByCurrency(iva, doc.currency, toDecimal(doc.ivaAmount));
-    addByCurrency(totalesConIva, doc.currency, toDecimal(doc.totalAmount));
+    const enPesos = (monto: Prisma.Decimal | null) => [doc.currency, toDecimal(monto), doc.date, doc.exchangeRate] as const;
+    addEnPesos(iva, cot, ...enPesos(doc.ivaAmount));
+    addEnPesos(totalesConIva, cot, ...enPesos(doc.totalAmount));
 
     const proveedor = porProveedor.get(entity.slug) ?? {
       entityName: entity.name,
@@ -569,14 +603,14 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
 
     for (const line of doc.purchaseLines) {
       const quantity = toDecimal(line.quantity);
-      addByCurrency(proveedor.byCurrency, doc.currency, line.subtotal);
+      addEnPesos(proveedor.byCurrency, cot, ...enPesos(line.subtotal));
 
       const categoria = porCategoria.get(line.item.category) ?? {
         category: line.item.category,
         byCurrency: new Map(),
         qtyByUnit: new Map(),
       };
-      addByCurrency(categoria.byCurrency, doc.currency, line.subtotal);
+      addEnPesos(categoria.byCurrency, cot, ...enPesos(line.subtotal));
       categoria.qtyByUnit.set(line.item.unit, (categoria.qtyByUnit.get(line.item.unit) ?? ZERO).plus(quantity));
       porCategoria.set(line.item.category, categoria);
 
@@ -588,10 +622,10 @@ export async function getComprasReport(period: Period): Promise<ComprasReport> {
         byCurrency: new Map(),
       };
       insumo.quantity = insumo.quantity.plus(quantity);
-      addByCurrency(insumo.byCurrency, doc.currency, line.subtotal);
+      addEnPesos(insumo.byCurrency, cot, ...enPesos(line.subtotal));
       porInsumo.set(line.item.slug, insumo);
 
-      addByCurrency(totales, doc.currency, line.subtotal);
+      addEnPesos(totales, cot, ...enPesos(line.subtotal));
 
       detalle.push({
         number: doc.number,
@@ -664,6 +698,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
     include: { account: { include: { entity: true } }, taxes: true },
     orderBy: { date: "asc" },
   });
+  const cot = await getCotizador();
 
   const porRubro = new Map<ExpenseCategory, { category: ExpenseCategory; count: number; byCurrency: Map<Currency, Prisma.Decimal> }>();
   const porProveedor = new Map<string, { entityName: string; entitySlug: string; count: number; byCurrency: Map<Currency, Prisma.Decimal> }>();
@@ -674,6 +709,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
   for (const doc of documents) {
     const { entity, circuit } = doc.account;
     const total = toDecimal(montoDelGasto(doc));
+    const enPesos = [doc.currency, total, doc.date, doc.exchangeRate] as const;
 
     // Un impuesto o una comisión cargados como movimiento de tesorería no tienen rubro propio, pero
     // su categoría ya dice de qué son: sin esto sumaban al total del mes sin aparecer en ninguna fila.
@@ -685,7 +721,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
         byCurrency: new Map(),
       };
       rubro.count++;
-      addByCurrency(rubro.byCurrency, doc.currency, total);
+      addEnPesos(rubro.byCurrency, cot, ...enPesos);
       porRubro.set(rubroDelDoc, rubro);
     }
 
@@ -696,7 +732,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
       byCurrency: new Map(),
     };
     proveedor.count++;
-    addByCurrency(proveedor.byCurrency, doc.currency, total);
+    addEnPesos(proveedor.byCurrency, cot, ...enPesos);
     porProveedor.set(entity.slug, proveedor);
 
     for (const tax of doc.taxes) {
@@ -708,7 +744,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
       porAlicuota.set(clave, fila);
     }
 
-    addByCurrency(totales, doc.currency, total);
+    addEnPesos(totales, cot, ...enPesos);
 
     detalle.push({
       date: doc.date,
@@ -872,15 +908,16 @@ const MESES_DEL_COMPARATIVO = 6;
  * pesos. Es la misma cuenta que la tarjeta del dashboard —`getRentabilidad`— abierta por rubro y
  * repetida mes a mes, que es lo que no se podía ver en ningún lado.
  *
- * Las cuentas en dólares quedan afuera: valuarlas necesitaría una cotización por comprobante y el
- * número dejaría de ser comparable contra el mes anterior.
+ * Lo que está en dólares entra en pesos con la cotización del día (`lib/cotizaciones`).
  */
 export async function getResultadoReport(period: Period): Promise<ResultadoReport> {
+  // Una sola vez: las siete cuentas de abajo (el período y los seis meses) usan las mismas cotizaciones.
+  const cot = await getCotizador();
   const [actual, gastos, retirados] = await Promise.all([
-    getRentabilidad(period),
+    getRentabilidad(period, cot),
     prisma.document.findMany({
-      where: { ...GASTOS_WHERE, currency: "ARS", date: { gte: period.from, lt: period.to } },
-      select: { netAmount: true, expenseCategory: true, treasuryCategory: true },
+      where: { ...GASTOS_WHERE, date: { gte: period.from, lt: period.to } },
+      select: { netAmount: true, expenseCategory: true, treasuryCategory: true, currency: true, date: true, exchangeRate: true },
     }),
     getRetirosDelPeriodo(period),
   ]);
@@ -892,25 +929,29 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
   const porRubro = new Map<ExpenseCategory | null, Prisma.Decimal>();
   for (const doc of gastos) {
     const rubro = rubroDelGasto(doc);
-    porRubro.set(rubro, (porRubro.get(rubro) ?? ZERO).plus(toDecimal(doc.netAmount)));
+    porRubro.set(rubro, (porRubro.get(rubro) ?? ZERO).plus(cot.aPesos(toDecimal(doc.netAmount), doc.currency, doc.date, doc.exchangeRate)));
   }
 
   // El mes del período es el del último día incluido: con "este mes" elegido, el `to` exclusivo cae
   // en el primero del siguiente y el comparativo arrancaría corrido.
   const ultimo = periodLastDay(period);
-  const meses: ResultadoMes[] = [];
-  for (let i = MESES_DEL_COMPARATIVO - 1; i >= 0; i--) {
-    const mes = monthPeriod(new Date(ultimo.getFullYear(), ultimo.getMonth() - i, 1));
-    const r = await getRentabilidad(mes);
-    meses.push({
-      label: mes.from.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }),
-      from: mes.from,
-      ventas: r.ingresos,
-      costoInsumos: r.costoInsumos,
-      gastos: r.gastos,
-      resultado: r.rentabilidad,
-    });
-  }
+  // Los seis meses a la vez: uno detrás del otro, la pantalla tardaba lo que suman los seis.
+  const periodos = Array.from({ length: MESES_DEL_COMPARATIVO }, (_, k) =>
+    monthPeriod(new Date(ultimo.getFullYear(), ultimo.getMonth() - (MESES_DEL_COMPARATIVO - 1 - k), 1))
+  );
+  const meses: ResultadoMes[] = await Promise.all(
+    periodos.map(async (mes) => {
+      const r = await getRentabilidad(mes, cot);
+      return {
+        label: mes.from.toLocaleDateString("es-AR", { month: "long", year: "numeric", timeZone: "UTC" }),
+        from: mes.from,
+        ventas: r.ingresos,
+        costoInsumos: r.costoInsumos,
+        gastos: r.gastos,
+        resultado: r.rentabilidad,
+      };
+    })
+  );
 
   return {
     period,

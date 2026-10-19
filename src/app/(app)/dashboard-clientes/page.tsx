@@ -232,7 +232,7 @@ async function ReportesGerenciales() {
             adentro. <Link href="/reportes?report=resultado" className="underline underline-offset-2">
             Ver el mes a mes</Link>.
             {rentabilidad.itemsSinCosto > 0 &&
-              ` Ojo: ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) no tienen costo unitario cargado, así que no se descontaron.`}
+              ` Ojo: ${rentabilidad.itemsSinCosto} insumo(s) consumido(s) no tienen ninguna compra cargada, así que no se descontaron.`}
           </p>
           {rentabilidad.facturasSinCompra.count > 0 && (
             <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">

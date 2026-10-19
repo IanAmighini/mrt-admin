@@ -3,6 +3,7 @@ import { Prisma, type Circuit, type Currency } from "@prisma/client";
 import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
+import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getVentasReport } from "@/lib/reports";
 import type { Period } from "@/lib/period";
 
@@ -64,7 +65,7 @@ export async function VentasSection({ period, circuit }: { period: Period; circu
                   <td className="py-2 pr-4">{CIRCUIT_LABELS[c]}</td>
                   <td className="py-2 pr-4">{formatQuantity(report.porCircuito[c].pallets)}</td>
                   <td className="py-2 pr-4">{formatQuantity(report.porCircuito[c].litros, "L")}</td>
-                  <td className="py-2 pr-4 font-medium">{formatMoney(ars(report.porCircuito[c].byCurrency))}</td>
+                  <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={report.porCircuito[c].byCurrency} /></td>
                 </tr>
               ))}
             </tbody>
@@ -91,7 +92,7 @@ export async function VentasSection({ period, circuit }: { period: Period; circu
                     <td className="py-2 pr-4">{row.name}</td>
                     <td className="py-2 pr-4">{formatQuantity(row.pallets)}</td>
                     <td className="py-2 pr-4">{formatQuantity(row.litros, "L")}</td>
-                    <td className="py-2 pr-4 font-medium">{formatMoney(ars(row.byCurrency))}</td>
+                    <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={row.byCurrency} /></td>
                   </tr>
                 ))}
                 {grupo.rows.length === 0 && (

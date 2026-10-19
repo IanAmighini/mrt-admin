@@ -200,9 +200,10 @@ async function ReportesGerenciales({
           <p className="text-sm font-semibold mb-1">Costo de insumos consumidos (este mes)</p>
           <p className="text-2xl font-semibold">{formatMoney(costo.total)}</p>
           <p className="text-xs text-foreground/50 mt-1">
-            insumos consumidos en producción este mes, valorizados a costo unitario.
+            insumos consumidos en producción este mes, a lo que se pagó en su última compra (en
+            pesos, con la cotización del día si fue en dólares).
             {costo.itemsSinCosto > 0 &&
-              ` — ${costo.itemsSinCosto} insumo(s) consumido(s) sin costo unitario cargado, no se incluyeron.`}
+              ` — ${costo.itemsSinCosto} insumo(s) consumido(s) sin ninguna compra cargada, no se incluyeron.`}
           </p>
         </div>
         <div className="rounded-xl border border-foreground/10 bg-background shadow-sm p-4">
@@ -216,7 +217,7 @@ async function ReportesGerenciales({
               </div>
             ))}
             {categorias.length === 0 && (
-              <p className="py-2 text-sm text-foreground/40">Todavía no hay insumos con costo cargado.</p>
+              <p className="py-2 text-sm text-foreground/40">Todavía no hay insumos con compras cargadas.</p>
             )}
           </div>
         </div>

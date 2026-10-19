@@ -18,7 +18,7 @@ export async function ProduccionSection({ period }: { period: Period }) {
         <KpiCard
           label="Costo de insumos"
           value={formatMoney(costoInsumos.total)}
-          caption={costoInsumos.itemsSinCosto > 0 ? `parcial: ${costoInsumos.itemsSinCosto} insumo(s) sin costo cargado` : undefined}
+          caption={costoInsumos.itemsSinCosto > 0 ? `parcial: ${costoInsumos.itemsSinCosto} insumo(s) sin compra cargada` : undefined}
           icon={Wallet}
           color="red"
         />
@@ -81,7 +81,7 @@ export async function ProduccionSection({ period }: { period: Period }) {
                     </td>
                     <td className="py-2 pr-4">{formatQuantity(r.cantidad, r.item.unit)}</td>
                     <td className="py-2 pr-4 font-medium">
-                      {r.costo ? formatMoney(r.costo) : <span className="text-foreground/40">sin costo cargado</span>}
+                      {r.costo ? formatMoney(r.costo) : <span className="text-foreground/40">sin compra cargada</span>}
                     </td>
                   </tr>
                 ))}

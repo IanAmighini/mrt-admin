@@ -4,6 +4,7 @@ import { Prisma, type Currency } from "@prisma/client";
 import { formatMoney, formatNumeroEditable, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
+import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getGastosReport } from "@/lib/reports";
 import type { Period } from "@/lib/period";
 import { formatFecha } from "@/lib/period";
@@ -40,7 +41,7 @@ export async function GastosSection({ period }: { period: Period }) {
                 <tr key={r.category} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{EXPENSE_CATEGORY_LABELS[r.category]}</td>
                   <td className="py-2 pr-4">{r.count}</td>
-                  <td className="py-2 pr-4 font-medium">{formatMoney(ars(r.byCurrency))}</td>
+                  <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={r.byCurrency} /></td>
                 </tr>
               ))}
               {report.porRubro.length === 0 && (
@@ -78,7 +79,7 @@ export async function GastosSection({ period }: { period: Period }) {
                       </Link>
                     </td>
                     <td className="py-2 pr-4">{p.count}</td>
-                    <td className="py-2 pr-4 font-medium">{formatMoney(ars(p.byCurrency))}</td>
+                    <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={p.byCurrency} /></td>
                   </tr>
                 ))}
               </tbody>

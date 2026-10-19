@@ -82,12 +82,13 @@ export async function ResultadoSection({ period }: { period: Period }) {
         )}
         <p className="mt-3 text-xs text-foreground/50">
           Todo en pesos y neto de IVA: el IVA se cobra y se deposita, así que no es ingreso ni
-          costo. Las cuentas en dólares quedan afuera — valuarlas necesitaría una cotización por
-          comprobante y el número dejaría de ser comparable contra el mes anterior.
+          costo. Lo que está en dólares —el aceite y las preformas de Cristian, las cuentas en
+          dólares— se pasa con la cotización de ese día. Cada insumo cuesta lo que se pagó en su
+          última compra.
         </p>
         {report.avisos.itemsSinCosto > 0 && (
           <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-            {report.avisos.itemsSinCosto} insumo(s) consumido(s) no tienen costo unitario cargado,
+            {report.avisos.itemsSinCosto} insumo(s) consumido(s) no tienen ninguna compra cargada,
             así que no se descontaron: el resultado está mejor de lo que es.
           </p>
         )}
