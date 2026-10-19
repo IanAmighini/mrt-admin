@@ -264,10 +264,13 @@ export function DocumentFormFields({
             <select
               id="expenseCategory"
               name="expenseCategory"
+              required
               defaultValue={defaultValues?.expenseCategory ?? ""}
               className={inputClass}
             >
-              <option value="">— Sin rubro —</option>
+              <option value="" disabled>
+                — Elegí el rubro —
+              </option>
               {EXPENSE_CATEGORY_ORDER.map((c) => (
                 <option key={c} value={c}>
                   {EXPENSE_CATEGORY_LABELS[c]}

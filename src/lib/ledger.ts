@@ -360,6 +360,48 @@ export async function getRecentGastos(
   });
 }
 
+/**
+ * Lo que sale de una caja como gasto —el agua, la garrafa, los sueldos de la caja chica, las
+ * comisiones y los impuestos del banco—, para listarlo junto a las facturas de gasto en "Compras y
+ * gastos". Es lo mismo que el reporte de gastos y el margen ya cuentan; la lista lo dejaba afuera.
+ *
+ * `soloCajaChica`: quien no ve Tesorería ve sólo la suya; lo del banco y Caja Bufano no.
+ */
+export async function getRecentGastosDeCaja(
+  limit = 30,
+  search?: string,
+  period?: { from: Date | null; to: Date | null },
+  soloCajaChica = false
+) {
+  const trimmedSearch = search?.trim();
+  const rubros = trimmedSearch
+    ? (Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[]).filter((c) =>
+        EXPENSE_CATEGORY_LABELS[c].toLowerCase().includes(trimmedSearch.toLowerCase())
+      )
+    : [];
+  return prisma.document.findMany({
+    where: {
+      treasuryCategory: { in: ["GASTO", "IMPUESTO", "GASTO_BANCARIO"] },
+      // El signo es la guarda, como en GASTOS_WHERE: uno cargado como "suma al saldo" no es gasto.
+      totalAmount: { lt: 0 },
+      account: { entity: soloCajaChica ? { slug: "caja-chica" } : { type: "TESORERIA" } },
+      ...enElPeriodo(period),
+      ...(trimmedSearch
+        ? {
+            OR: [
+              { reason: { contains: trimmedSearch, mode: "insensitive" } },
+              { account: { entity: { name: { contains: trimmedSearch, mode: "insensitive" } } } },
+              ...(rubros.length > 0 ? [{ expenseCategory: { in: rubros } }] : []),
+            ],
+          }
+        : {}),
+    },
+    include: { ...DOCUMENT_QUERY_INCLUDE, account: { include: { entity: true } } },
+    orderBy: { date: "desc" },
+    take: limit,
+  });
+}
+
 /** Litros entregados a un cliente: cantidad de la línea (pallets) × litros de aceite por pallet
  * según la receta del producto (RecipeItem.quantityPerUnit ya está expresado por pallet armado,
  * no por botella). Ignora líneas de productos sin receta de aceite o sin cajas/pallet y

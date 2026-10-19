@@ -1,3 +1,14 @@
+
+/**
+ * Las claves de unas etiquetas ordenadas por cómo se leen (con la ñ y los acentos en su lugar), y
+ * "OTRO" siempre última. Recibe una función porque las etiquetas se declaran más abajo en el archivo.
+ */
+function alfabetico<K extends string>(etiquetas: () => Record<K, string>): K[] {
+  const labels = etiquetas();
+  return (Object.keys(labels) as K[]).sort((a, b) =>
+    a === "OTRO" ? 1 : b === "OTRO" ? -1 : labels[a].localeCompare(labels[b], "es")
+  );
+}
 import type { CajaMovementType,
   EstadoDevolucion,
   ChequeEstado,
@@ -34,35 +45,6 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
 };
 
 /** Orden en que se ofrecen los rubros de gasto: primero los que se cargan todos los meses. */
-export const EXPENSE_CATEGORY_ORDER: ExpenseCategory[] = [
-  "FLETE",
-  "ALQUILER",
-  "SERVICIOS",
-  "REPARACIONES",
-  "HIGIENE_Y_SEGURIDAD",
-  "BALANZA",
-  "FERRETERIA",
-  "COMBUSTIBLE",
-  "GAS",
-  "IMPUESTOS",
-  "HONORARIOS",
-  "SEGUROS",
-  "FUMIGACION",
-  "SUELDOS",
-  "BANCARIOS",
-  "LIMPIEZA",
-  "MOVILIDAD",
-  "OFICINA",
-  "OTRO",
-];
-
-/**
- * Los rubros que puede tener un PROVEEDOR. Es la lista entera, Sueldos incluido: un encargado que
- * cobra parte por transferencia tiene ficha propia, con su sueldo cargado como gasto y el pago que
- * lo cancela. Se había sacado cuando el sueldo sólo salía de la caja chica y no había a quién
- * deberle; con el empleado como ficha eso dejó de ser cierto.
- */
-export const EXPENSE_CATEGORY_PROVEEDOR_ORDER: ExpenseCategory[] = EXPENSE_CATEGORY_ORDER;
 
 export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   FLETE: "Flete",
@@ -150,22 +132,6 @@ export const CAJA_MOVEMENT_TYPE_LABELS: Record<CajaMovementType, string> = {
 
 /** Orden en que se muestran las categorías de insumo: sigue la línea de envasado (aceite, envase,
  * tapa, caja…) y no el alfabético, que mezclaría cajas con cinta. */
-export const SUPPLIER_CATEGORY_ORDER: SupplierCategory[] = [
-  "ACEITE",
-  "PREFORMAS",
-  "ENVASES",
-  "TAPAS",
-  "CAJAS",
-  "ETIQUETAS",
-  "ADITIVO_TINTA",
-  "CINTA",
-  "PEGAMENTO",
-  "STRETCH",
-  "PALLET_NORMALIZADO",
-  "PALLET_DESCARTABLE",
-  "JABON",
-  "OTRO",
-];
 
 export const SUPPLIER_CATEGORY_LABELS: Record<SupplierCategory, string> = {
   ACEITE: "Aceite",
@@ -216,3 +182,18 @@ export const ESTADO_DEVOLUCION_LABELS: Record<EstadoDevolucion, string> = {
   CON_ROTURAS: "Con roturas",
   NO_SIRVE: "No sirve nada",
 };
+
+// Al final del archivo: se arman con las etiquetas de arriba, que tienen que existir antes.
+/** Los rubros en orden alfabético, como se buscan en un desplegable; "Otro" al final, que es el comodín. */
+export const EXPENSE_CATEGORY_ORDER: ExpenseCategory[] = alfabetico(() => EXPENSE_CATEGORY_LABELS);
+
+/** Los tipos de insumo en orden alfabético; "Otro" al final. */
+export const SUPPLIER_CATEGORY_ORDER: SupplierCategory[] = alfabetico(() => SUPPLIER_CATEGORY_LABELS);
+
+/**
+ * Los rubros que puede tener un PROVEEDOR. Es la lista entera, Sueldos incluido: un encargado que
+ * cobra parte por transferencia tiene ficha propia, con su sueldo cargado como gasto y el pago que
+ * lo cancela. Se había sacado cuando el sueldo sólo salía de la caja chica y no había a quién
+ * deberle; con el empleado como ficha eso dejó de ser cierto.
+ */
+export const EXPENSE_CATEGORY_PROVEEDOR_ORDER: ExpenseCategory[] = EXPENSE_CATEGORY_ORDER;

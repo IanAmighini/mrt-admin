@@ -97,7 +97,11 @@ function parseRubroDeCaja(
 ): ExpenseCategory | null {
   if (category !== "GASTO") return null;
   const raw = String(value || "");
-  return raw in EXPENSE_CATEGORY_LABELS ? (raw as ExpenseCategory) : null;
+  // Un gasto de caja sin rubro no dice en qué se fue la plata: es obligatorio, como en la caja chica.
+  if (!(raw in EXPENSE_CATEGORY_LABELS)) {
+    throw new UserError("Elegí el rubro del gasto. Si no encaja en ninguno, elegí «Otro».");
+  }
+  return raw as ExpenseCategory;
 }
 
 /** undefined = el form no tiene el campo (no tocar el valor existente al editar); null = limpiar. */

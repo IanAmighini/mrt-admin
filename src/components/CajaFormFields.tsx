@@ -59,8 +59,10 @@ export function GastoDeCajaFields({
         <label className="text-sm" htmlFor="expenseCategory">
           Rubro
         </label>
-        <select id="expenseCategory" name="expenseCategory" defaultValue="" className={inputClass}>
-          <option value="">— Sin rubro —</option>
+        <select id="expenseCategory" name="expenseCategory" required defaultValue="" className={inputClass}>
+          <option value="" disabled>
+            — Elegí el rubro —
+          </option>
           {EXPENSE_CATEGORY_ORDER.map((c) => (
             <option key={c} value={c}>
               {EXPENSE_CATEGORY_LABELS[c]}
@@ -68,8 +70,7 @@ export function GastoDeCajaFields({
           ))}
         </select>
         <p className="text-xs text-foreground/50">
-          Con rubro, el gasto se suma al del mes por categoría. Sin rubro entra igual, como
-          &quot;Otro&quot;.
+          Es lo que dice en qué se fue la plata del mes. Si no encaja en ninguno, elegí «Otro».
         </p>
       </div>
 
@@ -309,8 +310,10 @@ export function EditarMovimientoDeCajaFields({
           <label className="text-sm" htmlFor="editar-caja-rubro">
             Rubro
           </label>
-          <select id="editar-caja-rubro" name="expenseCategory" defaultValue={defaults.expenseCategory} className={inputClass}>
-            <option value="">— Sin rubro —</option>
+          <select id="editar-caja-rubro" name="expenseCategory" required defaultValue={defaults.expenseCategory} className={inputClass}>
+            <option value="" disabled>
+              — Elegí el rubro —
+            </option>
             {EXPENSE_CATEGORY_ORDER.map((c) => (
               <option key={c} value={c}>
                 {EXPENSE_CATEGORY_LABELS[c]}

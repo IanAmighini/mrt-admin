@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { DiaPlegable } from "@/components/DiaPlegable";
-import { Package, Plus, ReceiptText } from "lucide-react";
+import { ArrowUpRight, Coins, Package, Plus, ReceiptText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getSopladores } from "@/lib/preformas";
 import { requireUser } from "@/lib/auth-helpers";
-import { getDocumentPending, getRecentCompras, getRecentGastos } from "@/lib/ledger";
+import { getDocumentPending, getRecentCompras, getRecentGastos, getRecentGastosDeCaja } from "@/lib/ledger";
+import { CAJA_CHICA_SLUG, rubroDelGasto } from "@/lib/caja";
+import { puedeVerRuta } from "@/lib/nav";
 import { formatMoney, formatNumeroExacto, formatQuantity, ZERO } from "@/lib/money";
 import type { Currency, Prisma } from "@prisma/client";
 import { FormModal } from "@/components/Modal";
@@ -54,10 +56,15 @@ export default async function ComprasPage({
   };
   const hayFiltro = Boolean(q?.trim() || pagoFilter || tipoFilter || from || to);
 
-  const [items, compras, gastos, subcuentas] = await Promise.all([
+  const [items, compras, gastos, gastosDeCaja, subcuentas] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
     tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q, period),
+    // Lo que sale de la caja —el agua, la garrafa, los sueldos— también es un gasto, y no aparecía
+    // acá. Quien no ve Tesorería ve sólo los de la caja chica.
+    tipoFilter === "insumos"
+      ? Promise.resolve([])
+      : getRecentGastosDeCaja(500, q, period, !puedeVerRuta(user.role, "/tesoreria")),
     // Los proveedores que dividen su cuenta (Goloeste: alquiler y gastos comunes), para que el gasto
     // se pueda asignar a una parte también desde acá.
     prisma.entity.findMany({
@@ -85,11 +92,14 @@ export default async function ComprasPage({
   ]);
   const sopladorDe = new Map(entregasDeCompras.map((e) => [e.documentId!, e.entityId]));
 
-  const rows = [...compras, ...gastos]
-    .map((doc) => {
+  const rows = [
+    ...[...compras, ...gastos].map((doc) => {
       const pendiente = getDocumentPending(doc);
-      return { doc, pendiente, pagado: pendiente.lessThan(0.005) };
-    })
+      return { doc, pendiente, pagado: pendiente.lessThan(0.005), deCaja: false };
+    }),
+    // Un gasto de caja se paga en el momento: sale de la caja. Su monto es el neto (el total va con signo).
+    ...gastosDeCaja.map((doc) => ({ doc, pendiente: ZERO, pagado: true, deCaja: true })),
+  ]
     .sort((a, b) => b.doc.date.getTime() - a.doc.date.getTime() || b.doc.createdAt.getTime() - a.doc.createdAt.getTime());
 
   const todasLasFilas = rows.filter((r) => {
@@ -133,7 +143,7 @@ export default async function ComprasPage({
   };
   const sumarPorMoneda = (lista: typeof filteredRows, campo: (r: (typeof filteredRows)[number]) => Prisma.Decimal) => {
     const m = new Map<Currency, Prisma.Decimal>();
-    for (const r of lista) m.set(r.doc.currency, (m.get(r.doc.currency) ?? ZERO).plus(campo(r)));
+    for (const r of lista) m.set(r.doc.currency, (m.get(r.doc.currency) ?? ZERO).plus(r.deCaja ? r.doc.netAmount : campo(r)));
     return Array.from(m.entries())
       .sort(([a]) => (a === "ARS" ? -1 : 1))
       .map(([moneda, monto]) => formatMoney(monto, moneda))
@@ -218,7 +228,49 @@ export default async function ComprasPage({
             pendientes={delDia.some((r) => !r.pagado) ? `${delDia.filter((r) => !r.pagado).length} sin pagar` : null}
             subtotal={sumarPorMoneda(delDia, (r) => r.doc.totalAmount)}
           >
-              {delDia.map(({ doc, pagado, pendiente }) => {
+              {delDia.map(({ doc, pagado, pendiente, deCaja }) => {
+                if (deCaja) {
+                  const esChica = doc.account.entity.slug === CAJA_CHICA_SLUG;
+                  const rubro = rubroDelGasto(doc);
+                  const hrefCaja = esChica ? "/caja-chica" : `/cuentas-corrientes/${doc.account.entity.slug}`;
+                  return (
+                    <div key={doc.id} className="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
+                      <span
+                        className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full bg-foreground/[0.06] text-foreground/60 sm:flex"
+                        title="Gasto de caja"
+                      >
+                        <Coins size={17} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <Link href={hrefCaja} className="font-medium hover:underline hover:underline-offset-2">
+                          {doc.reason || doc.account.entity.name}
+                        </Link>
+                        <p className="font-semibold tabular-nums sm:hidden">{formatMoney(doc.netAmount, doc.currency)}</p>
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          <span className={PILL}>Gasto de {doc.account.entity.name}</span>
+                          {rubro && <span className={PILL}>{EXPENSE_CATEGORY_LABELS[rubro]}</span>}
+                          <span className="whitespace-nowrap rounded-md bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">
+                            Pagado
+                          </span>
+                        </div>
+                      </div>
+                      <p className="hidden shrink-0 text-right text-lg font-semibold tabular-nums sm:block">
+                        {formatMoney(doc.netAmount, doc.currency)}
+                      </p>
+                      {/* Se corrige donde se cargó: en la caja, que es la que lo descuenta. */}
+                      {canEdit && (
+                        <Link
+                          href={hrefCaja}
+                          title={`Corregirlo en ${doc.account.entity.name}`}
+                          aria-label={`Corregirlo en ${doc.account.entity.name}`}
+                          className="shrink-0 rounded-lg p-2 text-foreground/40 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                        >
+                          <ArrowUpRight size={16} />
+                        </Link>
+                      )}
+                    </div>
+                  );
+                }
                 const esGasto = doc.type === "GASTO";
                 const Icono = esGasto ? ReceiptText : Package;
                 // El concepto de un gasto, salvo que sea el mismo rubro que ya dice la etiqueta.

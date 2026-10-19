@@ -41,9 +41,13 @@ function leerFecha(raw: FormDataEntryValue | null) {
   return parseFecha(valor);
 }
 
-function leerRubro(raw: FormDataEntryValue | null): ExpenseCategory | null {
+/**
+ * El rubro de un gasto de caja es obligatorio: es lo que dice en qué se fue la plata del mes. Sin él
+ * el agua o la garrafa quedaban sueltas en el reporte de gastos. Si no encaja, existe "Otro".
+ */
+function leerRubro(raw: FormDataEntryValue | null): ExpenseCategory {
   const valor = String(raw || "").trim();
-  if (!valor) return null;
+  if (!valor) throw new UserError("Elegí el rubro del gasto. Si no encaja en ninguno, elegí «Otro».");
   if (!(valor in EXPENSE_CATEGORY_LABELS)) throw new UserError("Rubro inválido.");
   return valor as ExpenseCategory;
 }
