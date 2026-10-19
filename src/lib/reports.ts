@@ -1190,6 +1190,9 @@ export type CostoBotellaProducto = {
   /** Lo que se vendió del producto en el período, neto de IVA y en pesos. */
   vendidas: Prisma.Decimal;
   precioPromedio: Prisma.Decimal | null;
+  /** Si alguna vez se fabricó, se vendió o tuvo stock. Los del catálogo que todavía no se hacen
+   * (el 3600, el Mezcla) van aparte y lo que les falta no se pide. */
+  activo: boolean;
 };
 
 export type CostoBotellaReport = {
@@ -1215,7 +1218,10 @@ export async function getCostoBotellaReport(period: Period): Promise<CostoBotell
   const [productos, costoDe, lineas] = await Promise.all([
     prisma.product.findMany({
       where: { recipe: { some: {} } },
-      include: { recipe: { include: { item: true } } },
+      include: {
+        recipe: { include: { item: true } },
+        _count: { select: { productionLines: true, documentLines: true, movements: true } },
+      },
       orderBy: [{ bottleCapacityMl: "asc" }, { name: "asc" }, { presentation: "asc" }],
     }),
     getCostosUnitarios(cot),
@@ -1263,7 +1269,8 @@ export async function getCostoBotellaReport(period: Period): Promise<CostoBotell
       partes[parte] = partes[parte].plus(r.quantityPerUnit.times(unitario).dividedBy(porPallet));
     }
     const total = sumDecimals(PARTES_DE_LA_BOTELLA.map((p) => partes[p]));
-    for (const nombre of new Set(sinCosto)) faltan.set(nombre, (faltan.get(nombre) ?? 0) + 1);
+    const activo = producto._count.productionLines + producto._count.documentLines + producto._count.movements > 0;
+    if (activo) for (const nombre of new Set(sinCosto)) faltan.set(nombre, (faltan.get(nombre) ?? 0) + 1);
 
     let vendidas = ZERO;
     let vendido = ZERO;
@@ -1286,6 +1293,7 @@ export async function getCostoBotellaReport(period: Period): Promise<CostoBotell
       sinCosto,
       vendidas,
       precioPromedio: vendidas.greaterThan(0) ? vendido.dividedBy(vendidas) : null,
+      activo,
     });
     presentaciones.set(capacidad, lista);
   }

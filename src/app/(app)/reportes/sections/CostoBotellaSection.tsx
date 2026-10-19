@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
 import { formatFecha, type Period } from "@/lib/period";
 import { getCostoBotellaReport, PARTES_DE_LA_BOTELLA } from "@/lib/reports";
@@ -15,43 +16,11 @@ export async function CostoBotellaSection({ period }: { period: Period }) {
     (p) => p !== "Otros" || report.presentaciones.some((g) => g.productos.some((x) => !x.partes.Otros.isZero() || x.incompletas.includes("Otros")))
   );
 
-  return (
-    <div className="space-y-6">
-      <p className="text-sm text-foreground/60">
-        Valuado al {formatFecha(report.valuadoAl)}: cada insumo a lo que se pagó en su última compra, en pesos —lo de
-        Cristian con la cotización de ese día—, y el envase con su preforma. El precio es el promedio al que se vendió
-        en el período, neto de IVA.
-      </p>
-      {/* Lo que falta costear, con un link a cada ficha: es la lista de tareas para que el margen dé
-          bien. Va primero el que más botellas destraba. */}
-      {report.faltan.length > 0 && (
-        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
-          <p className="text-amber-900 dark:text-amber-200">
-            <strong>Falta el costo de {report.faltan.length} {report.faltan.length === 1 ? "insumo" : "insumos"}</strong>: no
-            tienen ninguna compra cargada. Mientras tanto, las botellas que los usan dan un costo más bajo del real. Tocá
-            cada uno y cargá su <strong>costo unitario</strong> en la ficha; cuando se compre, manda el precio de la compra.
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {report.faltan.map((f) =>
-              f.slug ? (
-                <Link
-                  key={f.name}
-                  href={`/stock/${f.slug}`}
-                  className="rounded-md border border-amber-300 bg-background px-2 py-1 text-xs text-amber-900 transition-colors hover:border-amber-500 dark:border-amber-800 dark:text-amber-200"
-                >
-                  {f.name} <span className="text-foreground/40">· {f.productos}</span>
-                </Link>
-              ) : (
-                <span key={f.name} className="rounded-md border border-amber-300 px-2 py-1 text-xs dark:border-amber-800">
-                  {f.name}
-                </span>
-              )
-            )}
-          </div>
-        </div>
-      )}
-
-      {report.presentaciones.map((g) => {
+  const tablas = (activos: boolean) =>
+    report.presentaciones
+      .map((g) => ({ ...g, productos: g.productos.filter((p) => p.activo === activos) }))
+      .filter((g) => g.productos.length > 0)
+      .map((g) => {
         // El rango sólo con los que tienen todo: uno sin el aceite daba "de $ 186 a $ 1.729".
         const completos = g.productos.filter((p) => p.incompletas.length === 0);
         // Si ninguno está completo, al menos los que tienen el aceite, que es casi todo el costo.
@@ -150,7 +119,57 @@ export async function CostoBotellaSection({ period }: { period: Period }) {
             </div>
           </section>
         );
-      })}
+      });
+  const inactivos = report.presentaciones.reduce((n, g) => n + g.productos.filter((p) => !p.activo).length, 0);
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-foreground/60">
+        Valuado al {formatFecha(report.valuadoAl)}: cada insumo a lo que se pagó en su última compra, en pesos —lo de
+        Cristian con la cotización de ese día—, y el envase con su preforma. El precio es el promedio al que se vendió
+        en el período, neto de IVA.
+      </p>
+      {/* Lo que falta costear, con un link a cada ficha: es la lista de tareas para que el margen dé
+          bien. Va primero el que más botellas destraba. */}
+      {report.faltan.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+          <p className="text-amber-900 dark:text-amber-200">
+            <strong>Falta el costo de {report.faltan.length} {report.faltan.length === 1 ? "insumo" : "insumos"}</strong>: no
+            tienen ninguna compra cargada. Mientras tanto, las botellas que los usan dan un costo más bajo del real. Tocá
+            cada uno y cargá su <strong>costo unitario</strong> en la ficha; cuando se compre, manda el precio de la compra.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {report.faltan.map((f) =>
+              f.slug ? (
+                <Link
+                  key={f.name}
+                  href={`/stock/${f.slug}`}
+                  className="rounded-md border border-amber-300 bg-background px-2 py-1 text-xs text-amber-900 transition-colors hover:border-amber-500 dark:border-amber-800 dark:text-amber-200"
+                >
+                  {f.name} <span className="text-foreground/40">· {f.productos}</span>
+                </Link>
+              ) : (
+                <span key={f.name} className="rounded-md border border-amber-300 px-2 py-1 text-xs dark:border-amber-800">
+                  {f.name}
+                </span>
+              )
+            )}
+          </div>
+        </div>
+      )}
+
+      {tablas(true)}
+      {/* Los del catálogo que todavía no se fabrican: con su costo por si se empiezan a hacer, pero
+          plegados y sin pedir lo que les falta. */}
+      {inactivos > 0 && (
+        <details className="group space-y-4">
+          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-foreground/60 hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronRight size={15} className="transition-transform group-open:rotate-90" />
+            {inactivos} {inactivos === 1 ? "producto que todavía no se fabricó" : "productos que todavía no se fabricaron"} ni se vendieron
+          </summary>
+          <div className="mt-4 space-y-6">{tablas(false)}</div>
+        </details>
+      )}
       {report.presentaciones.length === 0 && (
         <p className="py-8 text-center text-sm text-foreground/40">Todavía no hay productos con receta.</p>
       )}
