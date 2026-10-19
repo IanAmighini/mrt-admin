@@ -150,7 +150,7 @@ export type CostoInsumoRow = {
  * de Resultado lo pide para siete meses seguidos. Pedido por insumo, tardaba nueve segundos.
  */
 const costosPorCotizador = new WeakMap<Cotizador, ReturnType<typeof armarCostosUnitarios>>();
-function getCostosUnitarios(cot: Cotizador) {
+export function getCostosUnitarios(cot: Cotizador) {
   let costos = costosPorCotizador.get(cot);
   if (!costos) {
     costos = armarCostosUnitarios(cot);
@@ -206,13 +206,20 @@ async function armarCostosUnitarios(cot: Cotizador) {
     }
     return elegido.unitario;
   };
-  return (itemId: string, fecha: Date): Prisma.Decimal | null => {
+  const costoDe = (itemId: string, fecha: Date): Prisma.Decimal | null => {
     const costo = propio(itemId, fecha);
     const preforma = preformaDelEnvase.get(itemId);
     const dePreforma = preforma ? propio(preforma, fecha) : null;
     if (!costo) return dePreforma;
     return dePreforma ? costo.plus(dePreforma) : costo;
   };
+  // Un envase cuyo soplado tiene precio pero su preforma no: el costo que da es sólo la mitad.
+  const faltaPreforma = (itemId: string, fecha: Date): string | null => {
+    const preforma = preformaDelEnvase.get(itemId);
+    if (!preforma || propio(preforma, fecha)) return null;
+    return preformaItems.find((p) => p.id === preforma)?.name ?? "la preforma";
+  };
+  return Object.assign(costoDe, { faltaPreforma });
 }
 
 /**

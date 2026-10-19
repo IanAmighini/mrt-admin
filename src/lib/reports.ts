@@ -11,7 +11,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getRetirosDelPeriodo, getVencimientos, litrosDeLinea } from "@/lib/ledger";
-import { getCostoInsumos, getRentabilidad } from "@/lib/dashboard-kpis";
+import { getCostoInsumos, getCostosUnitarios, getRentabilidad } from "@/lib/dashboard-kpis";
 import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
 import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
@@ -27,6 +27,7 @@ export const REPORT_KEYS = [
   "compras",
   "gastos",
   "resultado",
+  "costo-botella",
   "produccion",
   "stock",
 ] as const;
@@ -41,6 +42,7 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
   compras: "Compras de insumos",
   gastos: "Gastos",
   resultado: "Resultado del mes",
+  "costo-botella": "Costo por botella",
   produccion: "Producción",
   stock: "Stock y recuentos",
 };
@@ -1137,5 +1139,153 @@ export async function getStockReport(period: Period): Promise<StockReport> {
       insumos: insumos.filter((f) => !f.ajustes.isZero()).length,
       productos: productosFilas.filter((f) => !f.ajustes.isZero()).length,
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 10. Costo por botella — lo que cuesta cada presentación, insumo por insumo
+// ---------------------------------------------------------------------------
+
+/** Las partes de una botella, en el orden en que se piensa: lo de adentro, el envase, lo de afuera. */
+export const PARTES_DE_LA_BOTELLA = ["Aceite", "Envase", "Tapa", "Etiqueta", "Caja", "Pallet", "Otros"] as const;
+export type ParteDeLaBotella = (typeof PARTES_DE_LA_BOTELLA)[number];
+
+function parteDe(category: SupplierCategory): ParteDeLaBotella {
+  switch (category) {
+    case "ACEITE":
+      return "Aceite";
+    case "ENVASES":
+    case "PREFORMAS":
+      return "Envase";
+    case "TAPAS":
+      return "Tapa";
+    case "ETIQUETAS":
+      return "Etiqueta";
+    case "CAJAS":
+      return "Caja";
+    case "PALLET_NORMALIZADO":
+      return "Pallet";
+    default:
+      return "Otros";
+  }
+}
+
+export type CostoBotellaProducto = {
+  productSlug: string;
+  label: string;
+  formato: string;
+  /** Lo que cuesta una botella, por parte, con lo que se sabe. */
+  partes: Record<ParteDeLaBotella, Prisma.Decimal>;
+  /** Las partes a las que les falta el costo de algún insumo: su número, y el total, quedan cortos. */
+  incompletas: ParteDeLaBotella[];
+  total: Prisma.Decimal;
+  /** Los insumos de la receta que no tienen ni costo en la ficha ni compra cargada. */
+  sinCosto: string[];
+  /** Lo que se vendió del producto en el período, neto de IVA y en pesos. */
+  vendidas: Prisma.Decimal;
+  precioPromedio: Prisma.Decimal | null;
+};
+
+export type CostoBotellaReport = {
+  period: Period;
+  /** El día al que están valuados los insumos: el último del período o hoy, lo que sea antes. */
+  valuadoAl: Date;
+  presentaciones: { capacidadMl: number | null; productos: CostoBotellaProducto[] }[];
+};
+
+/**
+ * Lo que cuesta una botella de cada producto, abierto por parte: la receta del pallet dividida por
+ * las botellas del pallet, con cada insumo a lo que costaba ese día (`getCostosUnitarios`: la ficha o
+ * la última compra, en pesos, y el envase con su preforma). Al lado, el precio promedio al que se
+ * vendió en el período, para ver cuánto deja cada botella.
+ */
+export async function getCostoBotellaReport(period: Period): Promise<CostoBotellaReport> {
+  const hoy = new Date();
+  const ultimo = periodLastDay(period);
+  const valuadoAl = ultimo < hoy ? ultimo : hoy;
+  const cot = await getCotizador();
+  const [productos, costoDe, lineas] = await Promise.all([
+    prisma.product.findMany({
+      where: { recipe: { some: {} } },
+      include: { recipe: { include: { item: true } } },
+      orderBy: [{ bottleCapacityMl: "asc" }, { name: "asc" }, { presentation: "asc" }],
+    }),
+    getCostosUnitarios(cot),
+    prisma.documentLine.findMany({
+      where: {
+        document: {
+          type: { in: ["REMITO", "NOTA_CREDITO"] },
+          date: { gte: period.from, lt: period.to },
+          account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
+        },
+      },
+      select: {
+        productId: true,
+        quantity: true,
+        subtotal: true,
+        document: { select: { type: true, currency: true, date: true, exchangeRate: true } },
+      },
+    }),
+  ]);
+
+  const presentaciones = new Map<number | null, CostoBotellaProducto[]>();
+  for (const producto of productos) {
+    const porPallet = (producto.boxesPerPallet ?? 0) * (producto.unitsPerBox ?? 0);
+    if (!porPallet) continue;
+    const partes = Object.fromEntries(PARTES_DE_LA_BOTELLA.map((p) => [p, ZERO])) as Record<ParteDeLaBotella, Prisma.Decimal>;
+    const incompletas = new Set<ParteDeLaBotella>();
+    const sinCosto: string[] = [];
+    for (const r of producto.recipe) {
+      const parte = parteDe(r.item.category);
+      const unitario = costoDe(r.itemId, valuadoAl);
+      const preformaQueFalta = costoDe.faltaPreforma(r.itemId, valuadoAl);
+      if (preformaQueFalta) {
+        sinCosto.push(preformaQueFalta);
+        incompletas.add(parte);
+      }
+      if (!unitario) {
+        sinCosto.push(r.item.name);
+        incompletas.add(parte);
+        continue;
+      }
+      partes[parte] = partes[parte].plus(r.quantityPerUnit.times(unitario).dividedBy(porPallet));
+    }
+    const total = sumDecimals(PARTES_DE_LA_BOTELLA.map((p) => partes[p]));
+
+    let vendidas = ZERO;
+    let vendido = ZERO;
+    for (const l of lineas) {
+      if (l.productId !== producto.id) continue;
+      const signo = l.document.type === "NOTA_CREDITO" ? -1 : 1;
+      vendidas = vendidas.plus(toDecimal(l.quantity).times(porPallet).times(signo));
+      vendido = vendido.plus(cot.aPesos(l.subtotal, l.document.currency, l.document.date, l.document.exchangeRate).times(signo));
+    }
+
+    const capacidad = producto.bottleCapacityMl ? producto.bottleCapacityMl.toNumber() : null;
+    const lista = presentaciones.get(capacidad) ?? [];
+    lista.push({
+      productSlug: producto.slug,
+      label: formatProductBrandLabel(producto),
+      formato: producto.presentation,
+      partes,
+      incompletas: PARTES_DE_LA_BOTELLA.filter((p) => incompletas.has(p)),
+      total,
+      sinCosto,
+      vendidas,
+      precioPromedio: vendidas.greaterThan(0) ? vendido.dividedBy(vendidas) : null,
+    });
+    presentaciones.set(capacidad, lista);
+  }
+
+  return {
+    period,
+    valuadoAl,
+    presentaciones: Array.from(presentaciones.entries())
+      .sort(([a], [b]) => (a ?? Infinity) - (b ?? Infinity))
+      .map(([capacidadMl, productos]) => ({
+        capacidadMl,
+        // Lo que más se vendió arriba: es lo que más pesa en el margen.
+        productos: productos.sort((x, y) => y.vendidas.comparedTo(x.vendidas) || x.label.localeCompare(y.label, "es")),
+      })),
   };
 }

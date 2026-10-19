@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlarmClock, Download, Factory, Package, Receipt, Send, ShoppingCart, TrendingUp, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
+import { AlarmClock, Download, Factory, Milk, Package, Receipt, Send, ShoppingCart, TrendingUp, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
 import type { Circuit } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { FormModal } from "@/components/Modal";
@@ -17,6 +17,7 @@ import { CobranzasSection } from "./sections/CobranzasSection";
 import { ComprasSection } from "./sections/ComprasSection";
 import { GastosSection } from "./sections/GastosSection";
 import { ResultadoSection } from "./sections/ResultadoSection";
+import { CostoBotellaSection } from "./sections/CostoBotellaSection";
 import { ProduccionSection } from "./sections/ProduccionSection";
 import { StockSection } from "./sections/StockSection";
 
@@ -51,7 +52,10 @@ const GRUPOS: { titulo: string; reportes: { key: ReportKey; icono: LucideIcon; d
   },
   {
     titulo: "Resultado",
-    reportes: [{ key: "resultado", icono: TrendingUp, descripcion: "Ventas menos insumos y gastos" }],
+    reportes: [
+      { key: "resultado", icono: TrendingUp, descripcion: "Ventas menos insumos y gastos" },
+      { key: "costo-botella", icono: Milk, descripcion: "Lo que cuesta y deja cada presentación" },
+    ],
   },
   {
     titulo: "Producción y stock",
@@ -72,6 +76,7 @@ const USA_PERIODO: Record<ReportKey, boolean> = {
   compras: true,
   gastos: true,
   resultado: true,
+  "costo-botella": true,
   produccion: true,
   stock: true,
 };
@@ -85,6 +90,7 @@ const USA_CIRCUITO: Record<ReportKey, boolean> = {
   compras: false,
   gastos: false,
   resultado: false,
+  "costo-botella": false,
   produccion: false,
   stock: false,
 };
@@ -284,6 +290,7 @@ export default async function ReportesPage({
       {report === "compras" && <ComprasSection period={period} />}
       {report === "gastos" && <GastosSection period={period} />}
       {report === "resultado" && <ResultadoSection period={period} />}
+      {report === "costo-botella" && <CostoBotellaSection period={period} />}
       {report === "produccion" && <ProduccionSection period={period} />}
       {report === "stock" && <StockSection period={period} />}
       </div>

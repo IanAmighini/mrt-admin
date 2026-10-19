@@ -15,9 +15,11 @@ import type { LibroIva, RenglonIva } from "@/lib/libro-iva";
 import { ALICUOTAS_IVA, OTROS_TRIBUTOS } from "@/lib/impuestos";
 import { RETENTION_KIND_LABELS } from "@/lib/labels";
 import {
+  PARTES_DE_LA_BOTELLA,
   REPORT_KEYS_SNAPSHOT,
   REPORT_LABELS,
   type CobranzasReport,
+  type CostoBotellaReport,
   type ComprasReport,
   type GastosReport,
   type InsumosMinimoReport,
@@ -714,6 +716,38 @@ function resultadoSheets(report: ResultadoReport, generatedAt: Date): ExcelSheet
 
 // ---------------------------------------------------------------------------
 
+type FilaCostoBotella = CostoBotellaReport["presentaciones"][number]["productos"][number] & { presentacion: string };
+
+function costoBotellaSheets(report: CostoBotellaReport, generatedAt: Date): ExcelSheet<never>[] {
+  const filas: FilaCostoBotella[] = report.presentaciones.flatMap((g) =>
+    g.productos.map((p) => ({ ...p, presentacion: g.capacidadMl ? `${g.capacidadMl} ml` : "Sin capacidad" }))
+  );
+  return [
+    sheet<FilaCostoBotella>({
+      name: "Costo por botella",
+      title: "Costo por botella",
+      subtitle: [
+        ...periodSubtitle(report.period, generatedAt),
+        `Valuado al ${formatFecha(report.valuadoAl)}: cada insumo a su última compra, en pesos; el envase con su preforma.`,
+        'Si la columna "Falta el costo de" no está vacía, el costo de esa botella queda corto.',
+      ],
+      columns: [
+        { header: "Presentación", value: (r) => r.presentacion, width: 14 },
+        { header: "Producto", value: (r) => `${r.label} ${r.formato}`, width: 34 },
+        ...PARTES_DE_LA_BOTELLA.map((parte) => ({ header: parte, value: (r: FilaCostoBotella) => r.partes[parte], format: "money" as const, width: 14 })),
+        { header: "Costo", value: (r) => r.total, format: "money", width: 14 },
+        { header: "Vendidas", value: (r) => r.vendidas, format: "integer", width: 12 },
+        { header: "Precio promedio", value: (r) => r.precioPromedio, format: "money", width: 16 },
+        { header: "Deja", value: (r) => (r.precioPromedio ? r.precioPromedio.minus(r.total) : null), format: "money", width: 14 },
+        { header: "Falta el costo de", value: (r) => r.sinCosto.join(", "), width: 40 },
+      ],
+      rows: filas,
+    }),
+  ];
+}
+
+// ---------------------------------------------------------------------------
+
 export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
   | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
@@ -723,6 +757,7 @@ export type ReportData =
   | { key: "compras"; report: ComprasReport }
   | { key: "gastos"; report: GastosReport }
   | { key: "resultado"; report: ResultadoReport }
+  | { key: "costo-botella"; report: CostoBotellaReport }
   | { key: "produccion"; report: ProduccionReport }
   | { key: "stock"; report: StockReport };
 
@@ -745,6 +780,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return gastosSheets(data.report, generatedAt);
     case "resultado":
       return resultadoSheets(data.report, generatedAt);
+    case "costo-botella":
+      return costoBotellaSheets(data.report, generatedAt);
     case "produccion":
       return produccionSheets(data.report, generatedAt);
     case "stock":
