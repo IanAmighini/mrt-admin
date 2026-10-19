@@ -41,6 +41,7 @@ export function PaymentFormFields({
   rotuloSubcuenta,
   subcuentasPorEntidad,
   saldos,
+  esSocio,
 }: {
   entities?: Entity[];
   entityNoun?: string;
@@ -63,6 +64,8 @@ export function PaymentFormFields({
   /** Lo que tiene cada cuenta antes de cargar, por entidad: positivo es lo que nos deben (cliente)
    * o lo que les debemos (proveedor). */
   saldos?: Record<string, { blanco: number; negro: number }>;
+  /** La cuenta por la que retiran los socios: ahí quedar a favor es lo normal (es un retiro). */
+  esSocio?: boolean;
 }) {
   const isCobro = entityNoun === "Cliente";
 
@@ -124,6 +127,18 @@ export function PaymentFormFields({
     enDolares && montoNum && cotizacionNum?.greaterThan(0)
       ? montoNum.dividedBy(cotizacionNum)
       : null;
+
+  // Lo que este cobro o pago le acredita a la cuenta, en su moneda: los dólares si la cuenta va en
+  // dólares, el neto si el cheque tiene costo. Con eso se ve si la deja a favor.
+  const credito = enDolares
+    ? acreditado
+    : montoNum && conCosto
+      ? montoNum.times(ZERO.plus(100).minus(costoNum!)).dividedBy(100)
+      : montoNum;
+  const quedaAFavor =
+    saldoDeLaCuenta !== null && credito && credito.greaterThan(0) ? credito.minus(saldoDeLaCuenta) : null;
+  const socio = esSocio ?? Boolean(entities?.find((e) => e.id === entityId)?.retiroSocietario);
+  const avisarAFavor = !socio && quedaAFavor !== null && quedaAFavor.greaterThan(0.005);
 
   return (
     <>
@@ -238,6 +253,27 @@ export function PaymentFormFields({
           )}
         </div>
       </div>
+
+      {/* No frena: un adelanto es legítimo. Pero un pago que deja al proveedor a favor nuestro casi
+          siempre es una factura o un gasto que todavía no se cargó —los sueldos y honorarios van
+          siempre gasto + pago—, y cargado así el gasto no aparece en ningún lado. */}
+      {avisarAFavor && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          {isCobro ? (
+            <>
+              Es más de lo que debe en esta cuenta: le quedarían{" "}
+              <strong>{formatMoney(quedaAFavor!, monedaCuenta)}</strong> a favor, que se descuentan de lo próximo que
+              se le entregue. Si falta cargar un remito o una factura, cargala primero.
+            </>
+          ) : (
+            <>
+              Es más de lo que le debés en esta cuenta: le quedarían <strong>{formatMoney(quedaAFavor!, monedaCuenta)}</strong>{" "}
+              a favor nuestro. Si es un sueldo, un honorario o una factura que todavía no está cargada, cargala primero
+              (con <strong>Cargar</strong> en su ficha) y después el pago. Si es un adelanto, seguí.
+            </>
+          )}
+        </p>
+      )}
 
       {enDolares && (
         <div className="grid grid-cols-2 gap-3">

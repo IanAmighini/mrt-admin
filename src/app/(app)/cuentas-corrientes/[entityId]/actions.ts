@@ -3,7 +3,6 @@
 import { UserError } from "@/lib/user-error";
 import { formatFecha, parseFecha } from "@/lib/period";
 import { revalidatePath } from "next/cache";
-import { notFound } from "next/navigation";
 import {
   Prisma,
   type Circuit,
@@ -64,6 +63,20 @@ function montoDeAjuste(formData: FormData) {
       totalAmount: resta ? amount.negated() : amount,
     },
   };
+}
+
+/**
+ * Un ajuste manual cambia el saldo de un cliente o proveedor sin ningún papel detrás. Lo hace sólo
+ * el administrador —los centavos de una factura que no se pagan—: tocado desde la ficha para "que
+ * cierre", esconde el error real en vez de corregirlo. En una caja es otra cosa (sus movimientos son
+ * todos ajustes) y ahí ya decide quién ve Tesorería.
+ */
+function exigirAdminParaAjuste(role: string, type: DocumentType, entityType: string) {
+  if (type === "AJUSTE" && entityType !== "TESORERIA" && role !== "ADMIN") {
+    throw new UserError(
+      "Un ajuste de saldo lo carga, corrige o borra sólo el administrador. Si es un descuento o un cargo, usá una nota de crédito o de débito."
+    );
+  }
 }
 
 const MANUAL_TREASURY_CATEGORIES: TreasuryMovementCategory[] = [
@@ -237,6 +250,9 @@ export async function updateDocument(formData: FormData) {
   }
 
   const account = await getAccountOrThrow(document.accountId);
+  // El que ya era un ajuste, o el que pasa a serlo.
+  exigirAdminParaAjuste(user.role, document.type, account.entity.type);
+  exigirAdminParaAjuste(user.role, type, account.entity.type);
   // Cómo estaba antes de pisarlo.
   const antesDelDoc = fotoDelComprobante({
     tipo: DOCUMENT_TYPE_LABELS[document.type],
@@ -362,6 +378,7 @@ export async function deleteDocument(formData: FormData) {
   if (document.sourcePaymentId) {
     throw new UserError("Es el movimiento de un pago: se corrige o se borra desde el pago.");
   }
+  exigirAdminParaAjuste(user.role, document.type, document.account.entity.type);
   if (!NON_FACTURA_TYPES.includes(document.type)) {
     throw new UserError("Este comprobante no es una nota ni un ajuste.");
   }
@@ -428,6 +445,7 @@ export async function createDocumentForEntity(formData: FormData) {
 
   const type = String(formData.get("type") || "") as DocumentType;
   if (!NON_FACTURA_TYPES.includes(type)) throw new UserError("Tipo de comprobante inválido.");
+  exigirAdminParaAjuste(user.role, type, entidad.type);
 
   // En una caja el número lo pone la app (CAJA-00012): nadie da comprobante por un ajuste de arqueo,
   // y tipearlo a mano dejaba numeraciones sueltas como "01-01".
@@ -3092,49 +3110,6 @@ export async function updatePayment(formData: FormData) {
   revalidatePath("/dashboard-clientes");
   revalidatePath("/dashboard-proveedores");
   revalidatePath("/tesoreria");
-}
-
-export async function moveRemitoToBlanco(formData: FormData) {
-  const user = await requireRole(["ADMIN", "SECRETARIA"]);
-  await exigirZonaDelFormulario(user.role, formData);
-
-  const documentId = String(formData.get("documentId") || "");
-  const document = await prisma.document.findUnique({
-    where: { id: documentId },
-    include: { account: { include: { entity: true } }, remitoLinks: true },
-  });
-  if (!document) notFound();
-  if (document.type !== "REMITO") throw new UserError("Solo los remitos se pueden mover de cuenta.");
-  if (document.remitoLinks.length > 0) {
-    throw new UserError("Este remito ya está facturado, no se puede mover.");
-  }
-  if (document.account.circuit === "BLANCO") {
-    throw new UserError("El remito ya está en la Cuenta 1 (c/factura).");
-  }
-
-  const blancoAccount = await prisma.account.findUnique({
-    where: { entityId_circuit: { entityId: document.account.entityId, circuit: "BLANCO" } },
-  });
-  if (!blancoAccount) throw new UserError("No se encontró la Cuenta 1 (c/factura) de esta entidad.");
-
-  await prisma.document.update({
-    where: { id: document.id },
-    data: { accountId: blancoAccount.id },
-  });
-
-  await logAudit(prisma, {
-    userId: user.id,
-    action: "UPDATE",
-    entityType: "Remito",
-    entityId: document.account.entityId,
-    summary: `#${document.number} — ${document.account.entity.name} — pasado a Cuenta 1 (c/factura)`,
-    cambios: [
-      { campo: "Cuenta", antes: CIRCUIT_LABELS[document.account.circuit], despues: CIRCUIT_LABELS.BLANCO },
-    ],
-  });
-
-  await reimputarEntidades(document.account.entityId);
-  revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
 }
 
 export async function createPrice(formData: FormData) {

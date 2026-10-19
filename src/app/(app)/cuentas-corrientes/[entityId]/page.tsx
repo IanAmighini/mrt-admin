@@ -259,6 +259,7 @@ export default async function EntityLedgerPage({
           moneda={entity.moneda}
           saldos={{ blanco: toDecimal(blancoSaldo).toNumber(), negro: toDecimal(negroSaldo).toNumber() }}
           sopladores={sopladores}
+          esAdmin={user.role === "ADMIN"}
           movements={recentMovements}
           canEdit={canEdit}
           treasuries={treasuries}

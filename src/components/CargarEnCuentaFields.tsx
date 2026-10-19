@@ -29,6 +29,7 @@ export function CargarEnCuentaFields({
   viajes,
   rotuloSubcuenta,
   sopladores,
+  conAjuste = true,
   moneda = "ARS",
 }: {
   entityId: string;
@@ -44,6 +45,8 @@ export function CargarEnCuentaFields({
   rotuloSubcuenta?: string;
   /** Para una compra de preformas: a qué soplador se le entregaron. */
   sopladores?: { id: string; name: string }[];
+  /** El ajuste manual de saldo es sólo del administrador. */
+  conAjuste?: boolean;
 }) {
   const [vista, setVista] = useState<Vista>("");
 
@@ -117,6 +120,7 @@ export function CargarEnCuentaFields({
             />
           ) : (
             <DocumentFormFields
+              conAjuste={conAjuste}
               monedaCuenta={moneda}
               fixedEntityId={entityId}
               isTreasury={isTreasury}

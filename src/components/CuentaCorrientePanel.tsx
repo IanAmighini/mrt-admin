@@ -47,6 +47,7 @@ export function CuentaCorrientePanel({
   cartera,
   saldos,
   sopladores,
+  esAdmin = false,
   pagosSinOrden,
   items,
   viajes,
@@ -89,6 +90,8 @@ export function CuentaCorrientePanel({
   saldos?: { blanco: number; negro: number };
   /** Los proveedores que llevan cuenta de preformas, para una compra de preformas. */
   sopladores?: { id: string; name: string }[];
+  /** El ajuste manual de saldo es sólo del administrador. */
+  esAdmin?: boolean;
   /** Los pagos en Blanco que todavía no están en una orden de pago. Sólo proveedores. */
   pagosSinOrden?: PagoSinOrden[];
   /** Los insumos, para cargar una compra sin salir de la ficha. Sólo proveedores. */
@@ -132,6 +135,7 @@ export function CuentaCorrientePanel({
                   viajes={viajes}
                   rotuloSubcuenta={rotuloSubcuenta}
                   saldos={saldos ? { [entityId]: saldos } : undefined}
+                  esSocio={esSocio}
                 />
               </FormModal>
             )}
@@ -173,6 +177,7 @@ export function CuentaCorrientePanel({
                   isTreasury={isTreasury}
                   items={items ?? []}
                   sopladores={sopladores}
+                  conAjuste={esAdmin}
                   viajes={viajes}
                   rotuloSubcuenta={rotuloSubcuenta}
                 />
@@ -196,6 +201,8 @@ export function CuentaCorrientePanel({
                     monedaCuenta={moneda}
                     fixedEntityId={entityId}
                     isTreasury={isTreasury}
+                    conAjuste={esAdmin}
+                    sugerirDevolucion={!isTreasury}
                     viajes={viajes}
                     destinatarios={destinatarios}
                     rotuloSubcuenta={rotuloSubcuenta}

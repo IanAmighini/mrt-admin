@@ -24,7 +24,6 @@ import {
   deletePayment,
   editarEntrada,
   deleteRemito,
-  moveRemitoToBlanco,
   updateCompra,
   updateDocument,
   updateFactura,
@@ -34,7 +33,6 @@ import {
 } from "../actions";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
-import { BotonConError } from "@/components/BotonConError";
 import { RemitoFormFields, lineaDeRemito } from "@/components/RemitoForm";
 import { CompraFormFields, filaDeCompra } from "@/components/CompraForm";
 import { EditFacturaFields } from "@/components/EditFacturaFields";
@@ -272,16 +270,6 @@ export default async function AccountLedgerPage({
       destinatarioId: doc.destinatarioId,
     };
 
-    const moveToBlanco =
-      circuit === "NEGRO" && doc.remitoLinks.length === 0 ? (
-        <BotonConError
-          action={moveRemitoToBlanco}
-          hidden={{ documentId: doc.id }}
-          className="text-xs underline underline-offset-2"
-        >
-          Pasar a Cuenta 1 (c/factura)
-        </BotonConError>
-      ) : null;
 
     const insumoVendido = ventasDeInsumo.get(doc.id);
     if (insumoVendido) {
@@ -344,7 +332,6 @@ export default async function AccountLedgerPage({
             hiddenValue={doc.id}
             nombre={`el remito #${doc.number}`}
           />
-          {moveToBlanco}
         </div>
       );
     }
@@ -372,7 +359,6 @@ export default async function AccountLedgerPage({
             nombre={`la compra #${doc.number}`}
             consecuencia="El stock que sumó se revierte."
           />
-          {moveToBlanco}
         </div>
       );
     }
@@ -473,6 +459,10 @@ export default async function AccountLedgerPage({
       );
     }
 
+    // Un ajuste de saldo —y el saldo inicial, que también lo es— lo toca sólo el administrador: sin
+    // papel detrás, corregirlo para "que cierre" esconde el error real.
+    if (doc.type === "AJUSTE" && user.role !== "ADMIN") return null;
+
     return (
       <div className="flex items-center gap-2">
         <FormModal
@@ -484,6 +474,7 @@ export default async function AccountLedgerPage({
           maxWidthClass="max-w-xl"
         >
           <DocumentFormFields monedaCuenta={monedaCuenta}
+            conAjuste={user.role === "ADMIN"}
             editingDocumentId={doc.id}
             circuitoFijo={circuit}
             isTreasury={isTreasuryEntity}

@@ -62,6 +62,8 @@ export function DocumentFormFields({
   destinatarios,
   rotuloSubcuenta,
   monedaCuenta = "ARS",
+  conAjuste = true,
+  sugerirDevolucion = false,
 }: {
   fixedEntityId?: string;
   isTreasury?: boolean;
@@ -77,6 +79,13 @@ export function DocumentFormFields({
   /** Al editar: el circuito de la cuenta, que no se puede cambiar desde acá. */
   circuitoFijo?: CircuitoMovimiento;
   defaultValues?: DocumentDefaults;
+  /**
+   * El ajuste manual cambia el saldo sin ningún papel detrás: lo usa sólo el administrador (los
+   * centavos de una factura que no se pagan). La secretaría carga notas, que dicen de qué son.
+   */
+  conAjuste?: boolean;
+  /** En un cliente: una nota de crédito por mercadería que volvió va por Devolución, que mueve stock. */
+  sugerirDevolucion?: boolean;
 }) {
   const esEdicion = Boolean(editingDocumentId);
   const [type, setType] = useState<TipoMovimiento>(defaultValues?.type ?? "NOTA_CREDITO");
@@ -148,8 +157,14 @@ export function DocumentFormFields({
         >
           <option value="NOTA_CREDITO">Nota de crédito</option>
           <option value="NOTA_DEBITO">Nota de débito</option>
-          <option value="AJUSTE">Ajuste manual</option>
+          {(conAjuste || type === "AJUSTE") && <option value="AJUSTE">Ajuste manual</option>}
         </select>
+        {sugerirDevolucion && type === "NOTA_CREDITO" && !esEdicion && (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            ¿Volvió mercadería? Cerrá esto y usá <strong>Devolución</strong>: además de descontársela al cliente, la
+            vuelve al stock. Una nota de crédito acá baja la deuda pero el stock no se entera.
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3">
