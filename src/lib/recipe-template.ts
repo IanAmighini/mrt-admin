@@ -51,14 +51,12 @@ function tapaPorBoca(ml: number): string {
 }
 
 /**
- * Las marcas que etiquetan un envase con la etiqueta de otra medida, por marca + aceite: envase → la
- * medida de la etiqueta que se usa. Va marca por marca y no como regla general a propósito: que
- * una marca no tenga cargada su etiqueta de 850 no quiere decir que use la de 900, y adivinarlo
- * descontaría etiquetas que no se usaron. Se agrega acá cuando producción lo confirma.
+ * Los envases que se etiquetan con la etiqueta de otra medida: envase → la medida de la etiqueta.
+ * **Las etiquetas de 850 no existen: toda botella de 850 lleva la de 900 de su marca** (confirmado
+ * el 19/10/2026). Antes iba marca por marca —sólo Goye— y la receta de Don José 850 apuntaba a una
+ * "Etiqueta 850ml" cargada en el catálogo que nunca se compra ni se usa.
  */
-const ETIQUETA_DE_OTRA_MEDIDA: Record<string, Record<number, number>> = {
-  "Goye Girasol": { 850: 900 },
-};
+const ETIQUETA_DE_OTRA_MEDIDA: Record<number, number> = { 850: 900 };
 
 /** Un ml entero para armar nombres: `Decimal(900.00)` tiene que dar "900", no "900.00". */
 function ml(value: Prisma.Decimal | number): number {
@@ -71,7 +69,7 @@ type ItemDeReceta = { id: string; name: string; category: SupplierCategory; unit
 export function nombresDeLaPlantilla(marca: MarcaInfo, formato: FormatoInfo): string[] {
   const capacidad = ml(formato.bottleCapacityMl);
   const tramo = tramoDeCaja(capacidad);
-  const otraMedida = ETIQUETA_DE_OTRA_MEDIDA[`${marca.name} ${marca.oilType}`]?.[capacidad];
+  const otraMedida = ETIQUETA_DE_OTRA_MEDIDA[capacidad];
   return [
     "Pallet de madera",
     `Envase ${capacidad}ml`,
@@ -116,7 +114,7 @@ export function plantillaDeReceta(
   const cajaDeMarca = `Caja ${marca.name} ${formato.unitsPerBox}x${tramo}`;
   const cajaLisa = `Caja Lisa ${formato.unitsPerBox}x${tramo}`;
   const etiquetaPropia = `Etiqueta ${marca.name} ${marca.oilType} ${capacidad}ml`;
-  const otraMedida = ETIQUETA_DE_OTRA_MEDIDA[`${marca.name} ${marca.oilType}`]?.[capacidad];
+  const otraMedida = ETIQUETA_DE_OTRA_MEDIDA[capacidad];
   const etiquetaPrestada = otraMedida ? `Etiqueta ${marca.name} ${marca.oilType} ${otraMedida}ml` : null;
 
   const producto = `${marca.name} ${marca.oilType} ${formato.presentation}`;
@@ -155,9 +153,9 @@ export function plantillaDeReceta(
   // Sin etiqueta es producto terminado sin etiquetar, así que ahí la ausencia es correcta. Para el
   // resto, que falte es un error: exigir() lo dice con nombre y apellido.
   if (marca.usaEtiqueta) {
-    // La propia, si existe, gana siempre: la prestada es sólo para cuando la marca no la tiene.
-    const etiqueta =
-      etiquetaPrestada && !porNombre.has(etiquetaPropia) && porNombre.has(etiquetaPrestada) ? etiquetaPrestada : etiquetaPropia;
+    // La de la otra medida gana cuando existe: la de 850 que figure en el catálogo no se usa. Si la
+    // marca no tiene la de 900 cargada, queda la propia y exigir() la pide por su nombre.
+    const etiqueta = etiquetaPrestada && porNombre.has(etiquetaPrestada) ? etiquetaPrestada : etiquetaPropia;
     lines.push({ itemId: exigir(etiqueta, "ETIQUETAS"), quantityPerUnit: porBotella });
   }
 
