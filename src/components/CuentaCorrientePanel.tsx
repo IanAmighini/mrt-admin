@@ -46,6 +46,7 @@ export function CuentaCorrientePanel({
   proveedores,
   cartera,
   saldos,
+  sopladores,
   pagosSinOrden,
   items,
   viajes,
@@ -86,6 +87,8 @@ export function CuentaCorrientePanel({
   cartera?: ChequeEnCartera[];
   /** Lo que tiene cada cuenta ahora: el formulario de cobro o pago lo muestra al elegir la cuenta. */
   saldos?: { blanco: number; negro: number };
+  /** Los proveedores que llevan cuenta de preformas, para una compra de preformas. */
+  sopladores?: { id: string; name: string }[];
   /** Los pagos en Blanco que todavía no están en una orden de pago. Sólo proveedores. */
   pagosSinOrden?: PagoSinOrden[];
   /** Los insumos, para cargar una compra sin salir de la ficha. Sólo proveedores. */
@@ -169,6 +172,7 @@ export function CuentaCorrientePanel({
                   rubroGasto={rubroGasto}
                   isTreasury={isTreasury}
                   items={items ?? []}
+                  sopladores={sopladores}
                   viajes={viajes}
                   rotuloSubcuenta={rotuloSubcuenta}
                 />

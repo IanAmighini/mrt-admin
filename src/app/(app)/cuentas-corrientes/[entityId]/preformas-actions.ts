@@ -86,6 +86,11 @@ export async function deleteEntregaPreforma(formData: FormData) {
     include: { entity: { select: { name: true, slug: true } }, preforma: { select: { name: true } } },
   });
   if (!entrega) throw new UserError("La entrega ya no existe.");
+  if (entrega.documentId) {
+    throw new UserError(
+      `Esta entrega es de la compra ${entrega.comprobante ?? ""} (${entrega.notes ?? "de preformas"}): se corrige o se borra desde esa compra.`
+    );
+  }
 
   await prisma.entregaPreforma.delete({ where: { id: entregaId } });
 

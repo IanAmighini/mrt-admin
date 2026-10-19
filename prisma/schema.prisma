@@ -378,6 +378,7 @@ model Document {
   chequesDelCambio  Cheque[]            @relation("ChequeCambiado")
   /// Los cobros a un proveedor que pagan esta venta.
   cobrosDeVenta     Payment[]           @relation("CobroDeVenta")
+  entregasPreforma  EntregaPreforma[]
 
   @@index([accountId])
   @@index([destinatarioId])
@@ -1021,21 +1022,26 @@ model PreformaSaldoInicial {
 }
 
 model EntregaPreforma {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   entityId    String
-  entity      Entity   @relation(fields: [entityId], references: [id])
+  entity      Entity    @relation(fields: [entityId], references: [id])
   preformaId  String
-  preforma    Preforma @relation(fields: [preformaId], references: [id])
+  preforma    Preforma  @relation(fields: [preformaId], references: [id])
   date        DateTime
-  quantity    Decimal  @db.Decimal(14, 3)
+  quantity    Decimal   @db.Decimal(14, 3)
   comprobante String?
   notes       String?
+  /// La compra de preformas que la generó, cuando se compraron para entregárselas directo al
+  /// soplador. Nace y muere con la compra: editarla la rehace, borrarla la borra.
+  documentId  String?
+  document    Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
   createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
 
   @@index([entityId])
   @@index([preformaId])
+  @@index([documentId])
 }
 
 /**

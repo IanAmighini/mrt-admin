@@ -18,6 +18,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { exigirZonaDelFormulario } from "@/lib/zonas";
+import { getSopladores, tiposDePreforma } from "@/lib/preformas";
 import { DEFAULT_IVA_RATE, formatMoney, formatNumeroExacto, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
 import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impuestos";
 import { allocateFifo, defaultDueDate, getDocumentEffect } from "@/lib/ledger";
@@ -1718,6 +1719,26 @@ async function createCompraCore(
     }
   }
 
+  // **Preformas que se compran para entregárselas al soplador.** Se registra la entrega en su cuenta
+  // de preformas junto con la compra, atada a ella: antes eran dos cargas separadas —la compra en la
+  // cuenta de Cristian y "Registrar entrega" en la de Teoplast— y nada impedía que quedara una sin la
+  // otra. El formulario dice a quién (`preformasA`); sin el campo, y con un solo soplador, va a ése.
+  const tipoPorItem = await tiposDePreforma(lines.map((l) => l.itemId));
+  let sopladorId: string | null = null;
+  if (lines.some((l) => tipoPorItem.has(l.itemId))) {
+    const elegido = formData.get("preformasA");
+    const sopladores = await getSopladores();
+    if (elegido === null) {
+      if (sopladores.length > 1) throw new UserError("Elegí a qué soplador se le entregaron las preformas.");
+      sopladorId = sopladores[0]?.id ?? null;
+    } else if (String(elegido)) {
+      if (!sopladores.some((s) => s.id === String(elegido))) {
+        throw new UserError("Ese proveedor no lleva cuenta de preformas.");
+      }
+      sopladorId = String(elegido);
+    }
+  }
+
   const accounts = await prisma.account.findMany({ where: { entityId } });
   const accountByCircuit = new Map(accounts.map((a) => [a.circuit, a]));
 
@@ -1782,6 +1803,22 @@ async function createCompraCore(
       await tx.purchaseLine.createMany({
         data: lineData.map((l) => ({ ...l, documentId: document.id })),
       });
+
+      const entregas = sopladorId ? circuitLines.filter((l) => tipoPorItem.has(l.itemId)) : [];
+      if (entregas.length > 0) {
+        await tx.entregaPreforma.createMany({
+          data: entregas.map((l) => ({
+            entityId: sopladorId!,
+            preformaId: tipoPorItem.get(l.itemId)!.id,
+            date,
+            quantity: l.quantity,
+            comprobante: number,
+            notes: `Compra a ${entity.name}`,
+            documentId: document.id,
+            createdById: user.id,
+          })),
+        });
+      }
 
       if (taxRows.length > 0) {
         await tx.documentTax.createMany({

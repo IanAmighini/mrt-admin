@@ -18,6 +18,8 @@ export function CompraFormFields({
   impuestos,
   factura,
   defaultRows,
+  sopladores,
+  defaultSopladorId,
 }: {
   entidad: { id: string; name: string; moneda: Currency };
   items: Item[];
@@ -29,6 +31,9 @@ export function CompraFormFields({
   factura?: { number: string; date: string };
   /** Las líneas que la compra ya tiene, al editar. */
   defaultRows?: FilaDeCompra[];
+  /** Si trae preformas: los sopladores, y a cuál se le entregaron ("" si a ninguno). */
+  sopladores?: { id: string; name: string }[];
+  defaultSopladorId?: string;
 }) {
   return (
     <>
@@ -56,6 +61,8 @@ export function CompraFormFields({
         defaultRows={defaultRows}
         impuestosDefaults={impuestos}
         factura={factura}
+        sopladores={sopladores}
+        defaultSopladorId={defaultSopladorId}
         textoBoton="Guardar cambios"
       />
     </>

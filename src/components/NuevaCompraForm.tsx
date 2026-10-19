@@ -24,6 +24,7 @@ import {
 import { useEnvioUnico } from "./useEnvioUnico";
 import { SelectBuscable } from "@/components/ui/SelectBuscable";
 import { hoyEnInput } from "@/lib/period";
+import { segmentoClass, segmentosClass } from "./ui/Segmentos";
 
 type Circuit = "BLANCO" | "NEGRO";
 
@@ -90,6 +91,8 @@ export function NuevaCompraFields({
   defaultRows,
   impuestosDefaults,
   factura,
+  sopladores,
+  defaultSopladorId,
   error,
   pending,
 }: {
@@ -107,6 +110,11 @@ export function NuevaCompraFields({
   defaultRows?: FilaDeCompra[];
   impuestosDefaults?: ImpuestosValores;
   factura?: { number: string; date: string };
+  /** Los que soplan con preformas nuestras (Teoplast). Si la compra trae preformas, se elige a cuál
+   * se le entregaron y la entrega se registra sola en su cuenta de preformas. */
+  sopladores?: { id: string; name: string }[];
+  /** Al editar: a quién se le entregaron ("" si a nadie). Sin esto, el primero. */
+  defaultSopladorId?: string;
   /** El error de la acción, cuando el formulario no vive adentro de un FormModal que ya lo muestra. */
   error?: string | null;
   pending?: boolean;
@@ -552,6 +560,34 @@ export function NuevaCompraFields({
           ))}
         </div>
 
+        {sopladores && sopladores.length > 0 && rows.some((r) => items.find((i) => i.id === r.itemId)?.category === "PREFORMAS") && (
+          <div className="space-y-1 rounded-lg border border-foreground/10 p-3">
+            <p className="text-sm font-medium">¿A quién se le entregaron las preformas?</p>
+            <div className={segmentosClass} role="radiogroup" aria-label="A quién se le entregaron las preformas">
+              {sopladores.map((s) => (
+                <label key={s.id} className={segmentoClass}>
+                  <input
+                    type="radio"
+                    name="preformasA"
+                    value={s.id}
+                    defaultChecked={(defaultSopladorId ?? sopladores[0].id) === s.id}
+                    className="sr-only"
+                  />
+                  {s.name}
+                </label>
+              ))}
+              <label className={segmentoClass}>
+                <input type="radio" name="preformasA" value="" defaultChecked={defaultSopladorId === ""} className="sr-only" />
+                A nadie todavía
+              </label>
+            </div>
+            <p className="text-xs text-foreground/50">
+              Se le descuentan de lo que le debés en preformas, con el número de esta compra. Si corregís o borrás la
+              compra, la entrega se corrige o se borra con ella.
+            </p>
+          </div>
+        )}
+
         {netos.BLANCO > 0 && (
           <>
             <ImpuestosFields defaults={impuestosDefaults} onChange={setImpuestos} netoDeLineas={netos.BLANCO} />
@@ -611,6 +647,7 @@ export function NuevaCompraForm({
   items: ItemInfo[];
   fixedEntity?: ProveedorInfo;
   ocultarProveedor?: boolean;
+  sopladores?: { id: string; name: string }[];
 }) {
   // Sin esto, un error —que no haya stock, que falte la cotización— reemplazaba la pantalla entera
   // por "This page couldn't load" y se perdía todo lo cargado.

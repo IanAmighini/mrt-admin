@@ -83,3 +83,33 @@ export async function getDeudaPreformas(entityId: string): Promise<DeudaPreforma
     // Un tipo sin nada de ningún lado no aporta nada a la pantalla.
     .filter((d) => !d.recibidas.isZero() || !d.entregadas.isZero() || !d.saldoInicial.isZero());
 }
+
+/**
+ * Los que soplan con preformas nuestras: los proveedores que llevan cuenta de preformas. Hoy sólo
+ * Teoplast, pero una compra de preformas puede ir a cualquiera de ellos.
+ */
+export async function getSopladores() {
+  return prisma.entity.findMany({
+    where: { llevaCuentaPreformas: true },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
+/**
+ * El tipo de preforma de un insumo de la categoría Preformas. Van por nombre —"Preforma 850/900"
+ * es del tipo "850/900"— porque `Item.preformaId` es de los envases: ponérselo a la preforma misma
+ * haría que la cuenta de preformas la contara como un envase recibido.
+ */
+export async function tiposDePreforma(itemIds: string[]) {
+  const [items, preformas] = await Promise.all([
+    prisma.item.findMany({ where: { id: { in: itemIds }, category: "PREFORMAS" }, select: { id: true, name: true } }),
+    prisma.preforma.findMany({ select: { id: true, name: true } }),
+  ]);
+  return new Map(
+    items.flatMap((i) => {
+      const tipo = preformas.find((p) => i.name.trim() === `Preforma ${p.name}`);
+      return tipo ? [[i.id, tipo] as const] : [];
+    })
+  );
+}

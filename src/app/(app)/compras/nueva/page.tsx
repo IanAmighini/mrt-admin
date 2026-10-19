@@ -6,6 +6,7 @@ import { createCompra, createGasto } from "@/app/(app)/cuentas-corrientes/[entit
 import { CargarCompraOGasto, type Tipo } from "@/components/CargarCompraOGasto";
 import { compareItemsBySize } from "@/lib/item-order";
 import { rubroLabel } from "@/lib/rubro-proveedor";
+import { getSopladores } from "@/lib/preformas";
 
 /**
  * Lo que se le compra a un proveedor, insumos o un gasto, desde una sola pantalla. `?tipo=gasto`
@@ -70,6 +71,7 @@ export default async function NuevaCompraPage({
 
       {canEdit && (
         <CargarCompraOGasto
+          sopladores={await getSopladores()}
           compraAction={guardarCompra}
           gastoAction={guardarGasto}
           tipoInicial={tipoInicial}

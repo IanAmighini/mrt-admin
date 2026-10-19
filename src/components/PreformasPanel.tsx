@@ -16,6 +16,9 @@ type EntregaInfo = {
   quantity: Prisma.Decimal;
   comprobante: string | null;
   preforma: { name: string };
+  /** La compra que la generó, si se compraron para dárselas a él: se corrige desde la compra. */
+  notes?: string | null;
+  documentId?: string | null;
 };
 
 /**
@@ -220,9 +223,12 @@ export function PreformasPanel({
                 <p className="text-xs text-foreground/50">
                   {formatFecha(e.date)}
                   {e.comprobante ? ` · ${e.comprobante}` : ""}
+                  {e.documentId && e.notes ? ` · ${e.notes}` : ""}
                 </p>
               </div>
-              {canEdit && (
+              {/* La que nació con una compra se borra con ella: suelta, la compra seguiría diciendo
+                  que esas preformas se le entregaron. */}
+              {canEdit && !e.documentId && (
                 <DeleteButton
                   action={deleteEntregaPreforma}
                   hiddenName="entregaId"

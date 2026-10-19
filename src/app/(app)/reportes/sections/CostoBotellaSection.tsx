@@ -14,7 +14,6 @@ export async function CostoBotellaSection({ period }: { period: Period }) {
   const partes = PARTES_DE_LA_BOTELLA.filter(
     (p) => p !== "Otros" || report.presentaciones.some((g) => g.productos.some((x) => !x.partes.Otros.isZero() || x.incompletas.includes("Otros")))
   );
-  const hayFaltantes = report.presentaciones.some((g) => g.productos.some((x) => x.sinCosto.length > 0));
 
   return (
     <div className="space-y-6">
@@ -23,12 +22,33 @@ export async function CostoBotellaSection({ period }: { period: Period }) {
         Cristian con la cotización de ese día—, y el envase con su preforma. El precio es el promedio al que se vendió
         en el período, neto de IVA.
       </p>
-      {hayFaltantes && (
-        <p className="rounded-lg bg-amber-50 px-2 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-          Donde dice <strong>falta</strong>, algún insumo de esa parte no tiene ninguna compra cargada ni costo en su
-          ficha, así que el costo de la botella queda corto (pasá el mouse para ver cuál). Se arregla cargando el costo
-          unitario en la ficha del insumo.
-        </p>
+      {/* Lo que falta costear, con un link a cada ficha: es la lista de tareas para que el margen dé
+          bien. Va primero el que más botellas destraba. */}
+      {report.faltan.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm dark:border-amber-900/50 dark:bg-amber-950/30">
+          <p className="text-amber-900 dark:text-amber-200">
+            <strong>Falta el costo de {report.faltan.length} {report.faltan.length === 1 ? "insumo" : "insumos"}</strong>: no
+            tienen ninguna compra cargada. Mientras tanto, las botellas que los usan dan un costo más bajo del real. Tocá
+            cada uno y cargá su <strong>costo unitario</strong> en la ficha; cuando se compre, manda el precio de la compra.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {report.faltan.map((f) =>
+              f.slug ? (
+                <Link
+                  key={f.name}
+                  href={`/stock/${f.slug}`}
+                  className="rounded-md border border-amber-300 bg-background px-2 py-1 text-xs text-amber-900 transition-colors hover:border-amber-500 dark:border-amber-800 dark:text-amber-200"
+                >
+                  {f.name} <span className="text-foreground/40">· {f.productos}</span>
+                </Link>
+              ) : (
+                <span key={f.name} className="rounded-md border border-amber-300 px-2 py-1 text-xs dark:border-amber-800">
+                  {f.name}
+                </span>
+              )
+            )}
+          </div>
+        </div>
       )}
 
       {report.presentaciones.map((g) => {

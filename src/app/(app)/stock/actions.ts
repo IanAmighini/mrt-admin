@@ -113,8 +113,9 @@ export async function updateItemAjustes(formData: FormData) {
   const unitCostRaw = String(formData.get("unitCost") || "").trim();
   const minStockRaw = String(formData.get("minStock") || "").trim();
   if (!itemId) throw new UserError("Falta el insumo.");
-  if (!unitCostRaw) throw new UserError("Falta el costo unitario.");
-  const unitCost = parseNumeroEscrito(unitCostRaw, "costo unitario");
+  // Opcional: el margen toma el precio de la última compra, y el de la ficha es sólo para el insumo
+  // que todavía no tiene ninguna. Obligarlo hacía inventar un costo para cambiar el stock mínimo.
+  const unitCost = unitCostRaw ? parseNumeroEscrito(unitCostRaw, "costo unitario") : null;
   const minStock = minStockRaw ? parseNumeroEscrito(minStockRaw, "stock mínimo") : null;
   if (minStock?.isNegative()) {
     throw new UserError("El stock mínimo no puede ser negativo.");
@@ -161,7 +162,7 @@ export async function updateItemAjustes(formData: FormData) {
     action: "UPDATE",
     entityType: "Insumo",
     entityId: itemId,
-    summary: `${item.name} — costo unitario: ${unitCostRaw} · stock mínimo: ${minStockRaw || "sin mínimo"}`,
+    summary: `${item.name} — costo unitario: ${unitCostRaw || "sin cargar"} · stock mínimo: ${minStockRaw || "sin mínimo"}`,
     cambios: diffDeCampos(
       antes && { ...antes, preformaNombre: antes.preforma?.name ?? null },
       { ...item, preformaNombre: item.preforma?.name ?? null },

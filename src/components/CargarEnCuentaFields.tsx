@@ -28,6 +28,7 @@ export function CargarEnCuentaFields({
   items,
   viajes,
   rotuloSubcuenta,
+  sopladores,
   moneda = "ARS",
 }: {
   entityId: string;
@@ -41,6 +42,8 @@ export function CargarEnCuentaFields({
   /** Las partes de la cuenta de este proveedor, si la divide. */
   viajes?: ViajeOption[];
   rotuloSubcuenta?: string;
+  /** Para una compra de preformas: a qué soplador se le entregaron. */
+  sopladores?: { id: string; name: string }[];
 }) {
   const [vista, setVista] = useState<Vista>("");
 
@@ -99,6 +102,7 @@ export function CargarEnCuentaFields({
           proveedores={[{ id: entityId, name: entityName, moneda }]}
           fixedEntity={{ id: entityId, name: entityName, moneda }}
           items={items}
+          sopladores={sopladores}
           textoBoton="Cargar la compra"
         />
       ) : (

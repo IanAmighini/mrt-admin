@@ -1191,6 +1191,8 @@ export type CostoBotellaReport = {
   /** El día al que están valuados los insumos: el último del período o hoy, lo que sea antes. */
   valuadoAl: Date;
   presentaciones: { capacidadMl: number | null; productos: CostoBotellaProducto[] }[];
+  /** Los insumos que hay que costear para que las botellas den completas, con cuántas recetas usan. */
+  faltan: { name: string; slug: string | null; productos: number }[];
 };
 
 /**
@@ -1228,6 +1230,10 @@ export async function getCostoBotellaReport(period: Period): Promise<CostoBotell
     }),
   ]);
 
+  const slugPorNombre = new Map(
+    (await prisma.item.findMany({ select: { name: true, slug: true } })).map((i) => [i.name, i.slug])
+  );
+  const faltan = new Map<string, number>();
   const presentaciones = new Map<number | null, CostoBotellaProducto[]>();
   for (const producto of productos) {
     const porPallet = (producto.boxesPerPallet ?? 0) * (producto.unitsPerBox ?? 0);
@@ -1251,6 +1257,7 @@ export async function getCostoBotellaReport(period: Period): Promise<CostoBotell
       partes[parte] = partes[parte].plus(r.quantityPerUnit.times(unitario).dividedBy(porPallet));
     }
     const total = sumDecimals(PARTES_DE_LA_BOTELLA.map((p) => partes[p]));
+    for (const nombre of new Set(sinCosto)) faltan.set(nombre, (faltan.get(nombre) ?? 0) + 1);
 
     let vendidas = ZERO;
     let vendido = ZERO;
@@ -1287,5 +1294,9 @@ export async function getCostoBotellaReport(period: Period): Promise<CostoBotell
         // Lo que más se vendió arriba: es lo que más pesa en el margen.
         productos: productos.sort((x, y) => y.vendidas.comparedTo(x.vendidas) || x.label.localeCompare(y.label, "es")),
       })),
+    // Los que más recetas destraban, primero: cargar uno solo completa muchas botellas.
+    faltan: Array.from(faltan.entries())
+      .map(([name, productos]) => ({ name, slug: slugPorNombre.get(name) ?? null, productos }))
+      .sort((a, b) => b.productos - a.productos || a.name.localeCompare(b.name, "es")),
   };
 }

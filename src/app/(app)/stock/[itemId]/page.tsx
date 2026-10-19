@@ -7,6 +7,8 @@ import { getItemMovements, getItemStock } from "@/lib/stock";
 import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { DENSIDAD_ACEITE } from "@/lib/aceite";
 import { getPreformasOrdenadas } from "@/lib/preformas";
+import { getCotizador } from "@/lib/cotizaciones";
+import { getCostosUnitarios } from "@/lib/dashboard-kpis";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
 import {
   borrarMovimientoDeInsumo,
@@ -42,7 +44,7 @@ export default async function ItemDetailPage({
   if (!item) notFound();
   if (itemId !== item.slug) redirect(`/stock/${item.slug}`);
 
-  const [stock, movements, preformas, entidades] = await Promise.all([
+  const [stock, movements, preformas, entidades, cotizador, ultimaCompra] = await Promise.all([
     getItemStock(item.id),
     getItemMovements(item.id),
     // Sólo se usa en el formulario de envases, pero pedirla siempre evita una consulta condicional
@@ -55,7 +57,16 @@ export default async function ItemDetailPage({
       select: { id: true, name: true, type: true, moneda: true },
       orderBy: { name: "asc" },
     }),
+    getCotizador(),
+    prisma.purchaseLine.findFirst({
+      where: { itemId: item.id, unitPrice: { gt: 0 } },
+      orderBy: { document: { date: "desc" } },
+      select: { document: { select: { date: true, number: true, account: { select: { entity: { select: { name: true } } } } } } },
+    }),
   ]);
+  // El costo con el que este insumo entra al margen hoy, y de dónde sale: así se ve si hace falta
+  // cargarlo en la ficha o si ya lo resuelve una compra.
+  const costoHoy = (await getCostosUnitarios(cotizador))(item.id, new Date());
   const movementsDesc = movements.slice().reverse();
 
   // Las ventas del historial, para poder corregirlas desde acá: el formulario arranca con lo que
@@ -102,8 +113,19 @@ export default async function ItemDetailPage({
           </div>
         </div>
         <p className="mt-1 text-sm text-foreground/60">
-          Costo unitario: {item.unitCost ? formatMoney(item.unitCost) : "sin cargar"} · Stock mínimo:{" "}
-          {item.minStock ? formatQuantity(item.minStock, item.unit) : "sin definir"}
+          Costo para el margen:{" "}
+          {costoHoy ? (
+            <>
+              <strong className="font-medium text-foreground">{formatMoney(costoHoy)}</strong> por {item.unit}
+              {ultimaCompra
+                ? ` — de la compra ${ultimaCompra.document.number} a ${ultimaCompra.document.account.entity.name} del ${formatFecha(ultimaCompra.document.date)}`
+                : " — el cargado en esta ficha, porque todavía no hay compras"}
+              {item.category === "ENVASES" && item.preformaId && ", con su preforma"}
+            </>
+          ) : (
+            <span className="text-amber-700 dark:text-amber-400">sin costo: no hay compras cargadas, cargalo abajo</span>
+          )}{" "}
+          · Stock mínimo: {item.minStock ? formatQuantity(item.minStock, item.unit) : "sin definir"}
         </p>
       </div>
 
@@ -117,13 +139,13 @@ export default async function ItemDetailPage({
           <input type="hidden" name="itemId" value={item.id} />
           <div className="space-y-1">
             <label className="text-sm" htmlFor="unitCost">
-              Costo unitario
+              Costo unitario ($ por {item.unit}, sin IVA)
             </label>
             <input
               id="unitCost"
               name="unitCost"
-              required
               inputMode="decimal"
+              placeholder={ultimaCompra ? "sale de las compras" : "sin cargar"}
               defaultValue={formatNumeroExacto(item.unitCost)}
               className="w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm"
             />

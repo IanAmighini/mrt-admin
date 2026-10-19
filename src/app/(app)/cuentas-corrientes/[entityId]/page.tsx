@@ -51,7 +51,7 @@ import { PreformasPanel } from "@/components/PreformasPanel";
 import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { ViajesPanel } from "@/components/ViajesPanel";
 import { getDestinatarios, getEntregasDeEntidad, getEntregasParaElegir } from "@/lib/entregas";
-import { getDeudaPreformas, getPreformasOrdenadas } from "@/lib/preformas";
+import { getDeudaPreformas, getPreformasOrdenadas, getSopladores } from "@/lib/preformas";
 import { proximoNumeroDeDevolucion as proximoNumeroDevolucion } from "@/lib/devoluciones";
 
 export default async function EntityLedgerPage({
@@ -121,6 +121,8 @@ export default async function EntityLedgerPage({
   const isCliente = entity.type !== "PROVEEDOR" && !isCaja;
   const isProveedor = entity.type !== "CLIENTE" && !isCaja;
   // Las ventas de insumos que el proveedor todavía no pagó: su cobro elige cuál paga.
+  // Para una compra de preformas: a qué soplador se le entregan (hoy sólo Teoplast).
+  const sopladores = isProveedor ? await getSopladores() : [];
   const ventasACobrar = entity.type === "PROVEEDOR" || entity.retiroSocietario ? await getVentasACobrar(entity.id) : [];
   const isSoloCliente = entity.type === "CLIENTE";
 
@@ -256,6 +258,7 @@ export default async function EntityLedgerPage({
           rubroGasto={entity.expenseCategory}
           moneda={entity.moneda}
           saldos={{ blanco: toDecimal(blancoSaldo).toNumber(), negro: toDecimal(negroSaldo).toNumber() }}
+          sopladores={sopladores}
           movements={recentMovements}
           canEdit={canEdit}
           treasuries={treasuries}

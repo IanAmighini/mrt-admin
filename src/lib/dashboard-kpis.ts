@@ -140,12 +140,11 @@ export type CostoInsumoRow = {
 };
 
 /**
- * Lo que costó una unidad de cada insumo en una fecha, en pesos: el costo unitario cargado en su
- * ficha si lo tiene; si no, el precio de la última compra hasta ese día —o la primera después, si
- * se usó antes de cargar la compra—, pasado a pesos con la cotización de esa compra. Así el aceite,
- * que se le compra a Cristian en dólares y no tiene costo en la ficha, cuesta lo que se pagó.
- */
-/**
+ * Lo que costó una unidad de cada insumo en una fecha, en pesos: el precio de la última compra hasta
+ * ese día, pasado a pesos con la cotización de esa compra; si no hay ninguna antes, el costo cargado
+ * en su ficha; y si tampoco, la primera compra después. Así el aceite, que se le compra a Cristian
+ * en dólares y no tiene costo en la ficha, cuesta lo que se pagó.
+ *
  * Se arma una vez por cotizador, con todos los insumos: son unas decenas y sus compras, y el reporte
  * de Resultado lo pide para siete meses seguidos. Pedido por insumo, tardaba nueve segundos.
  */
@@ -194,17 +193,17 @@ async function armarCostosUnitarios(cot: Cotizador) {
     lista.push({ fecha: c.document.date, unitario: cot.aPesos(c.unitPrice, c.document.currency, c.document.date, c.document.exchangeRate) });
     porItem.set(c.itemId, lista);
   }
+  // Manda la última compra hasta esa fecha: es lo que de verdad se pagó, y se mantiene al día sola.
+  // El costo de la ficha es para el insumo que todavía no tiene compras —el stock con el que se
+  // arrancó—; si mandara él, quedaría viejo apenas se volviera a comprar más caro.
   const propio = (itemId: string, fecha: Date): Prisma.Decimal | null => {
-    const manual = fijo.get(itemId);
-    if (manual) return manual;
-    const lista = porItem.get(itemId);
-    if (!lista || lista.length === 0) return null;
-    let elegido = lista[0];
+    const lista = porItem.get(itemId) ?? [];
+    let anterior: (typeof lista)[number] | null = null;
     for (const c of lista) {
-      if (c.fecha <= fecha) elegido = c;
+      if (c.fecha <= fecha) anterior = c;
       else break;
     }
-    return elegido.unitario;
+    return anterior?.unitario ?? fijo.get(itemId) ?? lista[0]?.unitario ?? null;
   };
   const costoDe = (itemId: string, fecha: Date): Prisma.Decimal | null => {
     const costo = propio(itemId, fecha);

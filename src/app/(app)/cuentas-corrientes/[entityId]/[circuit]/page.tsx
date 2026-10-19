@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Download } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import { getSopladores } from "@/lib/preformas";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId, slugDeEntidad } from "@/lib/slug-lookup";
 import { getTreasuries } from "@/lib/ledger";
@@ -154,6 +155,19 @@ export default async function AccountLedgerPage({
     entradas.length > 0 ? getVentasACobrar(entityId, entradas.map((p) => p.cobraDocumentoId)) : Promise.resolve([]),
   ]);
   const chequeDeEntrada = new Map(chequesDeEntradas.map((c) => [c.recibidoEnId!, c]));
+
+  // A quién se le entregaron las preformas de cada compra, para que al editarla abra con ése. Una
+  // compra vieja sin entrega atada abre en "A nadie": sumarle una ahora la duplicaría con la que se
+  // cargó a mano.
+  const idsDeDocumentos = statement.entries.flatMap((e) => (e.source.kind === "document" ? [e.source.document.id] : []));
+  const [sopladores, entregasDeCompras] = await Promise.all([
+    getSopladores(),
+    prisma.entregaPreforma.findMany({
+      where: { documentId: { in: idsDeDocumentos } },
+      select: { documentId: true, entityId: true },
+    }),
+  ]);
+  const sopladorDe = new Map(entregasDeCompras.map((e) => [e.documentId!, e.entityId]));
 
   function renderActions(entry: StatementEntry): React.ReactNode {
     if (!canEdit) return null;
@@ -347,6 +361,8 @@ export default async function AccountLedgerPage({
               defaultRows={doc.purchaseLines.map((l) => filaDeCompra(l, circuit))}
               impuestos={desgloseDesdeDocumento(doc)}
               factura={facturaDeCompra(doc)}
+              sopladores={sopladores}
+              defaultSopladorId={sopladorDe.get(doc.id) ?? ""}
             />
           </FormModal>
           <DeleteButton

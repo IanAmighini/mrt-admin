@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DiaPlegable } from "@/components/DiaPlegable";
 import { Package, Plus, ReceiptText } from "lucide-react";
 import { prisma } from "@/lib/prisma";
+import { getSopladores } from "@/lib/preformas";
 import { requireUser } from "@/lib/auth-helpers";
 import { getDocumentPending, getRecentCompras, getRecentGastos } from "@/lib/ledger";
 import { formatMoney, formatNumeroExacto, formatQuantity, ZERO } from "@/lib/money";
@@ -71,6 +72,18 @@ export default async function ComprasPage({
   const subcuentasPorProveedor = Object.fromEntries(
     subcuentas.map((e) => [e.id, { viajes: e.entregas, rotulo: e.rotuloSubcuenta ?? "Subcuenta" }])
   );
+
+  // A quién se le entregaron las preformas de cada compra, para que al editarla abra con ése. Una
+  // compra vieja sin entrega atada abre en "A nadie": sumarle una ahora la duplicaría con la que se
+  // cargó a mano.
+  const [sopladores, entregasDeCompras] = await Promise.all([
+    getSopladores(),
+    prisma.entregaPreforma.findMany({
+      where: { documentId: { in: compras.map((c) => c.id) } },
+      select: { documentId: true, entityId: true },
+    }),
+  ]);
+  const sopladorDe = new Map(entregasDeCompras.map((e) => [e.documentId!, e.entityId]));
 
   const rows = [...compras, ...gastos]
     .map((doc) => {
@@ -322,6 +335,8 @@ export default async function ComprasPage({
                                 defaultRows={doc.purchaseLines.map((l) => filaDeCompra(l, doc.account.circuit))}
                                 impuestos={desgloseDesdeDocumento(doc)}
                                 factura={facturaDeCompra(doc)}
+                                sopladores={sopladores}
+                                defaultSopladorId={sopladorDe.get(doc.id) ?? ""}
                               />
                             </FormModal>
                             <DeleteButton

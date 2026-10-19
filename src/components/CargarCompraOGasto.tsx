@@ -41,6 +41,7 @@ export function CargarCompraOGasto({
   gastoAction,
   tipoInicial,
   proveedorInicial,
+  sopladores,
 }: {
   proveedores: ProveedorParaCargar[];
   items: ItemDeCompra[];
@@ -49,6 +50,7 @@ export function CargarCompraOGasto({
   gastoAction: (formData: FormData) => Promise<void>;
   tipoInicial?: Tipo;
   proveedorInicial?: string;
+  sopladores?: { id: string; name: string }[];
 }) {
   const [proveedorId, setProveedorId] = useState(proveedorInicial ?? "");
   const proveedor = proveedores.find((p) => p.id === proveedorId);
@@ -145,6 +147,7 @@ export function CargarCompraOGasto({
           proveedores={[]}
           items={items}
           fixedEntity={{ id: proveedor.id, name: proveedor.name, moneda: proveedor.moneda }}
+          sopladores={sopladores}
           ocultarProveedor
         />
       ) : (
