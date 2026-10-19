@@ -176,8 +176,9 @@ export default async function InicioPage() {
             resumen={
               vencidosClientes.length === 0
                 ? "Nadie tiene comprobantes vencidos."
-                : `${vencidosClientes.length} ${vencidosClientes.length === 1 ? "comprobante" : "comprobantes"} · ${formatMoney(
-                    sumDecimals(vencidosClientes.filter((d) => d.currency === "ARS").map((d) => d.pendiente))
+                : // El total en pesos, con lo que esté en dólares valuado a la cotización de hoy.
+                  `${vencidosClientes.length} ${vencidosClientes.length === 1 ? "comprobante" : "comprobantes"} · ${formatMoney(
+                    vencimientos?.totalPendiente.get("ARS") ?? 0
                   )}`
             }
             href="/reportes?report=remitos-vencidos"

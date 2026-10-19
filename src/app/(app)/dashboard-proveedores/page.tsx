@@ -21,12 +21,12 @@ import { PAYMENT_METHOD_LABELS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { Renglon, Tarjeta } from "@/components/ui/Tarjeta";
 
+/** El total en pesos —con los dólares ya convertidos— y, abajo, cuántos de esos eran dólares. */
 function primaryAndExtra(map: Map<Currency, Prisma.Decimal>) {
-  const ars = map.get("ARS") ?? ZERO;
-  const otras = Array.from(map.entries()).filter(([currency]) => currency !== "ARS");
+  const dolares = map.get("USD");
   return {
-    primary: formatMoney(ars, "ARS"),
-    extra: otras.length > 0 ? otras.map(([currency, amount]) => formatMoney(amount, currency)).join(" + ") : undefined,
+    primary: formatMoney(map.get("ARS") ?? ZERO, "ARS"),
+    extra: dolares && !dolares.isZero() ? `incluye ${formatMoney(dolares, "USD")}` : undefined,
   };
 }
 

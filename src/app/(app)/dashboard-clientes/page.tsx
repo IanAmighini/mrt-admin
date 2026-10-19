@@ -54,7 +54,12 @@ export default async function DashboardClientesPage() {
   // valuados para poder ordenarlos contra los de pesos.
   const enPesos = (f: (typeof saldos)[number]) => (f.entity.moneda === "USD" && cotizacion ? f.total * cotizacion.toNumber() : f.total);
   const conDeuda = saldos.filter((f) => f.total > 0).sort((a, b) => enPesos(b) - enPesos(a));
-  const vencidosArs = sumDecimals(vencidos.rows.filter((r) => r.currency === "ARS").map((r) => r.pendiente));
+  // Con lo que está en dólares ya pasado a pesos (a la cotización de hoy).
+  const vencidosArs = vencidos.totalPendiente.get("ARS") ?? ZERO;
+  const dolaresDe = (map: Map<string, Prisma.Decimal>) => {
+    const usd = map.get("USD");
+    return usd && !usd.isZero() ? `incluye ${formatMoney(usd, "USD")}` : undefined;
+  };
 
   return (
     <div className="space-y-10">
@@ -81,8 +86,8 @@ export default async function DashboardClientesPage() {
           icon={Users}
           color="red"
         />
-        <KpiCard label="Entregas del mes" value={formatMoney(ingresosArs)} icon={Send} color="blue" />
-        <KpiCard label="Cobros del mes" value={formatMoney(cobrosArs)} icon={Wallet} color="green" />
+        <KpiCard label="Entregas del mes" value={formatMoney(ingresosArs)} caption={dolaresDe(ingresosDelMes)} icon={Send} color="blue" />
+        <KpiCard label="Cobros del mes" value={formatMoney(cobrosArs)} caption={dolaresDe(pagosDelMes)} icon={Wallet} color="green" />
         <KpiCard
           label="Litros envasados (este mes)"
           value={formatQuantity(litros.enPeriodo, "L")}

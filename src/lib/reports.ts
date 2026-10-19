@@ -167,12 +167,18 @@ export async function getVencidosReport(options?: {
   // Lo más viejo arriba: el saldo inicial primero, después por vencimiento.
   rows.sort((a, b) => Number(b.saldoInicial) - Number(a.saldoInicial) || a.dueDate.getTime() - b.dueDate.getTime());
 
+  // Lo vencido es deuda de hoy: lo que está en dólares se valúa con la cotización de hoy. Antes los
+  // tramos y el total por cliente sumaban dólares como si fueran pesos, y el total los dejaba afuera.
+  const cot = await getCotizador();
+  const cotizacionHoy = cot.del(asOf);
+  const enPesos = (row: VencidoRow) => cot.aPesos(row.pendiente, row.currency, asOf, cotizacionHoy);
   const totalPendiente = new Map<Currency, Prisma.Decimal>();
   const porClienteMap = new Map<string, { entityName: string; entitySlug: string; count: number; pendiente: Prisma.Decimal }>();
   const porBucketMap = new Map<VencidoBucket, { bucket: VencidoBucket; count: number; pendiente: Prisma.Decimal }>();
 
   for (const row of rows) {
-    addByCurrency(totalPendiente, row.currency, row.pendiente);
+    addByCurrency(totalPendiente, "ARS", enPesos(row));
+    if (row.currency === "USD") addByCurrency(totalPendiente, "USD", row.pendiente);
 
     const cliente = porClienteMap.get(row.entitySlug) ?? {
       entityName: row.entityName,
@@ -181,12 +187,12 @@ export async function getVencidosReport(options?: {
       pendiente: ZERO,
     };
     cliente.count++;
-    cliente.pendiente = cliente.pendiente.plus(row.pendiente);
+    cliente.pendiente = cliente.pendiente.plus(enPesos(row));
     porClienteMap.set(row.entitySlug, cliente);
 
     const bucket = porBucketMap.get(row.bucket) ?? { bucket: row.bucket, count: 0, pendiente: ZERO };
     bucket.count++;
-    bucket.pendiente = bucket.pendiente.plus(row.pendiente);
+    bucket.pendiente = bucket.pendiente.plus(enPesos(row));
     porBucketMap.set(row.bucket, bucket);
   }
 

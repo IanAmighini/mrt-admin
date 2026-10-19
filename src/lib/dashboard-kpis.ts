@@ -54,10 +54,15 @@ async function getEfectoDocumentos(period: Period, typeFilter: EntityType[]) {
     include: DOCUMENT_INCLUDE_EFECTO,
   });
 
+  // En "ARS" va el total en pesos —lo de las cuentas en dólares, con la cotización del día—, y en
+  // "USD" cuántos de esos eran dólares. Antes "ARS" era sólo lo de pesos y lo de Cristian quedaba al
+  // costado, sin sumar.
+  const cot = await getCotizador();
   const byCurrency = new Map<Currency, Prisma.Decimal>();
   for (const doc of documents) {
-    const current = byCurrency.get(doc.currency) ?? ZERO;
-    byCurrency.set(doc.currency, current.plus(getDocumentEffect(doc)));
+    const efecto = getDocumentEffect(doc);
+    byCurrency.set("ARS", (byCurrency.get("ARS") ?? ZERO).plus(cot.aPesos(efecto, doc.currency, doc.date, doc.exchangeRate)));
+    if (doc.currency === "USD") byCurrency.set("USD", (byCurrency.get("USD") ?? ZERO).plus(efecto));
   }
 
   return byCurrency;
@@ -92,10 +97,14 @@ export async function getPagos(typeFilter: EntityType[], period: Period = monthP
     },
   });
 
+  // Como en los comprobantes: "ARS" es el total en pesos y "USD" cuántos eran dólares. Un pago en
+  // dólares vale lo que salió de la caja (`amountArs`), que es exacto.
+  const cot = await getCotizador();
   const byCurrency = new Map<Currency, Prisma.Decimal>();
   for (const p of payments) {
-    const current = byCurrency.get(p.currency) ?? ZERO;
-    byCurrency.set(p.currency, current.plus(p.amount));
+    const pesos = p.currency === "USD" && p.amountArs ? p.amountArs : cot.aPesos(p.amount, p.currency, p.date, p.exchangeRate);
+    byCurrency.set("ARS", (byCurrency.get("ARS") ?? ZERO).plus(pesos));
+    if (p.currency === "USD") byCurrency.set("USD", (byCurrency.get("USD") ?? ZERO).plus(p.amount));
   }
 
   return byCurrency;
