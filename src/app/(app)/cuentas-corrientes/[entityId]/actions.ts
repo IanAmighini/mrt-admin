@@ -1674,8 +1674,12 @@ async function createCompraCore(
       // pesos se escribe en dólares (el soplado de los envases) y en una en dólares, en pesos. Sin
       // cotización, el precio ya está en la moneda de la cuenta y entra tal cual.
       const escrito = parseNumeroOpcional(unitPrices[i] ?? "", "precio unitario");
+      // En una cuenta en dólares con el precio escrito en pesos, el subtotal sale de los pesos —
+      // cantidad × precio ÷ cotización— y el precio en dólares se guarda con 8 decimales. Con 4,
+      // las preformas de Cristian (US$ 0,19994 cada una) daban US$ 5 de diferencia en 155.904.
+      const desdePesos = enCuentaEnDolares && !usd && exchangeRate;
       const unitPrice = enCuentaEnDolares
-        ? (usd ?? (exchangeRate ? escrito.dividedBy(exchangeRate).toDecimalPlaces(4) : escrito))
+        ? (usd ?? (exchangeRate ? escrito.dividedBy(exchangeRate).toDecimalPlaces(8) : escrito))
         : usd && exchangeRate
           ? usd.times(exchangeRate)
           : escrito;
@@ -1686,7 +1690,7 @@ async function createCompraCore(
         unitPriceUsd: !enCuentaEnDolares && usd && exchangeRate ? usd : null,
         kilos: null,
         precioTonelada: null,
-        subtotal: quantity.times(unitPrice).toDecimalPlaces(2),
+        subtotal: (desdePesos ? quantity.times(escrito).dividedBy(exchangeRate) : quantity.times(unitPrice)).toDecimalPlaces(2),
         circuit,
       };
     })

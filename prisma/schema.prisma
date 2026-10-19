@@ -460,7 +460,7 @@ model PurchaseLine {
   quantity       Decimal  @db.Decimal(14, 3)
   /// Cuatro decimales y no dos: cuando el precio se pacta en U$S, 0,1483 x 1.481,50 = 219,7065 y
   /// redondear a 219,71 corre el total del remito varios pesos.
-  unitPrice      Decimal  @db.Decimal(14, 4)
+  unitPrice      Decimal  @db.Decimal(18, 8)
   /// Precio pactado en U$S por unidad, cuando lo hay. `unitPrice` es este por la cotización del
   /// remito; se guarda el original porque es el que no se mueve y con el que se controla la cuenta.
   unitPriceUsd   Decimal? @db.Decimal(14, 6)
