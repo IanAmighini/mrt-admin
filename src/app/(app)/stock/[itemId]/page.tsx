@@ -83,12 +83,11 @@ export default async function ItemDetailPage({
     const d = m.documentId ? ventas.get(m.documentId) : undefined;
     if (!d) return null;
     const cantidad = m.quantity.negated();
-    // El aceite se cargó en kilos y por tonelada: se reabre así. El precio por tonelada sale del neto
-    // —en dólares si se cargó con cotización—, que es lo que se pactó.
+    // El aceite se cargó en kilos y por tonelada: se reabre así, con el precio en la moneda de la
+    // cuenta y todos sus decimales. En dólares redondeado, volver a guardar sin tocar nada movía
+    // algunos pesos de un importe que tiene que coincidir con la factura.
     const kilos = m.sourceKg;
-    const enDolares = d.currency === "ARS" && d.exchangeRate ? d.netAmount.dividedBy(d.exchangeRate) : null;
-    const precioTonelada =
-      kilos && !kilos.isZero() ? (enDolares ?? d.netAmount).dividedBy(kilos).times(1000).toDecimalPlaces(2) : null;
+    const precioTonelada = kilos && !kilos.isZero() ? d.netAmount.dividedBy(kilos).times(1000).toDecimalPlaces(6) : null;
     return {
       documentId: d.id,
       entityId: d.account.entityId,
@@ -101,8 +100,8 @@ export default async function ItemDetailPage({
       notes: d.reason?.split(" — ").slice(1).join(" — ") ?? "",
       kilos: kilos ? formatNumeroExacto(kilos) : undefined,
       precioTonelada: precioTonelada ? formatNumeroExacto(precioTonelada) : undefined,
-      monedaPrecio: enDolares ? "USD" : d.currency,
-      cotizacion: enDolares ? formatNumeroExacto(d.exchangeRate) : undefined,
+      monedaPrecio: d.currency,
+      cotizacion: d.exchangeRate ? formatNumeroExacto(d.exchangeRate) : undefined,
       ivaRate: d.ivaRate ? d.ivaRate.toString() : undefined,
     };
   };
