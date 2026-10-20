@@ -39,17 +39,19 @@ model User {
   documents Document[]
   payments  Payment[]
 
-  itemMovements    ItemMovement[]
-  productMovements ProductMovement[]
-  cajaMovements    CajaMovement[]
-  productionRuns   ProductionRun[]
-  prices           Price[]
-  pedidos          Pedido[]
-  auditLogs        AuditLog[]
-  entregasPreforma EntregaPreforma[]
-  cheques          Cheque[]
-  ordenPagos       OrdenPago[]
-  entregas         Entrega[]
+  itemMovements      ItemMovement[]
+  productMovements   ProductMovement[]
+  cajaMovements      CajaMovement[]
+  productionRuns     ProductionRun[]
+  prices             Price[]
+  pedidos            Pedido[]
+  auditLogs          AuditLog[]
+  entregasPreforma   EntregaPreforma[]
+  cheques            Cheque[]
+  ordenPagos         OrdenPago[]
+  entregas           Entrega[]
+  planillasDeSueldos PlanillaDeSueldos[]
+  tarifasDeEmpleado  TarifaDeEmpleado[]
 }
 
 enum AuditAction {
@@ -173,9 +175,17 @@ model Entity {
   /// **son dólares**: el saldo sale en dólares sin convertir nada, y lo que se guarda de cada pago
   /// es la cotización con la que se hizo.
   moneda               Currency               @default(ARS)
+  /// Si no es null, la ficha es la de un empleado: cobra por semana (jornal × horas) o por mes, y su
+  /// sueldo sale de la planilla de Sueldos. Es un proveedor más para la cuenta corriente —gasto lo
+  /// que se le debe, pago lo que se le dio— pero no aparece en Proveedores.
+  formaDeSueldo        FormaDeSueldo?
+  /// Dado de baja: no entra en las planillas nuevas. Su cuenta y sus semanas quedan.
+  empleadoBaja         DateTime?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
   accounts             Account[]
+  tarifasDeEmpleado    TarifaDeEmpleado[]
+  renglonesDeSueldo    RenglonDeSueldo[]
   prices               Price[]
   pedidos              Pedido[]
   treasuryPayments     Payment[]
@@ -376,6 +386,7 @@ model Document {
   taxes             DocumentTax[]
   /// Los cheques que entraron con este movimiento, cuando es un cambio por efectivo.
   chequesDelCambio  Cheque[]            @relation("ChequeCambiado")
+  renglonDeSueldo   RenglonDeSueldo?    @relation("GastoDeSueldo")
   /// Los cobros a un proveedor que pagan esta venta.
   cobrosDeVenta     Payment[]           @relation("CobroDeVenta")
   entregasPreforma  EntregaPreforma[]
@@ -530,15 +541,16 @@ model Payment {
    * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.
    */
   treasuryId        String?
-  treasury          Entity?    @relation(fields: [treasuryId], references: [id])
+  treasury          Entity?          @relation(fields: [treasuryId], references: [id])
   /// El cheque que entró con este cobro.
-  chequeRecibido    Cheque?    @relation("ChequeRecibido")
+  chequeRecibido    Cheque?          @relation("ChequeRecibido")
   /// Los cheques que salieron con este pago. Pueden ser varios: a un proveedor se le pagan $2.000.000
   /// con tres echeqs de la cartera, y se carga como un solo pago.
-  chequesEntregados Cheque[]   @relation("ChequeEntregado")
+  chequesEntregados Cheque[]         @relation("ChequeEntregado")
   /// La orden de pago que documenta este pago, si se generó.
   ordenPagoId       String?
-  ordenPago         OrdenPago? @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
+  ordenPago         OrdenPago?       @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
+  renglonDeSueldo   RenglonDeSueldo? @relation("PagoDeSueldo")
   /**
    * Cuando un cobro se asignó "directo a un proveedor", conecta el Payment del cobro con el
    * Payment del pago generado en la cuenta del proveedor (y viceversa). Sin relation formal a
@@ -551,7 +563,7 @@ model Payment {
    * pago del camión 4 se coma lo que quedaba del camión 3.
    */
   entregaId         String?
-  entrega           Entrega?   @relation(fields: [entregaId], references: [id])
+  entrega           Entrega?         @relation(fields: [entregaId], references: [id])
 
   allocations      PaymentAllocation[]
   treasuryDocument Document?           @relation("PaymentTreasuryDocument")
@@ -1093,5 +1105,85 @@ model Entrega {
   documents Document[]
   payments  Payment[]
 
+  @@index([entityId])
+}
+
+enum FormaDeSueldo {
+  SEMANAL
+  MENSUAL
+}
+
+enum EstadoPlanilla {
+  BORRADOR
+  CERRADA
+}
+
+/// Lo que cobra un empleado desde una fecha: el jornal de 8 horas si cobra por semana, el sueldo
+/// del mes si cobra por mes. Un aumento es una tarifa nueva: las semanas viejas siguen con la suya.
+model TarifaDeEmpleado {
+  id          String   @id @default(cuid())
+  entityId    String
+  entity      Entity   @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  desde       DateTime
+  monto       Decimal  @db.Decimal(14, 2)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([entityId, desde])
+}
+
+/// Una semana (o un mes) de sueldos. Mientras es borrador no mueve plata; al cerrarla se le carga a
+/// cada uno el gasto de lo que ganó y el pago de lo que se le dio desde la caja. Reabrirla los borra.
+model PlanillaDeSueldos {
+  id          String            @id @default(cuid())
+  forma       FormaDeSueldo
+  desde       DateTime
+  hasta       DateTime
+  /// El día que se paga: la fecha del gasto y del pago.
+  fechaDePago DateTime
+  /// La caja de la que sale el efectivo: la chica, o Bufano cuando Adriana no está.
+  cajaId      String?
+  estado      EstadoPlanilla    @default(BORRADOR)
+  notas       String?
+  createdById String
+  createdBy   User              @relation(fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  cerradaAt   DateTime?
+  renglones   RenglonDeSueldo[]
+
+  @@index([desde])
+}
+
+/// Un empleado en una planilla. Los descuentos y lo pagado en null siguen a lo que sugiere la app
+/// —todo lo que tiene a cuenta, y lo debido redondeado para arriba— hasta que alguien los cambia.
+/// Al cerrar se guardan los números con los que se cerró.
+model RenglonDeSueldo {
+  id               String            @id @default(cuid())
+  planillaId       String
+  planilla         PlanillaDeSueldos @relation(fields: [planillaId], references: [id], onDelete: Cascade)
+  entityId         String
+  entity           Entity            @relation(fields: [entityId], references: [id])
+  /// El jornal o el sueldo del mes con que se liquidó, copiado de la tarifa al cerrar.
+  tarifa           Decimal?          @db.Decimal(14, 2)
+  horas            Decimal           @default(0) @db.Decimal(6, 2)
+  /// Las horas trabajadas en feriado, que ya están dentro de `horas`: suman un 50% más.
+  horasFeriado     Decimal           @default(0) @db.Decimal(6, 2)
+  /// Lo transferido en la Cuenta 1 (el sueldo por banco de Alex) que se descuenta de esta semana.
+  descuentoCuenta1 Decimal?          @db.Decimal(14, 2)
+  /// Lo que ya cobró a cuenta —un adelanto, un cliente que le transfirió directo— que se descuenta.
+  descuentoACuenta Decimal?          @db.Decimal(14, 2)
+  /// Lo que se le dio en efectivo: lo debido, redondeado para arriba según los billetes.
+  pagado           Decimal?          @db.Decimal(14, 2)
+  /// El saldo de su cuenta antes de esta planilla, guardado al cerrar.
+  saldoAnterior    Decimal?          @db.Decimal(14, 2)
+  comentario       String?
+  gastoId          String?           @unique
+  gasto            Document?         @relation("GastoDeSueldo", fields: [gastoId], references: [id], onDelete: SetNull)
+  pagoId           String?           @unique
+  pago             Payment?          @relation("PagoDeSueldo", fields: [pagoId], references: [id], onDelete: SetNull)
+
+  @@unique([planillaId, entityId])
   @@index([entityId])
 }

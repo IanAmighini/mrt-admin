@@ -98,7 +98,7 @@ export function PaymentDestinoField({
                 onChange={() => setDestino(PROVEEDOR_DIRECTO_VALUE)}
                 className="sr-only"
               />
-              Directo a un proveedor
+              Directo a un proveedor o empleado
             </label>
           )}
           {/* Sólo para corregir uno viejo que quedó sin caja: uno nuevo siempre entra o sale de alguna. */}
@@ -122,7 +122,7 @@ export function PaymentDestinoField({
         <>
           <div className="space-y-1">
             <label className="text-sm" htmlFor="proveedorId">
-              Proveedor
+              Proveedor o empleado
             </label>
             <select
               id="proveedorId"
@@ -136,7 +136,8 @@ export function PaymentDestinoField({
               </option>
               {proveedores.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {/* "Cristian", el empleado, al lado de "Cristian Amighini": sin esto se confunden. */}
+                  {p.formaDeSueldo ? `${p.name} (empleado)` : p.name}
                 </option>
               ))}
             </select>

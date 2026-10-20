@@ -17,6 +17,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { exigirZonaDelFormulario } from "@/lib/zonas";
+import { exigirQueNoSeaDeSueldos } from "@/lib/sueldos";
 import { getSopladores, tiposDePreforma } from "@/lib/preformas";
 import { DEFAULT_IVA_RATE, formatMoney, formatNumeroExacto, parseNumeroEscrito, parseNumeroOpcional, toDecimal, ZERO } from "@/lib/money";
 import { impuestosDeCompra, impuestosDeNota, leerGastoDelForm } from "@/lib/impuestos";
@@ -203,6 +204,7 @@ async function getAccountOrThrow(accountId: string) {
 export async function updateDocument(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
+  await exigirQueNoSeaDeSueldos({ documentId: String(formData.get("documentId") || "") });
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
@@ -365,6 +367,7 @@ export async function updateDocument(formData: FormData) {
 export async function deleteDocument(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
+  await exigirQueNoSeaDeSueldos({ documentId: String(formData.get("documentId") || "") });
 
   const documentId = String(formData.get("documentId") || "");
   const document = await prisma.document.findUnique({
@@ -2798,6 +2801,7 @@ export async function createPaymentForEntity(formData: FormData) {
 export async function deletePayment(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
+  await exigirQueNoSeaDeSueldos({ paymentId: String(formData.get("paymentId") || "") });
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -2888,6 +2892,7 @@ export async function deletePayment(formData: FormData) {
 export async function updatePayment(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
+  await exigirQueNoSeaDeSueldos({ paymentId: String(formData.get("paymentId") || "") });
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -3296,6 +3301,7 @@ function fotoDelGastoCargado(g: Awaited<ReturnType<typeof parseGasto>>, subcuent
 export async function updateGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
+  await exigirQueNoSeaDeSueldos({ documentId: String(formData.get("documentId") || "") });
 
   const documentId = String(formData.get("documentId") || "");
   const existente = await prisma.document.findUnique({
@@ -3354,6 +3360,7 @@ export async function updateGasto(formData: FormData) {
 export async function deleteGasto(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
+  await exigirQueNoSeaDeSueldos({ documentId: String(formData.get("documentId") || "") });
 
   const documentId = String(formData.get("documentId") || "");
   const gasto = await prisma.document.findUnique({

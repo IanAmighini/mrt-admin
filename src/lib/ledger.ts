@@ -582,9 +582,14 @@ export async function getRecentPayments(
 }
 
 /** Saldo Blanco/Negro/Total por entidad, ordenado por mayor deuda. */
-export async function getEntitySaldos(typeFilter?: EntityType[]) {
+export async function getEntitySaldos(typeFilter?: EntityType[], opciones?: { conEmpleados?: boolean }) {
   const entities = await prisma.entity.findMany({
-    where: typeFilter ? { type: { in: typeFilter } } : undefined,
+    where: {
+      ...(typeFilter ? { type: { in: typeFilter } } : {}),
+      // Los empleados son fichas de proveedor, pero no son proveedores: su saldo es el de la planilla
+      // de Sueldos, y sumarlo a la deuda con proveedores la mezclaba con adelantos.
+      ...(opciones?.conEmpleados ? {} : { formaDeSueldo: null }),
+    },
     orderBy: { name: "asc" },
     include: { accounts: true },
   });

@@ -88,6 +88,9 @@ export const NAV_ITEMS: NavItem[] = [
     group: NAV_GROUPS.ADMINISTRACION,
   },
   { href: "/libro-iva", label: "Libro de IVA", roles: ADMINISTRATIVOS, group: NAV_GROUPS.ADMINISTRACION },
+  // La planilla de cada semana la arma la secretaría. El sueldo de los socios no está acá: sale de
+  // Caja Bufano, que ella no ve.
+  { href: "/sueldos", label: "Sueldos", roles: ADMINISTRATIVOS, group: NAV_GROUPS.ADMINISTRACION },
 
   { href: "/dashboard-clientes", label: "Dashboard Clientes", roles: GERENCIALES, group: NAV_GROUPS.ANALISIS },
   { href: "/dashboard-proveedores", label: "Dashboard Proveedores", roles: GERENCIALES, group: NAV_GROUPS.ANALISIS },

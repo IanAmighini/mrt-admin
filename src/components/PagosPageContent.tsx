@@ -48,7 +48,8 @@ export async function PagosPageContent({
   const hayFiltro = Boolean(filtros.entityId || medio || filtros.from || filtros.to);
 
   const [conSaldo, pagos, treasuries, proveedores, cartera, conSubcuentas] = await Promise.all([
-    getEntitySaldos(typeFilter),
+    // Con los empleados: un adelanto también se carga desde Pagos.
+    getEntitySaldos(typeFilter, { conEmpleados: true }),
     // Sin filtros, los últimos 30, que es lo que se mira para ver si ya se cargó algo. Con filtros,
     // todo lo que coincida: es para sumar un período o un cliente, y cortar en 30 daría mal el total.
     getRecentPayments(typeFilter, hayFiltro ? 2000 : 30, {

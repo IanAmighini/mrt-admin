@@ -313,7 +313,9 @@ export default async function EntityLedgerPage({
 
   const volverA = isCaja
     ? { href: "/tesoreria", label: "Tesorería" }
-    : entity.type === "PROVEEDOR"
+    : entity.formaDeSueldo
+      ? { href: "/sueldos", label: "Sueldos" }
+      : entity.type === "PROVEEDOR"
       ? { href: "/proveedores", label: "Proveedores" }
       : { href: "/clientes", label: "Clientes" };
 
@@ -331,7 +333,13 @@ export default async function EntityLedgerPage({
             <div className="min-w-0">
               <h1 className="text-xl font-semibold">{entity.name}</h1>
               <div className="mt-1 flex flex-wrap gap-1.5">
-                {!isCaja && <span className={ETIQUETA}>{TIPO_LABELS[entity.type]}</span>}
+                {!isCaja && (
+                  <span className={ETIQUETA}>
+                    {entity.formaDeSueldo
+                      ? `Empleado · cobra por ${entity.formaDeSueldo === "SEMANAL" ? "semana" : "mes"}`
+                      : TIPO_LABELS[entity.type]}
+                  </span>
+                )}
                 {rubroLabel(entity) && <span className={ETIQUETA}>{rubroLabel(entity)}</span>}
                 {entity.taxId && <span className={ETIQUETA}>CUIT {entity.taxId}</span>}
                 {entity.moneda === "USD" && <span className={ETIQUETA_DESTACADA}>Cuenta en U$S</span>}
