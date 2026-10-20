@@ -64,6 +64,8 @@ export function VentaInsumoFields({
   const [circuit, setCircuit] = useState<"BLANCO" | "NEGRO">(defaults?.circuit ?? "BLANCO");
   const [ivaRate, setIvaRate] = useState(defaults?.ivaRate ?? "21");
 
+  const esFactura = circuit === "BLANCO" && entidad?.type === "CLIENTE";
+
   const num = (s: string) => parseNumeroSuave(s)?.toNumber() ?? 0;
   const otraMoneda = moneda !== monedaCuenta;
   // Con aceite, el importe sale de los kilos; los litros que salen del stock son kilos ÷ 0,92.
@@ -282,11 +284,23 @@ export function VentaInsumoFields({
             </select>
           </div>
         )}
+        {/* A un cliente en la Cuenta 1 la venta ES la factura que se le hizo: va con su número, y así
+            entra una sola vez a su cuenta y al libro de IVA. Sin factura se numera sola. */}
         <div className="space-y-1">
           <label className="text-sm" htmlFor="venta-numero">
-            Comprobante (opcional)
+            {esFactura ? "Número de factura" : "Comprobante (opcional)"}
           </label>
-          <input id="venta-numero" name="number" defaultValue={defaults?.number} placeholder="Se numera solo" className={inputClass} />
+          <input
+            id="venta-numero"
+            name="number"
+            required={esFactura}
+            defaultValue={defaults?.number?.startsWith("VI-") && esFactura ? "" : defaults?.number}
+            placeholder={esFactura ? "A-00001-00000285" : "Se numera solo"}
+            className={inputClass}
+          />
+          {esFactura && (
+            <p className="text-xs text-foreground/50">No cargues la factura aparte: esta venta ya es la factura.</p>
+          )}
         </div>
       </div>
       <div className="space-y-1">

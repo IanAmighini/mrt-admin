@@ -173,8 +173,10 @@ export async function getAccountStatement({
   const esCaja = account.entity.type === "TESORERIA";
   for (const doc of documents) {
     const effect = getDocumentEffect(doc);
+    // En la Cuenta 1 a un cliente, la venta es una factura: se llama así, pero dice igual si se cobró.
     const esVentaDeInsumo =
-      (doc.type === "NOTA_DEBITO" || doc.type === "NOTA_CREDITO") && Boolean(doc.reason?.startsWith("Venta de "));
+      (doc.type === "NOTA_DEBITO" || doc.type === "NOTA_CREDITO" || doc.type === "FACTURA") &&
+      Boolean(doc.reason?.startsWith("Venta de "));
     // Una venta de insumo dice si ya se cobró y cuánto falta: así se sabe a qué corresponde el
     // saldo y desde cuándo está (la fecha es la de la venta).
     const pendienteDeVenta = esVentaDeInsumo ? getDocumentPending(doc).abs() : null;
@@ -191,7 +193,7 @@ export async function getAccountStatement({
           title: `${
             doc.type === "NOTA_CREDITO" && doc.lines.length > 0
               ? "Devolución"
-              : esVentaDeInsumo
+              : esVentaDeInsumo && doc.type !== "FACTURA"
                 ? "Venta de insumo"
                 : DOCUMENT_TYPE_LABELS[doc.type]
           } #${doc.number}`,

@@ -2186,6 +2186,11 @@ export async function updateFactura(formData: FormData) {
   });
   if (!factura) throw new UserError("La factura ya no existe.");
   if (factura.type !== "FACTURA") throw new UserError("Este comprobante no es una factura.");
+  // La factura de una venta de insumo mueve stock: se corrige o se borra desde la ficha del insumo,
+  // que cambia la plata y el stock juntos. Desde acá el stock quedaría diciendo otra cosa.
+  if (await prisma.itemMovement.count({ where: { documentId, type: "VENTA" } })) {
+    throw new UserError("Esta factura es una venta de insumo: corregila o borrala desde la ficha del insumo.");
+  }
 
   const number = String(formData.get("number") || "").trim();
   if (!number) throw new UserError("El número es obligatorio.");
@@ -2268,6 +2273,11 @@ export async function deleteFactura(formData: FormData) {
   });
   if (!factura) throw new UserError("La factura ya no existe.");
   if (factura.type !== "FACTURA") throw new UserError("Este comprobante no es una factura.");
+  // La factura de una venta de insumo mueve stock: se corrige o se borra desde la ficha del insumo,
+  // que cambia la plata y el stock juntos. Desde acá el stock quedaría diciendo otra cosa.
+  if (await prisma.itemMovement.count({ where: { documentId, type: "VENTA" } })) {
+    throw new UserError("Esta factura es una venta de insumo: corregila o borrala desde la ficha del insumo.");
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.documentLink.deleteMany({ where: { facturaId: documentId } });

@@ -3,6 +3,7 @@
 import { UserError } from "@/lib/user-error";
 import { reimputarEntidades } from "@/lib/imputacion";
 import { parseFecha } from "@/lib/period";
+import { defaultDueDate } from "@/lib/ledger";
 import { revalidatePath } from "next/cache";
 import { notFound } from "next/navigation";
 import { Prisma, type DocumentType, type EntityType, type ItemMovementType } from "@prisma/client";
@@ -325,7 +326,13 @@ async function guardarVenta(formData: FormData) {
     leerCotizacion(formData.get("exchangeRate"))
   );
   const unitPrice = convertir(precioEscrito);
-  const tipo = tipoDeComprobanteParaVenta(account.entity.type, formData.get("efecto"));
+  const tipo = tipoDeComprobanteParaVenta(account.entity.type, formData.get("efecto"), circuit);
+  // La factura es el papel que se le hizo al cliente: va con su número real, que es con el que entra
+  // al libro de IVA. Numerarla sola daría una factura que no existe.
+  const numeroFinal = numeroEscrito || anterior?.number || "";
+  if (tipo === "FACTURA" && (!numeroFinal || numeroFinal.startsWith("VI-"))) {
+    throw new UserError("En la Cuenta 1 la venta es la factura: poné su número (por ejemplo A-00001-00000285).");
+  }
   // El neto: con kilos, directo de los kilos; si no, cantidad × precio.
   const total = convertir(kilos ? precioTonelada!.times(kilos).dividedBy(1000) : quantity.times(precioEscrito)).toDecimalPlaces(2);
   // **En la Cuenta 1 va con IVA**, discriminado: es lo que se factura, y así entra al libro de IVA
@@ -368,6 +375,8 @@ async function guardarVenta(formData: FormData) {
       type: tipo,
       number,
       date,
+      // La factura vence como cualquier otra de la Cuenta 1; las notas no llevan vencimiento.
+      dueDate: tipo === "FACTURA" ? defaultDueDate(date, "BLANCO") : null,
       currency: moneda,
       exchangeRate,
       netAmount: total,
@@ -499,10 +508,6 @@ export async function borrarVentaDeInsumo(formData: FormData) {
   revalidatePath(`/cuentas-corrientes/${doc.account.entity.slug}`);
 }
 
-/**
- * Un cliente que además es proveedor no permite deducir el signo, así que ahí lo elige el
- * formulario. Para el resto no se pregunta: se sabe.
- */
 /** La alícuota de IVA de una venta en la Cuenta 1: 21 salvo que se elija otra de las que existen. */
 function leerAlicuota(raw: FormDataEntryValue | null): Prisma.Decimal {
   const valor = String(raw || "21").replace(",", ".");
@@ -510,14 +515,25 @@ function leerAlicuota(raw: FormDataEntryValue | null): Prisma.Decimal {
   return new Prisma.Decimal(valor);
 }
 
+/**
+ * Lo que se le cobra a un cliente en la Cuenta 1 **es la factura** que se le hizo: si se cargaba como
+ * nota de débito, la factura había que cargarla aparte y la venta quedaba dos veces (en la cuenta y
+ * en el libro de IVA). En la Cuenta 2 no hay papel fiscal, así que va como nota de débito. A un
+ * proveedor se le descuenta de lo que le debemos: nota de crédito.
+ *
+ * Un cliente que además es proveedor no permite deducir el signo, así que ahí lo elige el
+ * formulario. Para el resto no se pregunta: se sabe.
+ */
 function tipoDeComprobanteParaVenta(
   entityType: EntityType,
-  efecto: FormDataEntryValue | null
+  efecto: FormDataEntryValue | null,
+  circuit: "BLANCO" | "NEGRO"
 ): DocumentType {
-  if (entityType === "CLIENTE") return "NOTA_DEBITO";
+  const seLeCobra = circuit === "BLANCO" ? "FACTURA" : "NOTA_DEBITO";
+  if (entityType === "CLIENTE") return seLeCobra;
   if (entityType === "PROVEEDOR") return "NOTA_CREDITO";
   const elegido = String(efecto || "");
-  if (elegido === "NOS_DEBE") return "NOTA_DEBITO";
+  if (elegido === "NOS_DEBE") return seLeCobra;
   if (elegido === "LE_DEBEMOS_MENOS") return "NOTA_CREDITO";
   throw new UserError(
     "Esta entidad es cliente y proveedor a la vez: elegí si la venta se le cobra o se le descuenta de lo que le debemos."
