@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Download } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { formatMoney, formatNumeroExacto, sumDecimals, ZERO } from "@/lib/money";
@@ -48,6 +48,12 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
     </div>
   );
 
+  const bajarExcel = (
+    <a href={`/sueldos/${planilla.id}/excel`} className={buttonClass("secundario", "inline-flex items-center gap-1.5")}>
+      <Download size={16} /> Excel
+    </a>
+  );
+
   if (planilla.estado === "BORRADOR") {
     const filas = renglones.map((r) => {
       const e = porId.get(r.entityId);
@@ -72,15 +78,18 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           {encabezado}
-          {canEdit && (
-            <DeleteButton
+          <div className="flex items-center gap-2">
+            {bajarExcel}
+            {canEdit && (
+              <DeleteButton
               action={borrarPlanilla}
               hiddenName="planillaId"
               hiddenValue={planilla.id}
               nombre={`el borrador de la ${nombreDePlanilla(planilla).toLowerCase()}`}
               consecuencia="Se pierden las horas cargadas. No había movido plata."
-            />
-          )}
+              />
+            )}
+          </div>
         </div>
         <PlanillaDeSueldosGrid
           planillaId={planilla.id}
@@ -124,6 +133,7 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
       <div className="flex flex-wrap items-start justify-between gap-3">
         {encabezado}
         <div className="flex flex-wrap gap-2">
+          {bajarExcel}
           {caja && (
             <Link href={`/cuentas-corrientes/${caja.slug}`} className={buttonClass("secundario")}>
               Ver {caja.name}

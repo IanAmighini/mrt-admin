@@ -6,6 +6,7 @@ import { sumDecimals, ZERO } from "@/lib/money";
 import { esCaja } from "@/lib/pagos";
 import { UserError } from "@/lib/user-error";
 import { formatFecha } from "@/lib/period";
+import { cuentaDelRenglon, type CuentaDelRenglon } from "@/lib/sueldos-calculo";
 
 const DIA = 24 * 60 * 60 * 1000;
 /** Las fechas se guardan a medianoche UTC (ver `parseFecha`), así que sumar días es sumar 24 h. */
@@ -43,7 +44,10 @@ export function tarifaVigente<T extends { desde: Date; monto: Prisma.Decimal }>(
 export async function getEmpleados(opciones?: { conBajas?: boolean }) {
   const empleados = await prisma.entity.findMany({
     where: { formaDeSueldo: { not: null }, ...(opciones?.conBajas ? {} : { empleadoBaja: null }) },
-    include: { accounts: true, tarifasDeEmpleado: { orderBy: { desde: "desc" } } },
+    include: {
+      accounts: true,
+      tarifasDeEmpleado: { orderBy: [{ desde: "desc" }, { createdAt: "desc" }], include: { createdBy: { select: { name: true } } } },
+    },
     orderBy: { name: "asc" },
   });
   const ids = empleados.map((e) => e.id);
@@ -149,4 +153,58 @@ export async function exigirQueNoSeaDeSueldos(ref: { documentId?: string | null;
       `Esto lo cargó la planilla de Sueldos (${nombreDePlanilla(renglon.planilla).toLowerCase()}). Para corregirlo, reabrí la planilla desde Sueldos.`
     );
   }
+}
+
+/**
+ * Los renglones de una planilla con su cuenta hecha. Cerrada, con los números con que se cerró (los
+ * que están en las cuentas); en borrador, con lo de hoy: el saldo y la tarifa vigente de cada uno.
+ */
+export async function getRenglonesCalculados(planillaId: string) {
+  const planilla = await prisma.planillaDeSueldos.findUnique({
+    where: { id: planillaId },
+    include: { renglones: { include: { entity: { select: { id: true, name: true, slug: true } } } } },
+  });
+  if (!planilla) return null;
+  const empleados = planilla.estado === "BORRADOR" ? await getEmpleados({ conBajas: true }) : [];
+  const porId = new Map(empleados.map((e) => [e.id, e]));
+  const renglones = [...planilla.renglones]
+    .sort((a, b) => a.entity.name.localeCompare(b.entity.name, "es"))
+    .map((r) => {
+      let tarifa: Prisma.Decimal | null;
+      let cuenta: CuentaDelRenglon | null = null;
+      if (planilla.estado === "CERRADA") {
+        tarifa = r.tarifa;
+        if (tarifa) {
+          cuenta = cuentaDelRenglon({
+            forma: planilla.forma,
+            tarifa,
+            horas: r.horas,
+            horasFeriado: r.horasFeriado,
+            saldoAnterior: r.saldoAnterior ?? ZERO,
+            pendienteCuenta1: r.descuentoCuenta1 ?? ZERO,
+            descuentoCuenta1: r.descuentoCuenta1,
+            descuentoACuenta: r.descuentoACuenta,
+            pagado: r.pagado,
+          });
+        }
+      } else {
+        const e = porId.get(r.entityId);
+        tarifa = e ? (tarifaVigente(e.tarifasDeEmpleado, planilla.desde)?.monto ?? null) : null;
+        if (e && tarifa) {
+          cuenta = cuentaDelRenglon({
+            forma: planilla.forma,
+            tarifa,
+            horas: r.horas,
+            horasFeriado: r.horasFeriado,
+            saldoAnterior: e.saldo,
+            pendienteCuenta1: e.pendienteCuenta1,
+            descuentoCuenta1: r.descuentoCuenta1,
+            descuentoACuenta: r.descuentoACuenta,
+            pagado: r.pagado,
+          });
+        }
+      }
+      return { r, tarifa, cuenta };
+    });
+  return { planilla, renglones };
 }

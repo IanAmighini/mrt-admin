@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { formatMoney, sumDecimals, ZERO } from "@/lib/money";
-import { formatFecha, hoyComoFecha, toDateInputValue } from "@/lib/period";
+import { formatDateTime, formatFecha, hoyComoFecha, toDateInputValue } from "@/lib/period";
 import { valorHora } from "@/lib/sueldos-calculo";
 import { getCajasDeSueldos, getEmpleados, nombreDePlanilla, proximoPeriodo, tarifaVigente } from "@/lib/sueldos";
 import { FormModal } from "@/components/Modal";
@@ -159,11 +159,38 @@ export default async function SueldosPage() {
                     <p className="text-xs tabular-nums text-foreground/50">
                       {tarifa
                         ? e.forma === "SEMANAL"
-                          ? `Jornal ${formatMoney(tarifa.monto)} · hora ${formatMoney(valorHora(tarifa.monto))} desde el ${formatFecha(tarifa.desde)}`
-                          : `${formatMoney(tarifa.monto)} por mes desde el ${formatFecha(tarifa.desde)}`
+                          ? `Jornal ${formatMoney(tarifa.monto)} · hora ${formatMoney(valorHora(tarifa.monto))} · vigente desde el ${formatFecha(tarifa.desde)}`
+                          : `${formatMoney(tarifa.monto)} por mes · vigente desde el ${formatFecha(tarifa.desde)}`
                         : "Sin jornal cargado"}
                       {proxima ? ` · ${formatMoney(proxima.monto)} desde el ${formatFecha(proxima.desde)}` : ""}
                     </p>
+                    {/* Cada aumento con su fecha y quién lo cargó: así se sabe cuándo fue el último. */}
+                    {e.tarifasDeEmpleado.length > 0 && (
+                      <details className="mt-1 text-xs">
+                        <summary className="cursor-pointer text-foreground/50 hover:text-foreground">
+                          Historial del {e.forma === "SEMANAL" ? "jornal" : "sueldo"} ({e.tarifasDeEmpleado.length})
+                        </summary>
+                        <ul className="mt-1 space-y-0.5 tabular-nums text-foreground/70">
+                          {e.tarifasDeEmpleado.map((t, i) => {
+                            const anterior = e.tarifasDeEmpleado[i + 1];
+                            const cambio = anterior ? t.monto.minus(anterior.monto).dividedBy(anterior.monto).times(100) : null;
+                            return (
+                              <li key={t.id}>
+                                Desde el {formatFecha(t.desde)}: <span className="font-medium">{formatMoney(t.monto)}</span>
+                                {e.forma === "SEMANAL" ? ` (hora ${formatMoney(valorHora(t.monto))})` : ""}
+                                {cambio && !cambio.isZero()
+                                  ? ` · ${cambio.greaterThan(0) ? "+" : ""}${cambio.toFixed(1).replace(".", ",")}%`
+                                  : ""}
+                                <span className="text-foreground/40">
+                                  {" "}
+                                  — cargado por {t.createdBy.name} el {formatDateTime(t.createdAt)}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </details>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-right text-sm tabular-nums">
