@@ -17,6 +17,13 @@ export type VentaInsumoDefaults = {
   unitPrice: string;
   number: string;
   notes: string;
+  /** Aceite: los kilos y el precio por tonelada con que se cargó. */
+  kilos?: string;
+  precioTonelada?: string;
+  monedaPrecio?: Currency;
+  cotizacion?: string;
+  /** Cuenta 1: la alícuota de IVA. */
+  ivaRate?: string;
 };
 
 const inputClass =
@@ -35,29 +42,49 @@ export function VentaInsumoFields({
   unidad,
   entidades,
   defaults,
+  esAceite = false,
 }: {
   itemId: string;
   unidad: string;
   entidades: EntidadCompradora[];
   defaults?: VentaInsumoDefaults;
+  /** El aceite se vende como se compra: kilos del ticket y precio por tonelada. */
+  esAceite?: boolean;
 }) {
   const [entityId, setEntityId] = useState(defaults?.entityId ?? "");
   const entidad = entidades.find((e) => e.id === entityId);
   const monedaCuenta: Currency = entidad?.moneda ?? "ARS";
-  const [moneda, setMoneda] = useState<Currency>(monedaCuenta);
+  // El aceite se pacta en dólares por tonelada: arranca ahí aunque la cuenta vaya en pesos.
+  const [moneda, setMoneda] = useState<Currency>(defaults?.monedaPrecio ?? (esAceite ? "USD" : monedaCuenta));
   const [cantidad, setCantidad] = useState(defaults?.quantity ?? "");
   const [precio, setPrecio] = useState(defaults?.unitPrice ?? "");
-  const [cotizacion, setCotizacion] = useState("");
+  const [kilos, setKilos] = useState(defaults?.kilos ?? "");
+  const [precioTonelada, setPrecioTonelada] = useState(defaults?.precioTonelada ?? "");
+  const [cotizacion, setCotizacion] = useState(defaults?.cotizacion ?? "");
+  const [circuit, setCircuit] = useState<"BLANCO" | "NEGRO">(defaults?.circuit ?? "BLANCO");
+  const [ivaRate, setIvaRate] = useState(defaults?.ivaRate ?? "21");
 
   const num = (s: string) => parseNumeroSuave(s)?.toNumber() ?? 0;
   const otraMoneda = moneda !== monedaCuenta;
-  const total = num(cantidad) * num(precio);
+  // Con aceite, el importe sale de los kilos; los litros que salen del stock son kilos ÷ 0,92.
+  const litros = esAceite ? num(kilos) / 0.92 : 0;
+  const total = esAceite ? (num(kilos) / 1000) * num(precioTonelada) : num(cantidad) * num(precio);
   const totalEnCuenta = !otraMoneda
     ? total
     : num(cotizacion) > 0
       ? monedaCuenta === "USD"
         ? total / num(cotizacion)
         : total * num(cotizacion)
+      : null;
+  const iva = circuit === "BLANCO" && totalEnCuenta !== null ? totalEnCuenta * (num(ivaRate) / 100) : 0;
+  // El precio por kilo en pesos, que es como lo dice el papel: US$ 1.540 la tonelada a 1.523 = $ 2.345,42.
+  const porKiloEnPesos =
+    esAceite && num(precioTonelada) > 0
+      ? moneda === "ARS"
+        ? num(precioTonelada) / 1000
+        : num(cotizacion) > 0
+          ? (num(precioTonelada) / 1000) * num(cotizacion)
+          : null
       : null;
 
   return (
@@ -93,8 +120,9 @@ export function VentaInsumoFields({
             value={entityId}
             onChange={(e) => {
               setEntityId(e.target.value);
-              // El precio arranca en la moneda de la cuenta de quien compra.
-              setMoneda(entidades.find((x) => x.id === e.target.value)?.moneda ?? "ARS");
+              // El precio arranca en la moneda de la cuenta de quien compra; el aceite no, que se pacta
+              // en dólares por tonelada sea quien sea.
+              if (!esAceite) setMoneda(entidades.find((x) => x.id === e.target.value)?.moneda ?? "ARS");
             }}
             className={inputClass}
           >
@@ -109,46 +137,103 @@ export function VentaInsumoFields({
             ))}
           </select>
         </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="venta-cantidad">
-            Cantidad ({unidad})
-          </label>
-          <input
-            id="venta-cantidad"
-            name="quantity"
-            required
-            inputMode="decimal"
-            value={cantidad}
-            onChange={(e) => setCantidad(e.target.value)}
-            className={inputClass}
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-sm" htmlFor="venta-precio">
-            Precio unitario
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="venta-precio"
-              name="unitPrice"
-              required
-              inputMode="decimal"
-              value={precio}
-              onChange={(e) => setPrecio(e.target.value)}
-              className={inputClass}
-            />
-            <select
-              name="currency"
-              value={moneda}
-              onChange={(e) => setMoneda(e.target.value as Currency)}
-              className={`${inputClass} w-auto`}
-              aria-label="Moneda del precio"
-            >
-              <option value="ARS">$</option>
-              <option value="USD">U$S</option>
-            </select>
-          </div>
-        </div>
+        {esAceite ? (
+          <>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="venta-kilos">
+                Kilos
+              </label>
+              <input
+                id="venta-kilos"
+                name="kilos"
+                required
+                inputMode="decimal"
+                placeholder="14.923"
+                value={kilos}
+                onChange={(e) => setKilos(e.target.value)}
+                className={inputClass}
+              />
+              {litros > 0 && (
+                <p className="text-xs tabular-nums text-foreground/50">
+                  Salen {litros.toLocaleString("es-AR", { maximumFractionDigits: 3 })} L del stock (kilos ÷ 0,92)
+                </p>
+              )}
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="venta-tonelada">
+                Precio por tonelada
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="venta-tonelada"
+                  name="precioTonelada"
+                  required
+                  inputMode="decimal"
+                  placeholder="1.540"
+                  value={precioTonelada}
+                  onChange={(e) => setPrecioTonelada(e.target.value)}
+                  className={inputClass}
+                />
+                <select
+                  name="currency"
+                  value={moneda}
+                  onChange={(e) => setMoneda(e.target.value as Currency)}
+                  className={`${inputClass} w-auto`}
+                  aria-label="Moneda del precio"
+                >
+                  <option value="USD">U$S</option>
+                  <option value="ARS">$</option>
+                </select>
+              </div>
+              {porKiloEnPesos !== null && (
+                <p className="text-xs tabular-nums text-foreground/50">= {formatMoney(porKiloEnPesos)} por kilo</p>
+              )}
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="venta-cantidad">
+                Cantidad ({unidad})
+              </label>
+              <input
+                id="venta-cantidad"
+                name="quantity"
+                required
+                inputMode="decimal"
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm" htmlFor="venta-precio">
+                Precio unitario
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="venta-precio"
+                  name="unitPrice"
+                  required
+                  inputMode="decimal"
+                  value={precio}
+                  onChange={(e) => setPrecio(e.target.value)}
+                  className={inputClass}
+                />
+                <select
+                  name="currency"
+                  value={moneda}
+                  onChange={(e) => setMoneda(e.target.value as Currency)}
+                  className={`${inputClass} w-auto`}
+                  aria-label="Moneda del precio"
+                >
+                  <option value="ARS">$</option>
+                  <option value="USD">U$S</option>
+                </select>
+              </div>
+            </div>
+          </>
+        )}
         {otraMoneda && (
           <div className="space-y-1">
             <label className="text-sm" htmlFor="venta-cotizacion">
@@ -173,11 +258,30 @@ export function VentaInsumoFields({
           <label className="text-sm" htmlFor="venta-circuito">
             Cuenta
           </label>
-          <select id="venta-circuito" name="circuit" defaultValue={defaults?.circuit ?? "BLANCO"} className={inputClass}>
+          <select
+            id="venta-circuito"
+            name="circuit"
+            value={circuit}
+            onChange={(e) => setCircuit(e.target.value as "BLANCO" | "NEGRO")}
+            className={inputClass}
+          >
             <option value="BLANCO">{CIRCUIT_LABELS.BLANCO}</option>
             <option value="NEGRO">{CIRCUIT_LABELS.NEGRO}</option>
           </select>
         </div>
+        {/* En la Cuenta 1 se factura: el IVA va discriminado y entra así al libro de IVA. */}
+        {circuit === "BLANCO" && (
+          <div className="space-y-1">
+            <label className="text-sm" htmlFor="venta-iva">
+              IVA
+            </label>
+            <select id="venta-iva" name="ivaRate" value={ivaRate} onChange={(e) => setIvaRate(e.target.value)} className={inputClass}>
+              <option value="21">21%</option>
+              <option value="10.5">10,5%</option>
+              <option value="27">27%</option>
+            </select>
+          </div>
+        )}
         <div className="space-y-1">
           <label className="text-sm" htmlFor="venta-numero">
             Comprobante (opcional)
@@ -192,12 +296,24 @@ export function VentaInsumoFields({
         <input id="venta-notas" name="notes" defaultValue={defaults?.notes} className={inputClass} />
       </div>
       {total > 0 && (
-        <p className="text-sm tabular-nums">
-          Total: <span className="font-semibold">{formatMoney(total, moneda)}</span>
-          {otraMoneda && totalEnCuenta !== null && (
-            <span className="text-foreground/60"> = {formatMoney(totalEnCuenta, monedaCuenta)} en su cuenta</span>
+        <div className="space-y-0.5 rounded-lg bg-foreground/[0.03] px-3 py-2 text-sm tabular-nums">
+          <p>
+            {circuit === "BLANCO" ? "Neto" : "Total"}: <span className="font-semibold">{formatMoney(total, moneda)}</span>
+            {otraMoneda && totalEnCuenta !== null && (
+              <span className="text-foreground/60"> = {formatMoney(totalEnCuenta, monedaCuenta)} en su cuenta</span>
+            )}
+          </p>
+          {iva > 0 && totalEnCuenta !== null && (
+            <>
+              <p className="text-foreground/60">
+                IVA {ivaRate.replace(".", ",")}%: {formatMoney(iva, monedaCuenta)}
+              </p>
+              <p>
+                Total con IVA: <span className="font-semibold">{formatMoney(totalEnCuenta + iva, monedaCuenta)}</span>
+              </p>
+            </>
           )}
-        </p>
+        </div>
       )}
       <button
         type="submit"

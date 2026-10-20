@@ -271,9 +271,20 @@ async function guardarVenta(formData: FormData) {
   if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Elegí la cuenta.");
 
   const date = parseFormDate(formData.get("date"));
-  const quantity = parseNumeroEscrito(String(formData.get("quantity") || ""), "cantidad");
-  const precioEscrito = parseNumeroEscrito(String(formData.get("unitPrice") || ""), "precio unitario");
+  // **Aceite: kilos y precio por tonelada**, como en la compra. Los litros que salen del stock son
+  // kilos ÷ 0,92 y el importe sale directo de los kilos —kilos ÷ 1000 × precio—, no de litros × un
+  // precio por litro redondeado. Antes había que hacer esa cuenta a mano.
+  const kilosRaw = String(formData.get("kilos") || "").trim();
+  const kilos = kilosRaw ? parseNumeroEscrito(kilosRaw, "kilos") : null;
+  if (kilos && !kilos.greaterThan(0)) throw new UserError("Los kilos tienen que ser mayores a cero.");
+  const quantity = kilos
+    ? litrosDeKilos(kilos).toDecimalPlaces(3)
+    : parseNumeroEscrito(String(formData.get("quantity") || ""), "cantidad");
   if (!quantity.greaterThan(0)) throw new UserError("La cantidad tiene que ser mayor a cero.");
+  const precioTonelada = kilos ? parseNumeroEscrito(String(formData.get("precioTonelada") || ""), "precio por tonelada") : null;
+  const precioEscrito = kilos
+    ? precioTonelada!.times(kilos).dividedBy(1000).dividedBy(quantity)
+    : parseNumeroEscrito(String(formData.get("unitPrice") || ""), "precio unitario");
   if (precioEscrito.isNegative()) throw new UserError("El precio no puede ser negativo.");
 
   const numeroEscrito = String(formData.get("number") || "").trim();
@@ -297,6 +308,7 @@ async function guardarVenta(formData: FormData) {
   ]);
   if (!item) throw new UserError("El insumo ya no existe.");
   if (!account) throw new UserError("No se encontró la cuenta de esa entidad.");
+  if (kilos && item.category !== "ACEITE") throw new UserError(`"${item.name}" no es aceite: los kilos son sólo para el aceite.`);
   if (!item.llevaStock) {
     throw new UserError(
       `"${item.name}" no lleva stock, así que no se puede vender desde acá. Cargalo como un movimiento en la cuenta corriente.`
@@ -314,8 +326,16 @@ async function guardarVenta(formData: FormData) {
   );
   const unitPrice = convertir(precioEscrito);
   const tipo = tipoDeComprobanteParaVenta(account.entity.type, formData.get("efecto"));
-  const total = convertir(quantity.times(precioEscrito)).toDecimalPlaces(2);
-  const detalle = `Venta de ${formatQuantity(quantity, item.unit)} de ${item.name}`;
+  // El neto: con kilos, directo de los kilos; si no, cantidad × precio.
+  const total = convertir(kilos ? precioTonelada!.times(kilos).dividedBy(1000) : quantity.times(precioEscrito)).toDecimalPlaces(2);
+  // **En la Cuenta 1 va con IVA**, discriminado: es lo que se factura, y así entra al libro de IVA
+  // con su neto y su alícuota. Antes iba sin IVA y había que meterlo a mano dentro del precio.
+  const ivaRate = circuit === "BLANCO" ? leerAlicuota(formData.get("ivaRate")) : null;
+  const ivaAmount = ivaRate ? total.times(ivaRate).dividedBy(100).toDecimalPlaces(2) : null;
+  const totalConIva = ivaAmount ? total.plus(ivaAmount) : total;
+  const detalle = kilos
+    ? `Venta de ${formatQuantity(kilos, "kg")} (${formatQuantity(quantity, item.unit)}) de ${item.name}`
+    : `Venta de ${formatQuantity(quantity, item.unit)} de ${item.name}`;
 
   const foto = (d: {
     entidad: string;
@@ -351,23 +371,37 @@ async function guardarVenta(formData: FormData) {
       currency: moneda,
       exchangeRate,
       netAmount: total,
-      totalAmount: total,
+      ivaRate,
+      ivaAmount,
+      totalAmount: totalConIva,
       reason: notes ? `${detalle} — ${notes}` : detalle,
     };
     const movimiento = {
       itemId,
       date,
       quantity: quantity.negated(),
+      sourceKg: kilos,
+      conversionFactor: kilos ? DENSIDAD_ACEITE : null,
       reason: `${detalle} — ${account.entity.name}`,
     };
 
+    let documentoId: string;
     if (anterior) {
       await tx.document.update({ where: { id: anterior.id }, data: datos });
       await tx.itemMovement.update({ where: { id: anterior.itemMovements[0].id }, data: movimiento });
+      await tx.documentTax.deleteMany({ where: { documentId: anterior.id } });
+      documentoId = anterior.id;
     } else {
       const document = await tx.document.create({ data: { ...datos, createdById: user.id } });
       await tx.itemMovement.create({
         data: { ...movimiento, type: "VENTA", documentId: document.id, createdById: user.id },
+      });
+      documentoId = document.id;
+    }
+    // El IVA abierto por alícuota, que es lo que lee el libro de IVA.
+    if (ivaRate && ivaAmount) {
+      await tx.documentTax.create({
+        data: { documentId: documentoId, kind: "IVA", base: total, rate: ivaRate, amount: ivaAmount },
       });
     }
 
@@ -382,7 +416,7 @@ async function guardarVenta(formData: FormData) {
       date,
       quantity,
       unitPrice,
-      total,
+      total: totalConIva,
       currency: moneda,
       notes,
     });
@@ -391,7 +425,7 @@ async function guardarVenta(formData: FormData) {
       action: anterior ? "UPDATE" : "CREATE",
       entityType: "Venta de insumo",
       entityId: anterior?.id ?? number,
-      summary: `${detalle} — ${account.entity.name} — ${formatMoney(total, moneda)}`,
+      summary: `${detalle} — ${account.entity.name} — ${formatMoney(totalConIva, moneda)}${ivaAmount ? " con IVA" : ""}`,
       cambios: diffDeCampos(
         anterior
           ? foto({
@@ -469,6 +503,13 @@ export async function borrarVentaDeInsumo(formData: FormData) {
  * Un cliente que además es proveedor no permite deducir el signo, así que ahí lo elige el
  * formulario. Para el resto no se pregunta: se sabe.
  */
+/** La alícuota de IVA de una venta en la Cuenta 1: 21 salvo que se elija otra de las que existen. */
+function leerAlicuota(raw: FormDataEntryValue | null): Prisma.Decimal {
+  const valor = String(raw || "21").replace(",", ".");
+  if (!["21", "10.5", "27"].includes(valor)) throw new UserError("Alícuota de IVA inválida.");
+  return new Prisma.Decimal(valor);
+}
+
 function tipoDeComprobanteParaVenta(
   entityType: EntityType,
   efecto: FormDataEntryValue | null

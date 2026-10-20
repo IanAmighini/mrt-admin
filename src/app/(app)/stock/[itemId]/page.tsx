@@ -83,15 +83,27 @@ export default async function ItemDetailPage({
     const d = m.documentId ? ventas.get(m.documentId) : undefined;
     if (!d) return null;
     const cantidad = m.quantity.negated();
+    // El aceite se cargó en kilos y por tonelada: se reabre así. El precio por tonelada sale del neto
+    // —en dólares si se cargó con cotización—, que es lo que se pactó.
+    const kilos = m.sourceKg;
+    const enDolares = d.currency === "ARS" && d.exchangeRate ? d.netAmount.dividedBy(d.exchangeRate) : null;
+    const precioTonelada =
+      kilos && !kilos.isZero() ? (enDolares ?? d.netAmount).dividedBy(kilos).times(1000).toDecimalPlaces(2) : null;
     return {
       documentId: d.id,
       entityId: d.account.entityId,
       circuit: d.account.circuit,
       date: toDateInputValue(d.date),
       quantity: formatNumeroExacto(cantidad),
-      unitPrice: cantidad.isZero() ? "" : formatNumeroExacto(d.totalAmount.dividedBy(cantidad).toDecimalPlaces(4)),
+      // El precio sin IVA: el IVA se vuelve a calcular con la alícuota.
+      unitPrice: cantidad.isZero() ? "" : formatNumeroExacto(d.netAmount.dividedBy(cantidad).toDecimalPlaces(4)),
       number: d.number,
       notes: d.reason?.split(" — ").slice(1).join(" — ") ?? "",
+      kilos: kilos ? formatNumeroExacto(kilos) : undefined,
+      precioTonelada: precioTonelada ? formatNumeroExacto(precioTonelada) : undefined,
+      monedaPrecio: enDolares ? "USD" : d.currency,
+      cotizacion: enDolares ? formatNumeroExacto(d.exchangeRate) : undefined,
+      ivaRate: d.ivaRate ? d.ivaRate.toString() : undefined,
     };
   };
 
@@ -107,7 +119,7 @@ export default async function ItemDetailPage({
             <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
             {canEdit && item.llevaStock && (
               <FormModal triggerLabel="Vender" title={`Vender ${item.name}`} action={venderInsumo} maxWidthClass="max-w-xl">
-                <VentaInsumoFields itemId={item.id} unidad={item.unit} entidades={entidades} />
+                <VentaInsumoFields itemId={item.id} unidad={item.unit} entidades={entidades} esAceite={item.category === "ACEITE"} />
               </FormModal>
             )}
           </div>
@@ -284,6 +296,8 @@ export default async function ItemDetailPage({
                             itemId={item.id}
                             unidad={item.unit}
                             entidades={entidades}
+                            // Una venta vieja de aceite cargada en litros se sigue editando en litros.
+                            esAceite={item.category === "ACEITE" && Boolean(m.sourceKg)}
                             defaults={defaultsDeVenta(m)!}
                           />
                         </FormModal>
