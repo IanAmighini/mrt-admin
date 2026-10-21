@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Currency } from "@prisma/client";
 import { formatProductLabel } from "@/lib/product-label";
-import { formatMoney, parseNumeroSuave } from "@/lib/money";
+import { DEFAULT_IVA_RATE, formatMoney, parseNumeroSuave } from "@/lib/money";
 
 type Circuit = "BLANCO" | "NEGRO";
 
@@ -106,11 +106,14 @@ export function RemitoLinesFields({
     (acc, r) => {
       const subtotal = botellasOf(r) * pesosPorBotella(r);
       acc[r.circuit] += subtotal;
-      acc.total += subtotal;
       return acc;
     },
-    { BLANCO: 0, NEGRO: 0, total: 0 }
+    { BLANCO: 0, NEGRO: 0 }
   );
+  // Lo de la Cuenta 1 se factura: el servidor le suma el IVA al guardar, igual que en Nueva entrega.
+  // Sin mostrarlo, pasar una línea de la Cuenta 2 a la 1 parecía no agregarlo.
+  const iva = totals.BLANCO * (DEFAULT_IVA_RATE / 100);
+  const total = totals.BLANCO + iva + totals.NEGRO;
 
   return (
     <div className="space-y-3">
@@ -237,9 +240,17 @@ export function RemitoLinesFields({
         + Agregar línea
       </button>
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-foreground/10 pt-2 text-sm">
-        <span>Total Cuenta 1: {formatMoney(totals.BLANCO, moneda)}</span>
-        <span>Total Cuenta 2: {formatMoney(totals.NEGRO, moneda)}</span>
-        <span className="font-semibold">Total: {formatMoney(totals.total, moneda)}</span>
+        <span>
+          Cuenta 1: {formatMoney(totals.BLANCO, moneda)}
+          {totals.BLANCO > 0 && (
+            <span className="text-foreground/60">
+              {" "}
+              + IVA {DEFAULT_IVA_RATE}% {formatMoney(iva, moneda)} = {formatMoney(totals.BLANCO + iva, moneda)}
+            </span>
+          )}
+        </span>
+        <span>Cuenta 2: {formatMoney(totals.NEGRO, moneda)}</span>
+        <span className="font-semibold">Total: {formatMoney(total, moneda)}</span>
       </div>
     </div>
   );
