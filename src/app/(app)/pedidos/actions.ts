@@ -14,7 +14,7 @@ import { diffDeCampos, logAudit } from "@/lib/audit";
 import { PEDIDO_STATUS_LABELS } from "@/lib/labels";
 import { formatNumeroExacto } from "@/lib/money";
 
-const PEDIDO_STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
+const PEDIDO_STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO", "CANCELADO"];
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");

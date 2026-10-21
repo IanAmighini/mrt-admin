@@ -5,7 +5,9 @@ import { addDays, parseFecha } from "./period";
 
 export type FiltroDePedidos = { estado?: string; entityId?: string; from?: string; to?: string };
 
-const ESTADOS: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
+const ESTADOS: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO", "CANCELADO"];
+/** Lo que todavía hay que entregar. Un cancelado no: el cliente se arrepintió. */
+export const PEDIDO_PENDIENTE = { status: { in: ["EN_COLA", "COMPLETADO"] as PedidoStatus[] } };
 
 /**
  * Los pedidos que muestra la pantalla con estos filtros. Lo usa también el Excel, para que lo que se
@@ -15,7 +17,8 @@ export async function getPedidosFiltrados({ estado, entityId, from, to }: Filtro
   const status = ESTADOS.find((e) => e === estado) ?? null;
   const pedidos = await prisma.pedido.findMany({
     where: {
-      ...(status ? { status } : {}),
+      // Sin elegir estado, los cancelados no: son los que se acumulaban en la lista. Se ven con su filtro.
+      ...(status ? { status } : { status: { not: "CANCELADO" as const } }),
       ...(entityId ? { entityId } : {}),
       ...(from || to
         ? {
@@ -34,7 +37,7 @@ export async function getPedidosFiltrados({ estado, entityId, from, to }: Filtro
 
 export function getPedidosPendientesByEntity(entityId: string) {
   return prisma.pedido.findMany({
-    where: { entityId, status: { not: "ENTREGADO" } },
+    where: { entityId, ...PEDIDO_PENDIENTE },
     include: { lines: { include: { product: true } } },
     orderBy: { date: "asc" },
   });
@@ -46,7 +49,7 @@ export type PedidoPendiente = Awaited<ReturnType<typeof getPedidosPendientesByEn
  * todavía no se eligió cliente (ej. Nueva entrega). */
 export function getAllPedidosPendientes() {
   return prisma.pedido.findMany({
-    where: { status: { not: "ENTREGADO" } },
+    where: PEDIDO_PENDIENTE,
     include: { entity: true, lines: { include: { product: true } } },
     orderBy: { date: "asc" },
   });

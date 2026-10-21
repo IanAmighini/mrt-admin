@@ -21,6 +21,7 @@ const STATUS_FILTERS: { value: PedidoStatus | ""; label: string }[] = [
   { value: "EN_COLA", label: "En cola" },
   { value: "COMPLETADO", label: "Terminados" },
   { value: "ENTREGADO", label: "Entregados" },
+  { value: "CANCELADO", label: "Cancelados" },
 ];
 
 export default async function PedidosPage({
@@ -116,7 +117,8 @@ export default async function PedidosPage({
         <h1 className="text-xl font-semibold mb-1">Pedidos</h1>
         <p className="text-sm text-foreground/60">
           Pedidos recibidos por WhatsApp. Pasan a &quot;Terminado&quot; solos cuando hay stock
-          (producción del día) y a &quot;Entregado&quot; al cargar el remito.
+          (producción del día) y a &quot;Entregado&quot; al cargar el remito. Si el cliente se arrepiente,
+          pasalo a &quot;Cancelado&quot;: queda guardado, pero sale de la lista y de los pendientes.
         </p>
       </div>
 
@@ -147,6 +149,7 @@ export default async function PedidosPage({
           label="Estado"
           name="estado"
           defaultValue={statusFilter}
+          todos="Sin cancelados"
           opciones={STATUS_FILTERS.filter((s) => s.value).map((s) => ({
             value: s.value,
             label: s.label,

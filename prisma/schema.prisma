@@ -969,6 +969,8 @@ enum PedidoStatus {
   EN_COLA
   COMPLETADO
   ENTREGADO
+  /// El cliente se arrepintió. Queda registrado pero no cuenta como pendiente en ningún lado.
+  CANCELADO
 }
 
 model Pedido {

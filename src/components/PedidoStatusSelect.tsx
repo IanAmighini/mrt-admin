@@ -6,7 +6,7 @@ import type { PedidoStatus } from "@prisma/client";
 import { PEDIDO_STATUS_COLORS, PEDIDO_STATUS_LABELS } from "@/lib/labels";
 import { updatePedidoStatus } from "@/app/(app)/pedidos/actions";
 
-const STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO"];
+const STATUSES: PedidoStatus[] = ["EN_COLA", "COMPLETADO", "ENTREGADO", "CANCELADO"];
 
 export function PedidoStatusSelect({ pedidoId, status }: { pedidoId: string; status: PedidoStatus }) {
   const [error, formAction, pending] = useActionState<string | null, FormData>(
