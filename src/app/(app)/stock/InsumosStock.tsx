@@ -7,9 +7,12 @@ import { compareItemsBySize } from "@/lib/item-order";
 
 type Stocks = Map<string, Prisma.Decimal | number>;
 
-/** "unidad" → "unidades", "rollo" → "rollos"; las abreviaturas (L, kg) quedan como están. */
+/**
+ * "unidad" → "unidades", "rollo" → "rollos"; las abreviaturas (L, kg) quedan como están. Si ya viene
+ * en plural ("unidades", como se cargó la caja de Solterra) queda igual: salía "unidadeses".
+ */
 export function unidadEnPlural(unidad: string, cantidad: number) {
-  if (Math.abs(cantidad) === 1 || !/^[a-záéíóúñ]{3,}$/i.test(unidad)) return unidad;
+  if (Math.abs(cantidad) === 1 || !/^[a-záéíóúñ]{3,}$/i.test(unidad) || /s$/i.test(unidad)) return unidad;
   return /[aeiouáéíóú]$/i.test(unidad) ? `${unidad}s` : `${unidad}es`;
 }
 
