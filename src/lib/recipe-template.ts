@@ -53,10 +53,14 @@ function tapaPorBoca(ml: number): string {
 /**
  * Los envases que se etiquetan con la etiqueta de otra medida: envase → la medida de la etiqueta.
  * **Las etiquetas de 850 no existen: toda botella de 850 lleva la de 900 de su marca** (confirmado
- * el 19/10/2026). Antes iba marca por marca —sólo Goye— y la receta de Don José 850 apuntaba a una
+ * el 19/10/2026), y la de 750 lleva la de 800. Antes iba marca por marca —sólo Goye— y la receta de Don José 850 apuntaba a una
  * "Etiqueta 850ml" cargada en el catálogo que nunca se compra ni se usa.
  */
-const ETIQUETA_DE_OTRA_MEDIDA: Record<number, number> = { 850: 900 };
+const ETIQUETA_DE_OTRA_MEDIDA: Record<number, number> = {
+  850: 900,
+  // La presentación "x800" se llena en el envase de 750 y lleva la etiqueta de 800 (23/10/2026).
+  750: 800,
+};
 
 /** Un ml entero para armar nombres: `Decimal(900.00)` tiene que dar "900", no "900.00". */
 function ml(value: Prisma.Decimal | number): number {
@@ -155,7 +159,12 @@ export function plantillaDeReceta(
   if (marca.usaEtiqueta) {
     // La de la otra medida gana cuando existe: la de 850 que figure en el catálogo no se usa. Si la
     // marca no tiene la de 900 cargada, queda la propia y exigir() la pide por su nombre.
-    const etiqueta = etiquetaPrestada && porNombre.has(etiquetaPrestada) ? etiquetaPrestada : etiquetaPropia;
+    // Y si no hay ninguna de las dos, se pide la prestada: la de la medida del envase no existe (no
+    // hay etiquetas de 850 ni de 750), así que pedirla mandaba a cargar un insumo que no se usa.
+    const etiqueta =
+      etiquetaPrestada && (porNombre.has(etiquetaPrestada) || !porNombre.has(etiquetaPropia))
+        ? etiquetaPrestada
+        : etiquetaPropia;
     lines.push({ itemId: exigir(etiqueta, "ETIQUETAS"), quantityPerUnit: porBotella });
   }
 
