@@ -322,6 +322,7 @@ export async function PagosPageContent({
                               destino: defaultDestino,
                               proveedorId: linkedPayment?.account.entityId,
                               proveedorCircuit: linkedPayment?.account.circuit,
+                              proveedorCotizacion: linkedPayment?.exchangeRate ? formatNumeroExacto(linkedPayment.exchangeRate) : undefined,
                             }}
                             viajes={subcuentasPorEntidad[payment.account.entityId]?.viajes}
                             rotuloSubcuenta={subcuentasPorEntidad[payment.account.entityId]?.rotulo}

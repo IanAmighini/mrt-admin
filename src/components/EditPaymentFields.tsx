@@ -40,6 +40,8 @@ export function EditPaymentFields({
     proveedorId?: string;
     /** La cuenta del proveedor que recibió el cobro directo, que puede no ser la de este pago. */
     proveedorCircuit?: Circuit;
+    /** La cotización con que se le acreditó al proveedor, si su cuenta va en otra moneda. */
+    proveedorCotizacion?: string;
   };
   treasuries: Entity[];
   /** Solo si esta cuenta es de un cliente: lista de proveedores, para "directo a un proveedor". */
@@ -180,6 +182,7 @@ export function EditPaymentFields({
         defaultDestino={defaultValues.destino ?? ""}
         defaultProveedorId={defaultValues.proveedorId}
         defaultProveedorCircuit={defaultValues.proveedorCircuit}
+        defaultCotizacionProveedor={defaultValues.proveedorCotizacion}
         montoDelCobro={monto}
       />
 

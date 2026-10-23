@@ -20,6 +20,7 @@ export function PaymentDestinoField({
   defaultDestino,
   defaultProveedorId,
   defaultProveedorCircuit,
+  defaultCotizacionProveedor,
   montoDelCobro,
 }: {
   isCobro: boolean;
@@ -34,13 +35,17 @@ export function PaymentDestinoField({
   defaultDestino: string;
   defaultProveedorId?: string;
   defaultProveedorCircuit?: Circuit;
+  /** Al editar un cobro directo a un proveedor en dólares: la cotización con que se le acreditó. */
+  defaultCotizacionProveedor?: string;
 }) {
   const [destino, setDestino] = useState(defaultDestino);
   const [proveedorId, setProveedorId] = useState(defaultProveedorId ?? "");
   const [proveedorCircuit, setProveedorCircuit] = useState<Circuit>(
     defaultProveedorCircuit ?? circuit
   );
-  const [cotizacion, setCotizacion] = useState("");
+  // Al editar arranca con la que se usó: vacía obligaba a escribirla de nuevo, y si no era la misma
+  // el cobro le acreditaba otros dólares al proveedor.
+  const [cotizacion, setCotizacion] = useState(defaultCotizacionProveedor ?? "");
   const showProveedores = isCobro && destino === PROVEEDOR_DIRECTO_VALUE && proveedores && proveedores.length > 0;
 
   // Todas las cajas, con cualquier cuenta: se paga en Negro desde el Galicia y en Blanco desde Bufano.

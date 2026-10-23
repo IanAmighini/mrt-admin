@@ -243,6 +243,7 @@ export default async function AccountLedgerPage({
                 destino: defaultDestino,
                 proveedorId: linkedPayment?.account.entityId,
                 proveedorCircuit: linkedPayment?.account.circuit,
+                proveedorCotizacion: linkedPayment?.exchangeRate ? formatNumeroExacto(linkedPayment.exchangeRate) : undefined,
               }}
               viajes={viajes}
               rotuloSubcuenta={rotuloSubcuenta}

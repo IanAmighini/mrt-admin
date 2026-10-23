@@ -1,4 +1,3 @@
-import { ChevronDown } from "lucide-react";
 
 /**
  * El campo de un formulario: la etiqueta, el control y el espacio entre los dos.
@@ -23,11 +22,8 @@ export function controlClass(opciones?: { denso?: boolean; extra?: string }) {
 }
 
 /**
- * Un desplegable con la flecha dibujada por nosotros.
- *
- * La del navegador se apoya contra el borde derecho —queda tapada por el redondeo y cambia de
- * forma en cada sistema— y ese borde es justamente el que dice que el campo se despliega. Con
- * `appearance-none` la sacamos y ponemos una propia, con aire a los dos lados.
+ * Un desplegable con la clase de los campos. La flecha la pone globals.css para todos los
+ * `<select>` de la app —la del navegador queda pegada al borde—, así que acá no se dibuja otra.
  */
 export function Select({
   className,
@@ -35,19 +31,9 @@ export function Select({
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <div className="relative">
-      <select
-        {...props}
-        className={controlClass({ extra: `appearance-none pr-9 ${className ?? ""}` })}
-      >
-        {children}
-      </select>
-      <ChevronDown
-        size={15}
-        aria-hidden
-        className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-foreground/40"
-      />
-    </div>
+    <select {...props} className={controlClass({ extra: className })}>
+      {children}
+    </select>
   );
 }
 
