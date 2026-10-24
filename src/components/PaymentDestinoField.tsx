@@ -21,6 +21,7 @@ export function PaymentDestinoField({
   defaultProveedorId,
   defaultProveedorCircuit,
   defaultCotizacionProveedor,
+  destinoForzado,
   montoDelCobro,
 }: {
   isCobro: boolean;
@@ -37,8 +38,11 @@ export function PaymentDestinoField({
   defaultProveedorCircuit?: Circuit;
   /** Al editar un cobro directo a un proveedor en dólares: la cotización con que se le acreditó. */
   defaultCotizacionProveedor?: string;
+  /** Al pagar con cheques de la cartera: la caja donde están, que es la única de la que pueden salir. */
+  destinoForzado?: { id: string; name: string };
 }) {
-  const [destino, setDestino] = useState(defaultDestino);
+  const [destinoElegido, setDestino] = useState(defaultDestino);
+  const destino = destinoForzado?.id ?? destinoElegido;
   const [proveedorId, setProveedorId] = useState(defaultProveedorId ?? "");
   const [proveedorCircuit, setProveedorCircuit] = useState<Circuit>(
     defaultProveedorCircuit ?? circuit
@@ -88,6 +92,7 @@ export function PaymentDestinoField({
                 value={t.id}
                 checked={destino === t.id}
                 onChange={() => setDestino(t.id)}
+                disabled={Boolean(destinoForzado) && destinoForzado?.id !== t.id}
                 className="sr-only"
               />
               {t.name}
@@ -122,6 +127,12 @@ export function PaymentDestinoField({
           )}
         </div>
       </div>
+
+      {destinoForzado && (
+        <p className="-mt-1 text-xs text-foreground/50">
+          Sale de {destinoForzado.name}: es donde están los cheques elegidos.
+        </p>
+      )}
 
       {showProveedores && (
         <>

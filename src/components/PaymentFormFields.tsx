@@ -22,6 +22,8 @@ export type ChequeEnCartera = {
   montoLabel: string;
   deQuien: string | null;
   fechaCobro: string | null;
+  /** La caja donde está: de ahí tiene que salir el pago que lo entrega. */
+  caja: { id: string; name: string } | null;
 };
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
@@ -99,6 +101,9 @@ export function PaymentFormFields({
   const chequesQueSePuedenEntregar = (cartera ?? []).filter((c) => c.esEcheq === (method === "ECHEQ"));
   const elegidos = chequesQueSePuedenEntregar.filter((c) => chequeIds.includes(c.id));
   const sumaElegidos = elegidos.reduce((acc, c) => acc.plus(parseNumeroSuave(c.amount) ?? ZERO), ZERO);
+  // Un cheque sale de la caja donde está: tildar uno fija el "Sale de", y los de otra caja quedan
+  // para otro pago.
+  const cajaDeLosCheques = eligeDeCartera ? (elegidos.find((c) => c.caja)?.caja ?? null) : null;
 
   /** Tildar o destildar un cheque recalcula el monto: el pago es lo que suman, se entregan enteros. */
   function alternarCheque(id: string) {
@@ -328,19 +333,27 @@ export function PaymentFormFields({
                   {chequesQueSePuedenEntregar.map((c) => (
                     <label
                       key={c.id}
-                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-foreground/5 has-[:checked]:bg-primary/10"
+                      title={
+                        cajaDeLosCheques && c.caja && c.caja.id !== cajaDeLosCheques.id
+                          ? `Está en ${c.caja.name}: va en otro pago, que salga de ${c.caja.name}.`
+                          : undefined
+                      }
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-foreground/5 has-[:checked]:bg-primary/10 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-40"
                     >
                       <input
                         type="checkbox"
                         name="chequeId"
                         value={c.id}
                         checked={chequeIds.includes(c.id)}
+                        disabled={Boolean(cajaDeLosCheques && c.caja && c.caja.id !== cajaDeLosCheques.id)}
                         onChange={() => alternarCheque(c.id)}
                       />
                       <span className="min-w-0 flex-1 truncate">
                         #{c.numero}
                         {c.banco ? ` · ${c.banco}` : ""}
                         <span className="text-foreground/50">
+                          {/* La caja primero: es lo que decide de dónde sale el pago, y al final se cortaba. */}
+                          {c.caja ? ` · en ${c.caja.name}` : ""}
                           {c.deQuien ? ` · de ${c.deQuien}` : ""}
                           {c.fechaCobro ? ` · cobrable ${c.fechaCobro}` : ""}
                         </span>
@@ -465,6 +478,7 @@ export function PaymentFormFields({
           treasuries={treasuries}
           proveedores={proveedores}
           defaultDestino={defaultTreasuryId}
+          destinoForzado={cajaDeLosCheques ?? undefined}
           montoDelCobro={monto}
         />
       )}

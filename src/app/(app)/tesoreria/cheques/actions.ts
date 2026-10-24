@@ -10,9 +10,8 @@ import { diffDeCampos, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { marcarCheque } from "@/lib/cheques";
 import { circuitoDeTesoreria } from "@/lib/pagos";
-import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
-import { formatMoney, parseNumeroEscrito, parseNumeroOpcional, sumDecimals } from "@/lib/money";
+import { formatMoney, parseNumeroEscrito, parseNumeroOpcional, sumDecimals, ZERO } from "@/lib/money";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -59,8 +58,14 @@ export async function actualizarEstadoCheque(formData: FormData) {
  * Cambio de cheques por efectivo: le damos plata a otra empresa y nos da cheques. Es a la par, así
  * que el efectivo que sale de la caja es el total de los cheques que entran.
  *
- * Se registra como un ajuste que resta de la tesorería elegida —la plata salió de verdad— y los
- * cheques entran a la cartera colgados de ese movimiento, para poder deshacer las dos cosas juntas.
+ * **No mueve el saldo de la caja**: sale efectivo y entran cheques por lo mismo, y los cheques
+ * cuentan en la caja donde están, igual que los que entran con un cobro. Cuando se paga con ellos,
+ * salen de esa caja. Antes restaba el efectivo y los cheques no sumaban, así que al pagar con ellos
+ * la plata salía dos veces: en octubre Pedro tuvo que compensarlo a mano, y el pago a Rainap del
+ * 23/10 terminó cargado al Galicia porque a Bufano ya no le alcanzaba.
+ *
+ * Queda un movimiento en cero en la caja —para que se vea en su libro y para deshacer todo junto—
+ * con los cheques colgados de él.
  */
 export async function cambiarChequesPorEfectivo(formData: FormData) {
   const user = await requireRole(["ADMIN"]);
@@ -117,10 +122,10 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
         number: `CAMBIO-${Date.now().toString(36).toUpperCase()}`,
         date,
         currency: "ARS",
-        // Negativo: la plata sale de la caja. Los cheques que entran no son plata todavía.
+        // En cero: sale el efectivo y entran los cheques por lo mismo. `netAmount` guarda cuánto fue.
         netAmount: total,
-        totalAmount: total.negated(),
-        reason: `Cambio de ${data.length} cheque(s) por efectivo${cambiadoA ? ` — ${cambiadoA}` : ""}`,
+        totalAmount: ZERO,
+        reason: `Cambio de ${data.length} cheque(s) por ${formatMoney(total)} en efectivo${cambiadoA ? ` — ${cambiadoA}` : ""}`,
         treasuryCategory: "OTRO",
         createdById: user.id,
       },
@@ -136,8 +141,6 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
       })),
     });
 
-    // El efectivo que se da a cambio tiene que estar en la caja.
-    await asegurarSinNegativos(tx, { cuentas: [account.id] });
 
     await logAudit(tx, {
       userId: user.id,

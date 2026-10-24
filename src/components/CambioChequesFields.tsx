@@ -28,8 +28,9 @@ export function CambioChequesFields({ treasuries }: { treasuries: Entity[] }) {
   return (
     <>
       <p className="text-xs text-foreground/50">
-        El efectivo que sale de la caja es el total de los cheques que entran. Los cheques quedan en
-        cartera, listos para entregarle a un proveedor.
+        El efectivo que sale de la caja es el total de los cheques que entran, así que el saldo de la
+        caja no cambia: los cheques quedan en cartera <strong>en esta caja</strong>, y el pago que los
+        entregue a un proveedor tiene que salir de acá.
       </p>
 
       <div className="grid grid-cols-2 gap-3">

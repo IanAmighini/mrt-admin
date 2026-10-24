@@ -33,7 +33,13 @@ import {
 } from "@/lib/labels";
 import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { circuitoDeTesoreria, motivoMetodoInvalido } from "@/lib/pagos";
-import { crearChequeRecibido, devolverChequesALaCartera, entregarCheques, esMetodoCheque } from "@/lib/cheques";
+import {
+  crearChequeRecibido,
+  devolverChequesALaCartera,
+  entregarCheques,
+  esMetodoCheque,
+  exigirQueSalganDeSuCaja,
+} from "@/lib/cheques";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarCajaAlcanza, asegurarSinNegativos } from "@/lib/sin-negativos";
 import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
@@ -2318,6 +2324,8 @@ async function aplicarCheque(
     esPago: boolean;
     /** Lo que costó tomar el cheque que entra, en %. Ver `leerCostoDelCheque`. */
     costoPct?: Prisma.Decimal | null;
+    /** La caja de la que sale el pago: los cheques de la cartera tienen que estar en ésa. */
+    origen?: string;
   }
 ) {
   if (!esMetodoCheque(params.method)) return;
@@ -2329,7 +2337,7 @@ async function aplicarCheque(
     .filter(Boolean);
   if (chequeIds.length > 0) {
     if (!params.esPago) throw new UserError("Los cheques de la cartera se entregan al pagar, no al cobrar.");
-    await entregarCheques(tx, { paymentId: params.paymentId, chequeIds, amount: params.amount });
+    await entregarCheques(tx, { paymentId: params.paymentId, chequeIds, amount: params.amount, origen: params.origen ?? "" });
     return;
   }
 
@@ -2747,6 +2755,7 @@ export async function createPaymentForEntity(formData: FormData) {
       userId: user.id,
       esPago: !isCobro,
       costoPct,
+      origen: destino,
     });
 
     return payment;
@@ -3031,6 +3040,8 @@ export async function updatePayment(formData: FormData) {
       // cheque no cambia de importe porque se edite el pago.
       const enPesos = amountArs ?? amount;
       const entregados = await tx.cheque.findMany({ where: { entregadoEnId: paymentId } });
+      // Si se le cambió el origen, los cheques que se entregaron tienen que seguir saliendo de su caja.
+      await exigirQueSalganDeSuCaja(tx, { chequeIds: entregados.map((c) => c.id), origen: destino });
       const recibido = await tx.cheque.findUnique({ where: { recibidoEnId: paymentId } });
       // Un cheque recibido con costo vale lo neto para el cobro: el papel dice más.
       const valen = entregados.length > 0
@@ -3067,6 +3078,7 @@ export async function updatePayment(formData: FormData) {
       circuit,
       userId: user.id,
       esPago: formData.get("isCobro") !== "1",
+      origen: destino,
     });
   });
 

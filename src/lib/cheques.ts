@@ -9,11 +9,61 @@ const CHEQUE_METHODS = ["CHEQUE", "ECHEQ"] as const;
 export const esMetodoCheque = (method: string) =>
   (CHEQUE_METHODS as readonly string[]).includes(method);
 
+/** De dónde sale la caja de un cheque: la del cobro con que entró, o la del cambio por efectivo. */
+const ORIGEN_DEL_CHEQUE = {
+  recibidoEn: { include: { account: { include: { entity: true } }, treasury: { select: { id: true, name: true } } } },
+  cambioEn: { select: { account: { select: { entity: { select: { id: true, name: true } } } } } },
+} as const;
+
+/**
+ * La caja en la que está un cheque: donde entró el cobro que lo trajo, o de la que salió el
+ * efectivo con que se cambió. Un cheque cargado antes de que los cobros tuvieran caja no tiene.
+ */
+function cajaDelCheque(c: {
+  recibidoEn: { treasury: { id: string; name: string } | null } | null;
+  cambioEn: { account: { entity: { id: string; name: string } } } | null;
+}): { id: string; name: string } | null {
+  return c.recibidoEn?.treasury ?? c.cambioEn?.account.entity ?? null;
+}
+
+/**
+ * **Un cheque sale de la caja donde está.** Un echeq que entró al Galicia no se paga desde Caja
+ * Bufano, ni uno de Bufano desde el Galicia: la caja del pago sería la que no lo tenía, y su saldo
+ * bajaba por un papel que nunca estuvo ahí (el pago a Rainap del 23/10 bajó el Galicia por tres
+ * cheques de Bufano). Por lo mismo, cheques de dos cajas distintas van en dos pagos.
+ */
+export async function exigirQueSalganDeSuCaja(
+  tx: Prisma.TransactionClient,
+  params: { chequeIds: string[]; origen: string }
+) {
+  if (params.chequeIds.length === 0) return;
+  const cheques = await tx.cheque.findMany({ where: { id: { in: params.chequeIds } }, include: ORIGEN_DEL_CHEQUE });
+  const porCaja = new Map<string, { name: string; numeros: string[] }>();
+  for (const c of cheques) {
+    const caja = cajaDelCheque(c);
+    if (!caja) continue;
+    const fila = porCaja.get(caja.id) ?? { name: caja.name, numeros: [] };
+    fila.numeros.push(`#${c.numero}`);
+    porCaja.set(caja.id, fila);
+  }
+  if (porCaja.size > 1) {
+    const detalle = Array.from(porCaja.values()).map((c) => `${c.numeros.join(", ")} en ${c.name}`).join("; ");
+    throw new UserError(`Los cheques elegidos están en cajas distintas (${detalle}): cargá un pago por cada caja.`);
+  }
+  const [cajaId, caja] = Array.from(porCaja.entries())[0] ?? [];
+  if (caja && cajaId !== params.origen) {
+    const varios = caja.numeros.length > 1;
+    throw new UserError(
+      `${varios ? "Los cheques" : "El cheque"} ${caja.numeros.join(", ")} ${varios ? "están" : "está"} en ${caja.name}: el pago tiene que salir de ${caja.name}.`
+    );
+  }
+}
+
 /** Los cheques disponibles para entregarle a un proveedor. */
 export async function getCartera() {
   return prisma.cheque.findMany({
     where: { estado: "EN_CARTERA" },
-    include: { recibidoEn: { include: { account: { include: { entity: true } } } } },
+    include: ORIGEN_DEL_CHEQUE,
     orderBy: [{ fechaCobro: "asc" }, { numero: "asc" }],
   });
 }
@@ -67,9 +117,10 @@ export async function crearChequeRecibido(
  */
 export async function entregarCheques(
   tx: Prisma.TransactionClient,
-  params: { paymentId: string; chequeIds: string[]; amount: Prisma.Decimal }
+  params: { paymentId: string; chequeIds: string[]; amount: Prisma.Decimal; origen: string }
 ) {
   const ids = Array.from(new Set(params.chequeIds));
+  await exigirQueSalganDeSuCaja(tx, { chequeIds: ids, origen: params.origen });
   const cheques = await tx.cheque.findMany({ where: { id: { in: ids } } });
   if (cheques.length !== ids.length) throw new UserError("Alguno de los cheques elegidos ya no existe.");
 
@@ -130,6 +181,7 @@ export async function getCarteraParaFormulario() {
     amount: formatNumeroEditable(c.amount),
     montoLabel: formatMoney(c.amount),
     deQuien: c.recibidoEn?.account.entity.name ?? null,
+    caja: cajaDelCheque(c),
     fechaCobro: c.fechaCobro ? formatFecha(c.fechaCobro) : null,
   }));
 }
