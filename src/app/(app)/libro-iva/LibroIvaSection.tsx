@@ -234,7 +234,9 @@ function Planilla({
   totales: TotalesIva;
   vacio: string;
 }) {
-  const columnas = conConcepto ? 10 : 9;
+  // Lo no gravado y lo exento, en su columna sólo si hay: en ventas casi nunca.
+  const conNoGravado = !totales.noGravado.isZero() || renglones.some((r) => !r.noGravado.isZero());
+  const columnas = (conConcepto ? 10 : 9) + (conNoGravado ? 1 : 0);
 
   return (
     <section>
@@ -251,6 +253,7 @@ function Planilla({
               <th className={thClass}>Nro de Cuit</th>
               {conConcepto && <th className={thClass}>Concepto</th>}
               <th className={thNum}>Neto Gravado</th>
+              {conNoGravado && <th className={thNum}>No gravado / exento</th>}
               <th className={thNum}>{columnaPercepcion}</th>
               <th className={thNum}>IVA</th>
               <th className={thNum}>Total</th>
@@ -267,6 +270,7 @@ function Planilla({
                 <td className="py-2 pr-4 whitespace-nowrap text-foreground/60">{r.taxId ?? "—"}</td>
                 {conConcepto && <td className="py-2 pr-4 text-foreground/60">{r.concepto}</td>}
                 <td className={tdNum}>{formatMoney(r.neto, r.currency)}</td>
+                {conNoGravado && <td className={tdNum}>{formatMoney(r.noGravado, r.currency)}</td>}
                 <td className={tdNum}>{formatMoney(r.percepcion, r.currency)}</td>
                 <td className={tdNum}>{formatMoney(r.iva, r.currency)}</td>
                 <td className={`${tdNum} font-medium`}>{formatMoney(r.total, r.currency)}</td>
@@ -287,6 +291,7 @@ function Planilla({
                   TOTALES
                 </td>
                 <td className={tdNum}>{formatMoney(totales.neto)}</td>
+                {conNoGravado && <td className={tdNum}>{formatMoney(totales.noGravado)}</td>}
                 <td className={tdNum}>{formatMoney(totales.percepcion)}</td>
                 <td className={tdNum}>{formatMoney(totales.iva)}</td>
                 <td className={tdNum}>{formatMoney(totales.total)}</td>

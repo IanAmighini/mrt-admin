@@ -33,7 +33,10 @@ export type RenglonIva = {
   taxId: string | null;
   /** Qué es: "Factura", "Gasto", "Compra". Sólo se muestra del lado de compras, donde se mezclan. */
   concepto: string | null;
+  /** El neto **gravado**: la suma de las bases del IVA. Lo no gravado y lo exento van aparte. */
   neto: Prisma.Decimal;
+  /** No gravado y exento: en una factura C es todo, en la de YPF o Edenor una parte. */
+  noGravado: Prisma.Decimal;
   percepcion: Prisma.Decimal;
   iva: Prisma.Decimal;
   total: Prisma.Decimal;
@@ -49,6 +52,7 @@ export type RenglonIva = {
 
 export type TotalesIva = {
   neto: Prisma.Decimal;
+  noGravado: Prisma.Decimal;
   percepcion: Prisma.Decimal;
   iva: Prisma.Decimal;
   total: Prisma.Decimal;
@@ -121,6 +125,7 @@ function tituloDePeriodo(period: Period): string {
 function sumarTotales(renglones: RenglonIva[]): TotalesIva {
   return {
     neto: sumDecimals(renglones.map((r) => r.neto)),
+    noGravado: sumDecimals(renglones.map((r) => r.noGravado)),
     percepcion: sumDecimals(renglones.map((r) => r.percepcion)),
     iva: sumDecimals(renglones.map((r) => r.iva)),
     total: sumDecimals(renglones.map((r) => r.total)),
@@ -265,6 +270,13 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
     // `0 × −1` da −0, que se imprime "−$ 0,00": el cero no lleva signo.
     const signo = signoDe(doc.type);
     const conSigno = (v: Prisma.Decimal) => (v.isZero() ? ZERO : v.times(signo));
+    // El neto del comprobante incluye lo no gravado y lo exento: en el libro el neto gravado es la
+    // base del IVA, y lo otro va en su columna. Antes se sumaba todo como gravado: la factura C de
+    // Mandia figuraba con $ 360.000 de neto gravado, y era todo no gravado.
+    const noGravado = sumDecimals(doc.taxes.filter((t) => t.kind === "NO_GRAVADO" || t.kind === "EXENTO").map((t) => t.amount));
+    const filasIva = doc.taxes.filter((t) => t.kind === "IVA");
+    // Sin desglose (los de antes de que existiera) el neto es todo gravado, que es como se cargaban.
+    const netoGravado = filasIva.length > 0 ? sumDecimals(filasIva.map((f) => f.base)) : toDecimal(doc.netAmount).minus(noGravado);
     return {
       date: doc.date,
       number: doc.number,
@@ -272,7 +284,8 @@ export async function getLibroIva(period: Period): Promise<LibroIva> {
       entityName: nombreDeclarado,
       taxId: aNombreDe.taxId,
       concepto,
-      neto: conSigno(toDecimal(doc.netAmount)),
+      neto: conSigno(netoGravado),
+      noGravado: conSigno(noGravado),
       percepcion: conSigno(percepcionesDe(doc)),
       iva: conSigno(toDecimal(doc.ivaAmount)),
       total: conSigno(toDecimal(doc.totalAmount)),
