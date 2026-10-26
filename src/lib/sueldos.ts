@@ -7,6 +7,8 @@ import { esCaja } from "@/lib/pagos";
 import { UserError } from "@/lib/user-error";
 import { formatFecha } from "@/lib/period";
 import { cuentaDelRenglon, type CuentaDelRenglon } from "@/lib/sueldos-calculo";
+import { getSetting } from "@/lib/settings";
+import { leerReglas } from "@/lib/fichero-calculo";
 
 const DIA = 24 * 60 * 60 * 1000;
 /** Las fechas se guardan a medianoche UTC (ver `parseFecha`), así que sumar días es sumar 24 h. */
@@ -179,3 +181,12 @@ export async function getRenglonesCalculados(planillaId: string) {
     });
   return { planilla, renglones };
 }
+
+export const SETTING_REGLAS_FICHERO = "reglasFichero";
+/** Las reglas con que se calculan las horas del fichero (Sueldos → Reglas del fichero). */
+export async function getReglasFichero() {
+  return leerReglas(await getSetting(SETTING_REGLAS_FICHERO, ""));
+}
+
+/** Las fechas de una planilla como las usa el fichero: "2026-10-17". */
+export const fechaISO = (d: Date) => d.toISOString().slice(0, 10);

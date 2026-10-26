@@ -1,11 +1,20 @@
 "use client";
 
-import { useActionState, useRef, useState } from "react";
+import { Fragment, useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { Prisma, type FormaDeSueldo } from "@prisma/client";
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { cuentaDelRenglon, valorHora } from "@/lib/sueldos-calculo";
+import {
+  DIAS_SEMANA,
+  diaDeLaSemana,
+  fechasDe,
+  limpiarMarcas,
+  resumenDeSemana,
+  type DiaFichero,
+  type ReglasFichero,
+} from "@/lib/fichero-calculo";
 import { buttonClass } from "./ui/Button";
 import { controlClass } from "./ui/Field";
 import { segmentoClass, segmentosClass } from "./ui/Segmentos";
@@ -27,6 +36,8 @@ export type FilaDePlanilla = {
   acuenta: string;
   pagado: string;
   comentario: string;
+  /** Los días importados del fichero; null si las horas se cargan a mano. */
+  dias: DiaFichero[] | null;
 };
 
 type Campo = "horas" | "feriado" | "monotributo" | "acuenta" | "pagado" | "comentario";
@@ -38,6 +49,8 @@ const celda = "px-2 py-1.5";
 const importe = `${celda} pt-3.5 text-right tabular-nums whitespace-nowrap`;
 const entrada = controlClass({ denso: true, extra: "text-right tabular-nums min-w-[4.5rem]" });
 const entradaPlata = controlClass({ denso: true, extra: "text-right tabular-nums min-w-[8.5rem]" });
+const entradaHora = controlClass({ denso: true, extra: "text-center tabular-nums w-full" });
+const horasTexto = (h: number) => h.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
 /**
  * La planilla de la semana (o del mes) para cargar: horas, feriados y los dos bonos de cada uno
@@ -55,6 +68,9 @@ export function PlanillaDeSueldosGrid({
   filas,
   puedeEditar,
   action,
+  semana,
+  feriadosIniciales,
+  reglas,
 }: {
   planillaId: string;
   forma: FormaDeSueldo;
@@ -65,9 +81,16 @@ export function PlanillaDeSueldosGrid({
   filas: FilaDePlanilla[];
   puedeEditar: boolean;
   action: (formData: FormData) => Promise<void>;
+  /** Las fechas de la planilla ("2026-10-17"), para los días y los feriados. */
+  semana: { desde: string; hasta: string };
+  feriadosIniciales: string[];
+  reglas: ReglasFichero;
 }) {
   const [valores, setValores] = useState(() => Object.fromEntries(filas.map((f) => [f.id, f])));
   const [caja, setCaja] = useState(cajaId ?? cajas[0]?.id ?? "");
+  const [feriados, setFeriados] = useState<string[]>(feriadosIniciales);
+  const [abiertos, setAbiertos] = useState<string[]>([]);
+  const fechas = fechasDe(semana.desde, semana.hasta);
   const confirmar = useRef<HTMLDialogElement>(null);
   const [error, formAction, pending] = useActionState<string | null, FormData>(async (_prev, formData) => {
     try {
@@ -85,16 +108,31 @@ export function PlanillaDeSueldosGrid({
     setValores((v) => ({ ...v, [id]: { ...v[id], [campo]: valor } }));
   const marcar = (id: string, bono: "presentismo" | "puntualidad", valor: boolean) =>
     setValores((v) => ({ ...v, [id]: { ...v[id], [bono]: valor } }));
+  /** Corregir la entrada o la salida de un día; `undefined` vuelve a lo que dicen las marcas. */
+  const corregirDia = (id: string, fecha: string, cambios: Partial<Pick<DiaFichero, "entrada" | "salida">> | "volver") =>
+    setValores((v) => ({
+      ...v,
+      [id]: {
+        ...v[id],
+        dias: (v[id].dias ?? []).map((d) => {
+          if (d.fecha !== fecha) return d;
+          if (cambios === "volver") return { fecha: d.fecha, marcas: d.marcas, ...(d.arrastre ? { arrastre: true } : {}) };
+          return { ...d, ...cambios };
+        }),
+      },
+    }));
 
   const semanal = forma === "SEMANAL";
   const cuentas = filas.map((f) => {
     const v = valores[f.id];
+    // Con los días del fichero, las horas salen de ahí; si no, de lo que se escribió.
+    const resumen = semanal && v.dias ? resumenDeSemana(v.dias, reglas, { ...semana, feriados }) : null;
     const cuenta = f.tarifa
       ? cuentaDelRenglon({
           forma,
           tarifa: D(f.tarifa),
-          horas: leer(v.horas) ?? D("0"),
-          horasFeriado: leer(v.feriado) ?? D("0"),
+          horas: resumen ? D(String(resumen.horas)) : (leer(v.horas) ?? D("0")),
+          horasFeriado: resumen ? D(String(resumen.horasFeriado)) : (leer(v.feriado) ?? D("0")),
           presentismo: v.presentismo,
           puntualidad: v.puntualidad,
           monotributo: leer(v.monotributo) ?? D("0"),
@@ -103,20 +141,51 @@ export function PlanillaDeSueldosGrid({
           pagado: leer(v.pagado),
         })
       : null;
-    return { f, v, cuenta };
+    return { f, v, cuenta, resumen };
   });
   const suma = (pick: (c: NonNullable<(typeof cuentas)[number]["cuenta"]>) => Prisma.Decimal) =>
     cuentas.reduce((acc, { cuenta }) => (cuenta ? acc.plus(pick(cuenta)) : acc), D("0"));
   const totalSueldo = suma((c) => c.sueldo);
   const totalEfectivo = suma((c) => c.pagado);
-  const totalHoras = cuentas.reduce((acc, { v }) => acc.plus(leer(v.horas) ?? 0), D("0"));
+  const totalHoras = cuentas.reduce((acc, { v, resumen }) => acc.plus(resumen ? resumen.horas : (leer(v.horas) ?? 0)), D("0"));
   const conACuenta = cuentas.some(({ cuenta, v }) => cuenta?.aCuenta.greaterThan(0) || cuenta?.deudaAnterior.greaterThan(0) || v.acuenta);
   const nombreCaja = cajas.find((c) => c.id === caja)?.name ?? "la caja";
+  const columnas = (semanal ? 9 : 7) + (conACuenta ? 1 : 0);
+  const pendientes = cuentas.reduce((acc, { resumen }) => acc + (resumen?.pendientes.length ?? 0), 0);
   const conDatos = cuentas.filter(({ cuenta }) => cuenta && (cuenta.gasto.greaterThan(0) || cuenta.pagado.greaterThan(0))).length;
 
   return (
     <form action={formAction} onSubmit={unaVez} className="space-y-4">
       <input type="hidden" name="planillaId" value={planillaId} />
+
+      {semanal && (
+        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          <span className="mr-1 text-foreground/60">Feriados de la semana:</span>
+          {fechas.map((fecha) => {
+            const activo = feriados.includes(fecha);
+            return (
+              <label
+                key={fecha}
+                className={`cursor-pointer rounded-md border px-2 py-1 text-xs tabular-nums transition-colors ${
+                  activo ? "border-primary bg-primary font-medium text-primary-foreground" : "border-foreground/15 text-foreground/60 hover:bg-foreground/5"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  name="feriado_fecha"
+                  value={fecha}
+                  checked={activo}
+                  onChange={(e) => setFeriados((fs) => (e.target.checked ? [...fs, fecha] : fs.filter((x) => x !== fecha)))}
+                  disabled={!puedeEditar}
+                  className="sr-only"
+                />
+                {DIAS_SEMANA[diaDeLaSemana(fecha)]} {Number(fecha.slice(8))}
+              </label>
+            );
+          })}
+          <span className="text-xs text-foreground/40">Sus horas van al valor hora + 0,5 y no cuentan para el presentismo.</span>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-foreground/10">
         <table className="w-full text-sm">
@@ -156,8 +225,9 @@ export function PlanillaDeSueldosGrid({
             </tr>
           </thead>
           <tbody className="divide-y divide-foreground/10">
-            {cuentas.map(({ f, v, cuenta }) => (
-              <tr key={f.id} className="align-top">
+            {cuentas.map(({ f, v, cuenta, resumen }) => (
+              <Fragment key={f.id}>
+              <tr className="align-top">
                 <td className={`${celda} min-w-[10rem]`}>
                   <Link href={`/cuentas-corrientes/${f.slug}`} className="font-medium hover:underline">
                     {f.nombre}
@@ -170,7 +240,28 @@ export function PlanillaDeSueldosGrid({
                       : "Sin jornal cargado"}
                   </p>
                 </td>
-                {semanal && (
+                {semanal && resumen && (
+                  <td className={`${celda} text-right`}>
+                    <input type="hidden" name={`dias_${f.id}`} value={JSON.stringify(v.dias)} />
+                    <p className="pt-2 font-medium tabular-nums">{horasTexto(resumen.horas)}</p>
+                    <button
+                      type="button"
+                      onClick={() => setAbiertos((a) => (a.includes(f.id) ? a.filter((x) => x !== f.id) : [...a, f.id]))}
+                      className="whitespace-nowrap text-[11px] text-foreground/50 underline-offset-2 hover:text-foreground hover:underline"
+                    >
+                      {abiertos.includes(f.id) ? "ocultar días" : "ver días"}
+                    </button>
+                    {resumen.pendientes.length > 0 && (
+                      <p className="whitespace-nowrap text-[11px] text-amber-700 dark:text-amber-400">
+                        {resumen.pendientes.length} sin marca
+                      </p>
+                    )}
+                  </td>
+                )}
+                {semanal && resumen && (
+                  <td className={importe}>{resumen.horasFeriado ? horasTexto(resumen.horasFeriado) : ""}</td>
+                )}
+                {semanal && !resumen && (
                   <td className={celda}>
                     <input
                       name={`horas_${f.id}`}
@@ -184,7 +275,7 @@ export function PlanillaDeSueldosGrid({
                     />
                   </td>
                 )}
-                {semanal && (
+                {semanal && !resumen && (
                   <td className={celda}>
                     <input
                       name={`feriado_${f.id}`}
@@ -213,6 +304,26 @@ export function PlanillaDeSueldosGrid({
                         />
                         {v[bono] && f.tarifa ? formatMoney(D(f.tarifa)) : ""}
                       </label>
+                      {resumen &&
+                        (() => {
+                          const sugerido = bono === "presentismo" ? resumen.presentismo : resumen.puntualidad;
+                          const motivos =
+                            bono === "presentismo"
+                              ? resumen.sinPresentismo
+                              : resumen.sinPresentismo.length
+                                ? ["sin presentismo"]
+                                : resumen.sinPuntualidad;
+                          return (
+                            <p
+                              title={motivos.join("; ")}
+                              className={`mx-auto mt-0.5 max-w-[9rem] text-[10px] leading-tight ${
+                                sugerido !== v[bono] ? "text-amber-700 dark:text-amber-400" : "text-foreground/40"
+                              }`}
+                            >
+                              {sugerido ? "sugerido: sí" : (motivos[0] ?? "sugerido: no")}
+                            </p>
+                          );
+                        })()}
                     </td>
                   ))}
                 {!semanal && (
@@ -298,6 +409,79 @@ export function PlanillaDeSueldosGrid({
                   />
                 </td>
               </tr>
+              {semanal && resumen && v.dias && abiertos.includes(f.id) && (
+                <tr className="bg-foreground/[0.02]">
+                  <td colSpan={columnas} className="px-2 pb-3 pt-1">
+                    {resumen.arrastre > 0 && (
+                      <p className="mb-1 text-xs text-foreground/60">
+                        + {horasTexto(resumen.arrastre)} h del viernes anterior, después de las {reglas.corteViernes}.
+                      </p>
+                    )}
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
+                      {resumen.dias.map((c) => {
+                        const d = v.dias!.find((x) => x.fecha === c.fecha) ?? { fecha: c.fecha, marcas: [] };
+                        const marcas = limpiarMarcas(d.marcas);
+                        const pendiente = c.estado !== "ok" && c.estado !== "ausente";
+                        const valorDe = (campo: "entrada" | "salida") =>
+                          d[campo] !== undefined ? (d[campo] ?? "") : campo === "entrada" ? (marcas[0] ?? "") : marcas.length >= 2 ? marcas[marcas.length - 1] : "";
+                        return (
+                          <div
+                            key={c.fecha}
+                            className={`rounded-lg border p-2 text-xs ${
+                              pendiente ? "border-amber-400 bg-amber-50 dark:bg-amber-950/30" : "border-foreground/10 bg-background"
+                            }`}
+                          >
+                            <p className="font-medium">
+                              {DIAS_SEMANA[c.diaSemana]} {Number(c.fecha.slice(8))}
+                              {c.feriado ? " · feriado" : ""}
+                            </p>
+                            <p className="truncate text-[11px] text-foreground/50" title={marcas.join(" · ")}>
+                              {marcas.length ? marcas.join(" · ") : "sin marcas"}
+                            </p>
+                            <div className="mt-1 grid grid-cols-2 gap-1">
+                              {(["entrada", "salida"] as const).map((campo) => (
+                                <input
+                                  key={campo}
+                                  value={valorDe(campo)}
+                                  onChange={(e) => corregirDia(f.id, c.fecha, { [campo]: e.target.value.trim() ? e.target.value : null })}
+                                  disabled={!puedeEditar}
+                                  placeholder={campo === "salida" && c.diaSemana === 5 ? reglas.corteViernes : "--:--"}
+                                  aria-label={`${campo === "entrada" ? "Entrada" : "Salida"} de ${f.nombre} el ${c.fecha}`}
+                                  className={entradaHora}
+                                />
+                              ))}
+                            </div>
+                            <p className={`mt-1 tabular-nums ${pendiente ? "font-medium text-amber-700 dark:text-amber-400" : "text-foreground/70"}`}>
+                              {c.estado === "ausente"
+                                ? c.habil && !c.feriado
+                                  ? "no vino"
+                                  : "—"
+                                : c.estado === "falta-salida"
+                                  ? "falta la salida"
+                                  : c.estado === "falta-entrada"
+                                    ? "falta la entrada"
+                                    : c.estado === "error"
+                                      ? "salida antes que entrada"
+                                      : `${horasTexto(c.horas ?? 0)} h${c.almuerzo ? " (−almuerzo)" : ""}${c.salidaPorCorte ? " · hasta el corte" : ""}`}
+                              {c.tarde && " · tarde"}
+                            </p>
+                            {c.editado && puedeEditar && (
+                              <button
+                                type="button"
+                                onClick={() => corregirDia(f.id, c.fecha, "volver")}
+                                className="text-[11px] text-foreground/50 underline-offset-2 hover:underline"
+                              >
+                                volver a las marcas
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
           <tfoot className="border-t-2 border-foreground/15 font-semibold tabular-nums">
@@ -397,6 +581,11 @@ export function PlanillaDeSueldosGrid({
           <li>
             Salen <strong>{formatMoney(totalEfectivo)}</strong> en efectivo de <strong>{nombreCaja}</strong>.
           </li>
+          {pendientes > 0 && (
+            <li className="text-amber-700 dark:text-amber-400">
+              Hay {pendientes} {pendientes === 1 ? "día" : "días"} con una marca de menos: se cuentan en cero hasta que se completen.
+            </li>
+          )}
           <li>Si hay que corregir algo después, se reabre la planilla y se vuelve a cerrar.</li>
         </ul>
         {error && <p className="mb-3 rounded bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-400">{error}</p>}

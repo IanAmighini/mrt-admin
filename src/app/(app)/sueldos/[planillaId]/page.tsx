@@ -6,7 +6,8 @@ import { requireUser } from "@/lib/auth-helpers";
 import { formatMoney, formatNumeroExacto, sumDecimals, ZERO } from "@/lib/money";
 import { formatFecha, toDateInputValue } from "@/lib/period";
 import { cuentaDelRenglon } from "@/lib/sueldos-calculo";
-import { getCajasDeSueldos, getEmpleados, nombreDePlanilla, tarifaVigente } from "@/lib/sueldos";
+import { fechaISO, getCajasDeSueldos, getEmpleados, getReglasFichero, nombreDePlanilla, tarifaVigente } from "@/lib/sueldos";
+import type { DiaFichero } from "@/lib/fichero-calculo";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { PlanillaDeSueldosGrid } from "@/components/PlanillaDeSueldosGrid";
@@ -73,8 +74,10 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
         acuenta: texto(r.descuentoACuenta),
         pagado: texto(r.pagado),
         comentario: r.comentario ?? "",
+        dias: (r.dias as DiaFichero[] | null) ?? null,
       };
     });
+    const reglas = await getReglasFichero();
     return (
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -102,6 +105,9 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
           filas={filas}
           puedeEditar={canEdit}
           action={guardarPlanilla}
+          semana={{ desde: fechaISO(planilla.desde), hasta: fechaISO(planilla.hasta) }}
+          feriadosIniciales={planilla.feriados}
+          reglas={reglas}
         />
       </div>
     );

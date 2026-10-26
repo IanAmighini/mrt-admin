@@ -11,7 +11,9 @@ import { generateUniqueSlug } from "@/lib/slug";
 import { slugDeEntidad } from "@/lib/slug-lookup";
 import { formatMoney, parseNumeroEscrito, ZERO } from "@/lib/money";
 import { formatFecha, parseFecha } from "@/lib/period";
-import { getCajasDeSueldos, getEmpleados, getUltimosMonotributos, nombreDePlanilla } from "@/lib/sueldos";
+import { fechaISO, getCajasDeSueldos, getEmpleados, getReglasFichero, getUltimosMonotributos, nombreDePlanilla, SETTING_REGLAS_FICHERO } from "@/lib/sueldos";
+import { esHora, fechasDe, leerReglas, resumenDeSemana, type DiaFichero, type ReglasFichero } from "@/lib/fichero-calculo";
+import { setSetting } from "@/lib/settings";
 import { cerrarPlanillaCore, reabrirPlanillaCore } from "@/lib/sueldos-cierre";
 
 const QUIENES = ["ADMIN", "SECRETARIA"] as const;
@@ -209,6 +211,38 @@ export async function crearPlanilla(formData: FormData) {
   redirect(`/sueldos/${planilla.id}`);
 }
 
+/** Los días de un empleado tal como los manda la grilla, validados: fechas y horas con forma de hora. */
+function leerDias(raw: FormDataEntryValue | null, quien: string): DiaFichero[] | null {
+  const texto = String(raw ?? "").trim();
+  if (!texto) return null;
+  let dias: unknown;
+  try {
+    dias = JSON.parse(texto);
+  } catch {
+    throw new UserError(`Los días de ${quien} llegaron mal. Recargá la página y volvé a intentar.`);
+  }
+  if (!Array.isArray(dias)) throw new UserError(`Los días de ${quien} llegaron mal.`);
+  const hora = (h: unknown, cual: string, fecha: string) => {
+    if (h === undefined) return undefined;
+    if (h === null || h === "") return null;
+    if (typeof h !== "string" || !esHora(h)) throw new UserError(`${quien}, ${fecha.split("-").reverse().join("/")}: "${String(h)}" no es una hora de ${cual} (tiene que ser como 07:30).`);
+    return h.trim();
+  };
+  return dias.map((d) => {
+    const fecha = String(d?.fecha ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) throw new UserError(`Los días de ${quien} llegaron mal.`);
+    const entrada = hora(d.entrada, "entrada", fecha);
+    const salida = hora(d.salida, "salida", fecha);
+    return {
+      fecha,
+      marcas: Array.isArray(d.marcas) ? d.marcas.map(String).filter(esHora) : [],
+      ...(entrada !== undefined ? { entrada } : {}),
+      ...(salida !== undefined ? { salida } : {}),
+      ...(d.arrastre ? { arrastre: true } : {}),
+    };
+  });
+}
+
 /** Lo que trae la grilla, renglón por renglón. Sólo se guarda en una planilla abierta. */
 async function guardarCampos(formData: FormData) {
   const planillaId = String(formData.get("planillaId") || "");
@@ -223,17 +257,33 @@ async function guardarCampos(formData: FormData) {
   const cajaId = String(formData.get("cajaId") || "") || null;
   if (cajaId && !(await getCajasDeSueldos()).some((c) => c.id === cajaId)) throw new UserError("Elegí la caja de la que sale.");
   const notas = String(formData.get("notas") || "").trim() || null;
+  const desde = fechaISO(planilla.desde);
+  const hasta = fechaISO(planilla.hasta);
+  const deLaSemana = fechasDe(desde, hasta);
+  // Los feriados de la semana: sus horas van al valor hora + 0,5 y no cuentan para el presentismo.
+  const feriados = formData
+    .getAll("feriado_fecha")
+    .map(String)
+    .filter((f) => deLaSemana.includes(f));
+  const reglas = await getReglasFichero();
 
   const cambios = planilla.renglones.map((r) => {
     const de = (campo: string) => formData.get(`${campo}_${r.id}`);
     const quien = r.entity.name;
-    const horas = leerOpcional(de("horas"), `las horas de ${quien}`) ?? ZERO;
-    const horasFeriado = leerOpcional(de("feriado"), `las horas de feriado de ${quien}`) ?? ZERO;
+    // Con los días del fichero, las horas salen de ahí —con las correcciones a mano— y se vuelven a
+    // calcular acá: lo que mande el navegador no se toma tal cual.
+    const dias = leerDias(de("dias"), quien);
+    const resumen = dias ? resumenDeSemana(dias, reglas, { desde, hasta, feriados }) : null;
+    const horas = resumen ? new Prisma.Decimal(resumen.horas) : (leerOpcional(de("horas"), `las horas de ${quien}`) ?? ZERO);
+    const horasFeriado = resumen
+      ? new Prisma.Decimal(resumen.horasFeriado)
+      : (leerOpcional(de("feriado"), `las horas de feriado de ${quien}`) ?? ZERO);
     if (horasFeriado.greaterThan(horas)) {
       throw new UserError(`${quien}: las horas de feriado van dentro del total, así que no pueden ser más que las horas.`);
     }
     return {
       id: r.id,
+      ...(dias ? { dias: dias as unknown as Prisma.InputJsonValue } : {}),
       horas,
       horasFeriado,
       presentismo: de("presentismo") === "on",
@@ -246,7 +296,7 @@ async function guardarCampos(formData: FormData) {
   });
 
   await prisma.$transaction([
-    prisma.planillaDeSueldos.update({ where: { id: planillaId }, data: { fechaDePago, cajaId, notas } }),
+    prisma.planillaDeSueldos.update({ where: { id: planillaId }, data: { fechaDePago, cajaId, notas, feriados } }),
     ...cambios.map(({ id, ...data }) => prisma.renglonDeSueldo.update({ where: { id }, data })),
   ]);
   return planillaId;
@@ -296,3 +346,63 @@ export async function borrarPlanilla(formData: FormData) {
   redirect("/sueldos");
 }
 
+
+// ─── Fichero ──────────────────────────────────────────────────────────────────────────────────────
+
+/** Las reglas con que se calculan las horas del fichero. Sólo el admin: cambian lo que cobra cada uno. */
+export async function guardarReglasFichero(formData: FormData) {
+  const user = await requireRole(["ADMIN"]);
+  const hora = (campo: string, nombre: string) => {
+    const v = String(formData.get(campo) || "").trim();
+    if (!esHora(v)) throw new UserError(`${nombre}: tiene que ser una hora, como 08:00.`);
+    return v;
+  };
+  const numero = (campo: string, nombre: string) => {
+    const v = parseNumeroEscrito(String(formData.get(campo) || ""), nombre);
+    if (v.isNegative()) throw new UserError(`${nombre} no puede ser negativo.`);
+    return v.toNumber();
+  };
+  const reglas: ReglasFichero = {
+    entradaPuntual: hora("entradaPuntual", "La hora de entrada"),
+    corteViernes: hora("corteViernes", "El corte del viernes"),
+    almuerzoMinutos: numero("almuerzoMinutos", "El almuerzo"),
+    diaConAlmuerzoHoras: numero("diaConAlmuerzoHoras", "Desde cuántas horas se descuenta el almuerzo"),
+    presentismoHoras: numero("presentismoHoras", "Las horas para el presentismo"),
+    redondeoHoras: numero("redondeoHoras", "El redondeo"),
+  };
+  const antes = leerReglas(await getSettingDeReglas());
+  await setSetting(SETTING_REGLAS_FICHERO, JSON.stringify(reglas));
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Reglas del fichero",
+    entityId: SETTING_REGLAS_FICHERO,
+    summary: `Reglas del fichero: entrada hasta ${reglas.entradaPuntual}, viernes hasta ${reglas.corteViernes}, almuerzo ${reglas.almuerzoMinutos} min en días de ${reglas.diaConAlmuerzoHoras} h o más, presentismo con ${reglas.presentismoHoras} h, redondeo ${reglas.redondeoHoras} h`,
+    cambios: (Object.keys(reglas) as (keyof ReglasFichero)[])
+      .filter((k) => String(antes[k]) !== String(reglas[k]))
+      .map((k) => ({ campo: k, antes: String(antes[k]), despues: String(reglas[k]) })),
+  });
+  revalidarSueldos();
+}
+
+async function getSettingDeReglas() {
+  const fila = await prisma.setting.findUnique({ where: { key: SETTING_REGLAS_FICHERO } });
+  return fila?.value ?? null;
+}
+
+/** El número de un empleado en el reloj, para encontrarlo al importar. */
+export async function guardarIdFichero(formData: FormData) {
+  const user = await requireRole([...QUIENES]);
+  const entityId = String(formData.get("empleadoId") || "");
+  const idFichero = String(formData.get("idFichero") || "").trim() || null;
+  if (idFichero && !/^\d+$/.test(idFichero)) throw new UserError("El número del fichero son sólo dígitos, como 1004.");
+  const empleado = await prisma.entity.update({ where: { id: entityId }, data: { idFichero } });
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Empleado",
+    entityId,
+    summary: `${empleado.name} — número en el fichero: ${idFichero ?? "(ninguno)"}`,
+  });
+  revalidarSueldos();
+}

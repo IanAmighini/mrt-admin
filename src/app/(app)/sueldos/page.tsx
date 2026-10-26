@@ -4,20 +4,20 @@ import { requireUser } from "@/lib/auth-helpers";
 import { formatMoney, sumDecimals, ZERO } from "@/lib/money";
 import { formatDateTime, formatFecha, hoyComoFecha, toDateInputValue } from "@/lib/period";
 import { valorHora } from "@/lib/sueldos-calculo";
-import { getCajasDeSueldos, getEmpleados, nombreDePlanilla, proximoPeriodo, tarifaVigente } from "@/lib/sueldos";
+import { getCajasDeSueldos, getEmpleados, getReglasFichero, nombreDePlanilla, proximoPeriodo, tarifaVigente } from "@/lib/sueldos";
 import { FormModal } from "@/components/Modal";
 import { BotonConError } from "@/components/BotonConError";
 import { EmpleadoFormFields } from "@/components/EmpleadoFormFields";
 import { buttonClass } from "@/components/ui/Button";
 import { controlClass } from "@/components/ui/Field";
-import { cambiarTarifa, crearEmpleado, crearPlanilla, darDeBajaEmpleado } from "./actions";
+import { cambiarTarifa, crearEmpleado, crearPlanilla, darDeBajaEmpleado, guardarIdFichero, guardarReglasFichero } from "./actions";
 
 export default async function SueldosPage() {
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
   const hoy = hoyComoFecha();
 
-  const [empleados, planillas, cajas, semana, mes, proveedores] = await Promise.all([
+  const [empleados, planillas, cajas, semana, mes, proveedores, reglas] = await Promise.all([
     getEmpleados({ conBajas: true }),
     prisma.planillaDeSueldos.findMany({
       orderBy: [{ desde: "desc" }, { forma: "asc" }],
@@ -28,6 +28,7 @@ export default async function SueldosPage() {
     proximoPeriodo("SEMANAL", hoy),
     proximoPeriodo("MENSUAL", hoy),
     prisma.entity.findMany({ where: { type: "PROVEEDOR", formaDeSueldo: null }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    getReglasFichero(),
   ]);
   const activos = empleados.filter((e) => !e.empleadoBaja);
   const bajas = empleados.filter((e) => e.empleadoBaja);
@@ -90,6 +91,38 @@ export default async function SueldosPage() {
             <FormModal triggerLabel="Nuevo empleado" title="Nuevo empleado" action={crearEmpleado} peso="secundario">
               <EmpleadoFormFields proveedores={proveedores} />
             </FormModal>
+            {/* Cambian lo que cobra cada uno: sólo el admin. */}
+            {user.role === "ADMIN" && (
+              <FormModal triggerLabel="Reglas del fichero" title="Reglas del fichero" action={guardarReglasFichero} peso="discreto" iconName="edit">
+                <p className="text-sm text-foreground/70">
+                  Con esto se calculan las horas y los bonos al importar las marcas del reloj. Todo queda editable en la
+                  planilla.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {(
+                    [
+                      ["entradaPuntual", "Llega a tiempo hasta las", reglas.entradaPuntual, "Para la puntualidad, todos los días hábiles."],
+                      ["corteViernes", "El viernes se cuenta hasta las", reglas.corteViernes, "Lo que se queden después pasa a la semana siguiente."],
+                      ["almuerzoMinutos", "Almuerzo (minutos)", String(reglas.almuerzoMinutos), "Se descuenta en los días de semana completos."],
+                      ["diaConAlmuerzoHoras", "Desde cuántas horas se descuenta", String(reglas.diaConAlmuerzoHoras).replace(".", ","), "De puerta a puerta."],
+                      ["presentismoHoras", "Horas del día para el presentismo", String(reglas.presentismoHoras).replace(".", ","), "Ya sin el almuerzo, todos los días hábiles."],
+                      ["redondeoHoras", "Redondeo del total (horas)", String(reglas.redondeoHoras).replace(".", ","), "0,5 es a la media hora."],
+                    ] as const
+                  ).map(([name, label, valor, ayuda]) => (
+                    <div key={name} className="space-y-1">
+                      <label className="text-sm" htmlFor={`regla-${name}`}>
+                        {label}
+                      </label>
+                      <input id={`regla-${name}`} name={name} required defaultValue={valor} className={controlClass()} />
+                      <p className="text-xs text-foreground/50">{ayuda}</p>
+                    </div>
+                  ))}
+                </div>
+                <button type="submit" className={buttonClass("primario", "w-fit")}>
+                  Guardar
+                </button>
+              </FormModal>
+            )}
           </div>
         )}
       </div>
@@ -233,6 +266,36 @@ export default async function SueldosPage() {
                             Guardar
                           </button>
                         </FormModal>
+                        {e.forma === "SEMANAL" && (
+                          <FormModal
+                            triggerLabel={e.idFichero ? `Fichero n° ${e.idFichero}` : "Sin n° de fichero"}
+                            title={`${e.name} en el fichero`}
+                            action={guardarIdFichero}
+                            triggerClassName="rounded px-2 py-1 text-xs text-foreground/50 hover:bg-foreground/5 hover:text-foreground"
+                          >
+                            <input type="hidden" name="empleadoId" value={e.id} />
+                            <div className="space-y-1">
+                              <label className="text-sm" htmlFor={`fichero-${e.id}`}>
+                                Número en el reloj
+                              </label>
+                              <input
+                                id={`fichero-${e.id}`}
+                                name="idFichero"
+                                inputMode="numeric"
+                                defaultValue={e.idFichero ?? ""}
+                                placeholder="1004"
+                                className={controlClass()}
+                              />
+                              <p className="text-xs text-foreground/50">
+                                Se completa solo la primera vez que se importa, buscándolo por el nombre. Sirve cuando el
+                                nombre no coincide o hay dos iguales.
+                              </p>
+                            </div>
+                            <button type="submit" className={buttonClass("primario", "w-fit")}>
+                              Guardar
+                            </button>
+                          </FormModal>
+                        )}
                         <BotonConError
                           action={darDeBajaEmpleado}
                           hidden={{ empleadoId: e.id }}
