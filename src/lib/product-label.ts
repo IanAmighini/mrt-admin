@@ -43,22 +43,37 @@ export function formatPallets(
   boxesPerPallet: number | null
 ): string {
   const total = Number(cantidad);
-  const signo = total < 0 ? "-" : "";
-  const abs = Math.abs(total);
-  const enteros = Math.floor(abs);
   // Sin cajas por pallet no hay a qué convertir la fracción, así que se muestra como viene.
   if (!boxesPerPallet) return `${formatQuantity(total)} pallets`;
-
-  const cajas = Math.round((abs - enteros) * boxesPerPallet);
-  // Redondear la fracción puede completar un pallet: 0,999 × 84 = 84 cajas, que son 1 pallet.
-  const pallets = cajas === boxesPerPallet ? enteros + 1 : enteros;
-  const sueltas = cajas === boxesPerPallet ? 0 : cajas;
+  const signo = total < 0 ? "-" : "";
+  const { pallets: conSigno, cajas: cajasConSigno } = palletsYCajas(total, boxesPerPallet);
+  const pallets = Math.abs(conSigno);
+  const sueltas = Math.abs(cajasConSigno);
 
   const partes: string[] = [];
   if (pallets > 0) partes.push(`${formatQuantity(pallets)} ${pallets === 1 ? "pallet" : "pallets"}`);
   if (sueltas > 0) partes.push(`${formatQuantity(sueltas)} ${sueltas === 1 ? "caja" : "cajas"}`);
   if (partes.length === 0) return "0 pallets";
   return signo + partes.join(" + ");
+}
+
+/**
+ * Lo mismo que `formatPallets` pero en números, para sumar: pallets enteros y cajas de la fracción,
+ * los dos con el signo del stock. Sin cajas por pallet, la fracción se pierde en los pallets.
+ */
+export function palletsYCajas(
+  cantidad: Prisma.Decimal | number | string,
+  boxesPerPallet: number | null
+): { pallets: number; cajas: number } {
+  const total = Number(cantidad);
+  const signo = total < 0 ? -1 : 1;
+  const abs = Math.abs(total);
+  const enteros = Math.floor(abs);
+  if (!boxesPerPallet) return { pallets: total, cajas: 0 };
+  const cajas = Math.round((abs - enteros) * boxesPerPallet);
+  // Redondear la fracción puede completar un pallet: 0,999 × 84 = 84 cajas, que son 1 pallet.
+  if (cajas === boxesPerPallet) return { pallets: signo * (enteros + 1), cajas: 0 };
+  return { pallets: signo * enteros || 0, cajas: signo * cajas || 0 };
 }
 
 /**

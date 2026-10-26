@@ -1,20 +1,17 @@
-import Link from "next/link";
 import type { SupplierCategory } from "@prisma/client";
 import { Archive, CircleDot, Droplet, HelpCircle, Layers, Milk, PackageOpen, Scissors, Tag, type LucideIcon } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAllItemStocks, getAllProductStocks } from "@/lib/stock";
 import { getBotellasSueltas, getStockDeCajas } from "@/lib/cajas";
-import { formatQuantity } from "@/lib/money";
 import { SUPPLIER_CATEGORY_LABELS, SUPPLIER_CATEGORY_ORDER } from "@/lib/labels";
-import { formatPallets } from "@/lib/product-label";
 import { compareItemsBySize } from "@/lib/item-order";
 import { FormModal } from "@/components/Modal";
 import { ItemMovementFields } from "@/components/ItemMovementFields";
 import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
-import { Table, TableEmpty, Td, Th, Thead, Tr } from "@/components/ui/Table";
 import { createItem } from "./actions";
 import { DetalleDeCategoria, TarjetaDeCategoria, VolverAInsumos } from "./InsumosStock";
+import { ProductoTerminado } from "./ProductoTerminado";
 import { createItemMovement } from "./[itemId]/actions";
 
 const CATEGORY_ICONS: Record<SupplierCategory, LucideIcon> = {
@@ -70,7 +67,6 @@ export default async function StockPage({
   const verCategoria = ver && ver !== "producto" ? (ver as SupplierCategory) : null;
   const hayFiltro = Boolean(searchTerm || ver || soloBajoMinimo);
   const enDetalle = Boolean(verCategoria || searchTerm || soloBajoMinimo);
-  const hayBotellas = cajasRows.some((r) => r.botellas !== 0);
   const stockRows = (verProducto ? products : [])
     .map((product) => ({ product, stock: productStocks.get(product.id) ?? 0 }))
     .filter(({ stock }) => Number(stock) !== 0)
@@ -147,99 +143,16 @@ export default async function StockPage({
       </FilterBar>
 
       {verProducto && (
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold">Producto terminado</h2>
-        <Table suelta={false}>
-          <Thead>
-            <Th className="pl-4">Marca</Th>
-            <Th secundaria>Tipo de aceite</Th>
-            <Th>Formato</Th>
-            <Th align="derecha" className="pr-4">
-              Stock
-            </Th>
-          </Thead>
-            <tbody>
-              {stockRows.map(({ product, stock }) => {
-                const negative = Number(stock) < 0;
-                return (
-                  <Tr key={product.id}>
-                    <Td className="pl-4">
-                      {product.name}
-                      <span className="block text-xs text-foreground/50 md:hidden">
-                        {product.oilType}
-                      </span>
-                    </Td>
-                    <Td secundaria>{product.oilType}</Td>
-                    <Td>
-                      <Link href={`/produccion/${product.slug}`} className="underline underline-offset-2">
-                        {product.presentation}
-                      </Link>
-                    </Td>
-                    <Td
-                      numero
-                      className={`pr-4 font-medium ${negative ? "text-red-600 dark:text-red-400" : ""}`}
-                    >
-                      {formatPallets(stock, product.boxesPerPallet)}
-                    </Td>
-                  </Tr>
-                );
-              })}
-              {stockRows.length === 0 && (
-                <TableEmpty colSpan={4}>
-                  {hayFiltro
-                    ? "No hay producto terminado con este filtro."
-                    : "No hay stock de producto terminado ahora mismo."}
-                </TableEmpty>
-              )}
-            </tbody>
-        </Table>
-
-        {/* Las cajas sueltas van aparte y no como una columna de cada formato: son de la caja, y
-            las de un 84 y un 105 de la misma marca y botella son las mismas cajas. Repetirlas en
-            cada formato las contaría dos veces. */}
-        {cajasRows.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-sm font-semibold">Cajas sueltas</h3>
-            <Table suelta={false}>
-              <Thead>
-                <Th className="pl-4">Marca</Th>
-                <Th secundaria>Tipo de aceite</Th>
-                <Th>Caja</Th>
-                <Th align="derecha" className={hayBotellas ? "" : "pr-4"}>
-                  Sueltas
-                </Th>
-                {hayBotellas && (
-                  <Th align="derecha" className="pr-4">
-                    Botellas sueltas
-                  </Th>
-                )}
-              </Thead>
-              <tbody>
-                {cajasRows.map(({ caja, sueltas, botellas }) => (
-                  <Tr key={caja.id}>
-                    <Td className="pl-4">
-                      {caja.name}
-                      <span className="block text-xs text-foreground/50 md:hidden">{caja.oilType}</span>
-                    </Td>
-                    <Td secundaria>{caja.oilType}</Td>
-                    <Td>
-                      {caja.unitsPerBox}x{formatQuantity(caja.bottleCapacityMl)}
-                    </Td>
-                    <Td numero className={`${hayBotellas ? "" : "pr-4"} font-medium ${sueltas < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                      {formatQuantity(sueltas)} {Math.abs(sueltas) === 1 ? "caja" : "cajas"}
-                    </Td>
-                    {hayBotellas && (
-                      <Td numero className={`pr-4 ${botellas < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {botellas !== 0 ? `${formatQuantity(botellas)} ${Math.abs(botellas) === 1 ? "botella" : "botellas"}` : "—"}
-                      </Td>
-                    )}
-                  </Tr>
-                ))}
-              </tbody>
-            </Table>
-          </div>
-        )}
-      </section>
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold">Producto terminado</h2>
+          <ProductoTerminado
+            productos={stockRows.map((r) => r.product)}
+            stocks={productStocks}
+            cajas={cajasRows}
+            hayFiltro={hayFiltro}
+            buscando={Boolean(searchTerm)}
+          />
+        </section>
       )}
 
       <section className="space-y-6">
