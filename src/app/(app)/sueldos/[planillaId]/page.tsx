@@ -12,12 +12,19 @@ import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { PlanillaDeSueldosGrid } from "@/components/PlanillaDeSueldosGrid";
 import { buttonClass } from "@/components/ui/Button";
-import { borrarPlanilla, guardarPlanilla, reabrirPlanilla } from "../actions";
+import { borrarPlanilla, guardarPlanilla, importarFichero, reabrirPlanilla } from "../actions";
 
 const celda = "px-2 py-1.5";
 
-export default async function PlanillaPage({ params }: { params: Promise<{ planillaId: string }> }) {
+export default async function PlanillaPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ planillaId: string }>;
+  searchParams: Promise<{ importados?: string; pendientes?: string; sinMarcas?: string; ambiguos?: string; diasFuera?: string }>;
+}) {
   const { planillaId } = await params;
+  const importacion = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
 
@@ -83,6 +90,30 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
         <div className="flex flex-wrap items-start justify-between gap-3">
           {encabezado}
           <div className="flex items-center gap-2">
+            {canEdit && semanal && (
+              <FormModal triggerLabel="Importar del fichero" title="Importar del fichero" action={importarFichero} iconName="plus">
+                <input type="hidden" name="planillaId" value={planilla.id} />
+                <p className="text-sm text-foreground/80">
+                  El Excel que se baja del reloj (AllReport). Se cargan las horas de cada uno con las reglas del fichero y
+                  se sugieren el presentismo y la puntualidad; después se puede corregir día por día.
+                </p>
+                <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground/60">
+                  <li>Los viernes se cuentan hasta las 19; los días a los que les falta una marca quedan en amarillo.</li>
+                  <li>Si ya se había importado, se vuelve a calcular y se conservan las correcciones a mano.</li>
+                  <li>Marcá los feriados de la semana en la planilla, antes o después de importar.</li>
+                </ul>
+                <input
+                  type="file"
+                  name="archivo"
+                  required
+                  accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-foreground/10 file:px-3 file:py-2 file:text-sm"
+                />
+                <button type="submit" className={buttonClass("primario", "w-fit")}>
+                  Importar
+                </button>
+              </FormModal>
+            )}
             {bajarExcel}
             {canEdit && (
               <DeleteButton
@@ -95,6 +126,35 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
             )}
           </div>
         </div>
+        {importacion.importados !== undefined && (
+          <div className="space-y-1 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-4 py-3 text-sm">
+            <p>
+              Se importaron las marcas de <strong>{importacion.importados}</strong> empleados.
+              {Number(importacion.pendientes) > 0 && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {" "}
+                  Hay {importacion.pendientes} {Number(importacion.pendientes) === 1 ? "día" : "días"} con una marca de menos: tocá
+                  «ver días» en los que dicen «sin marca» y completalos con las cámaras.
+                </span>
+              )}
+            </p>
+            {importacion.sinMarcas && (
+              <p className="text-foreground/70">
+                No encontré en el fichero a: {importacion.sinMarcas}. Revisá su número de fichero en Sueldos, o cargá sus horas
+                a mano.
+              </p>
+            )}
+            {importacion.ambiguos && (
+              <p className="text-foreground/70">
+                Hay más de uno con el mismo nombre en el fichero para: {importacion.ambiguos}. Cargales el número de fichero en
+                Sueldos y volvé a importar.
+              </p>
+            )}
+            {importacion.diasFuera && (
+              <p className="text-foreground/70">El archivo no trae estos días de la semana: {importacion.diasFuera}.</p>
+            )}
+          </div>
+        )}
         <PlanillaDeSueldosGrid
           planillaId={planilla.id}
           forma={planilla.forma}

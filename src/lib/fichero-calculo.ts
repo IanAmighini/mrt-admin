@@ -85,13 +85,19 @@ const aHora = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${S
 export const esHora = (h: string) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(h.trim());
 const normalizarHora = (h: string) => aHora(aMinutos(h.trim()));
 
-/** Las marcas en orden, sin las repetidas: los que fichan dos veces seguidas dejan dos marcas iguales. */
+/**
+ * Las marcas en orden, sin las repetidas. El que ficha dos veces seguidas deja dos marcas: iguales, o
+ * con minutos de diferencia (Alex el 14/10: 07:06 y 07:12, y ninguna salida). Dos marcas a menos de
+ * media hora son la misma —nadie entra y sale en ese rato—; si no, ese día contaba 0,1 h en vez de
+ * avisar que falta la salida.
+ */
+const MISMA_MARCA_MINUTOS = 30;
 export function limpiarMarcas(marcas: string[]): string[] {
   const ordenadas = [...new Set(marcas.filter(esHora).map(normalizarHora))].sort();
   const limpias: string[] = [];
   for (const m of ordenadas) {
     const ultima = limpias.at(-1);
-    if (ultima && aMinutos(m) - aMinutos(ultima) <= 3) continue;
+    if (ultima && aMinutos(m) - aMinutos(ultima) < MISMA_MARCA_MINUTOS) continue;
     limpias.push(m);
   }
   return limpias;

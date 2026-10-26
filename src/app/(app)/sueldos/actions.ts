@@ -14,6 +14,8 @@ import { formatFecha, parseFecha } from "@/lib/period";
 import { fechaISO, getCajasDeSueldos, getEmpleados, getReglasFichero, getUltimosMonotributos, nombreDePlanilla, SETTING_REGLAS_FICHERO } from "@/lib/sueldos";
 import { esHora, fechasDe, leerReglas, resumenDeSemana, type DiaFichero, type ReglasFichero } from "@/lib/fichero-calculo";
 import { setSetting } from "@/lib/settings";
+import { leerArchivoDelFichero } from "@/lib/fichero-xls";
+import { importarMarcasCore } from "@/lib/sueldos-fichero";
 import { cerrarPlanillaCore, reabrirPlanillaCore } from "@/lib/sueldos-cierre";
 
 const QUIENES = ["ADMIN", "SECRETARIA"] as const;
@@ -405,4 +407,23 @@ export async function guardarIdFichero(formData: FormData) {
     summary: `${empleado.name} — número en el fichero: ${idFichero ?? "(ninguno)"}`,
   });
   revalidarSueldos();
+}
+
+/**
+ * Importa las marcas del reloj a la planilla de la semana: el Excel que baja Adriana del fichero.
+ * Vuelve a la planilla con el resultado en la dirección, para mostrar qué se importó y qué no.
+ */
+export async function importarFichero(formData: FormData) {
+  const user = await requireRole([...QUIENES]);
+  const planillaId = String(formData.get("planillaId") || "");
+  const archivo = formData.get("archivo");
+  if (!(archivo instanceof File) || archivo.size === 0) throw new UserError("Elegí el archivo que exporta el reloj.");
+  const exportacion = leerArchivoDelFichero(await archivo.arrayBuffer());
+  const r = await importarMarcasCore(planillaId, exportacion, user.id);
+  revalidarSueldos(planillaId);
+  const aviso = new URLSearchParams({ importados: String(r.importados), pendientes: String(r.pendientes) });
+  if (r.sinMarcas.length) aviso.set("sinMarcas", r.sinMarcas.join(", "));
+  if (r.ambiguos.length) aviso.set("ambiguos", r.ambiguos.join(", "));
+  if (r.diasFuera.length) aviso.set("diasFuera", r.diasFuera.map((f) => f.split("-").reverse().slice(0, 2).join("/")).join(", "));
+  redirect(`/sueldos/${planillaId}?${aviso.toString()}`);
 }
