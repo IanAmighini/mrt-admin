@@ -39,9 +39,10 @@ export async function cerrarPlanillaCore(planillaId: string, userId: string) {
       tarifa: tarifa.monto,
       horas: r.horas,
       horasFeriado: r.horasFeriado,
+      presentismo: r.presentismo,
+      puntualidad: r.puntualidad,
+      monotributo: r.monotributo ?? ZERO,
       saldoAnterior: e.saldo,
-      pendienteCuenta1: e.pendienteCuenta1,
-      descuentoCuenta1: r.descuentoCuenta1,
       descuentoACuenta: r.descuentoACuenta,
       pagado: r.pagado,
     });
@@ -61,7 +62,9 @@ export async function cerrarPlanillaCore(planillaId: string, userId: string) {
           const detalle = [
             planilla.forma === "SEMANAL" ? `${r.horas.toString().replace(".", ",")} h` : null,
             r.horasFeriado.greaterThan(0) ? `${r.horasFeriado.toString().replace(".", ",")} en feriado` : null,
-            cuenta.descuentoCuenta1.greaterThan(0) ? `menos ${formatMoney(cuenta.descuentoCuenta1)} de la Cuenta 1` : null,
+            r.presentismo && planilla.forma === "SEMANAL" ? "presentismo" : null,
+            r.puntualidad && planilla.forma === "SEMANAL" ? "puntualidad" : null,
+            cuenta.monotributo.greaterThan(0) ? `monotributo ${formatMoney(cuenta.monotributo)}` : null,
             cuenta.redondeo.greaterThan(0) ? `redondeo ${formatMoney(cuenta.redondeo)}` : null,
           ].filter(Boolean);
           const gasto = await tx.document.create({
@@ -119,7 +122,7 @@ export async function cerrarPlanillaCore(planillaId: string, userId: string) {
           data: {
             tarifa,
             saldoAnterior: e.saldo,
-            descuentoCuenta1: cuenta.descuentoCuenta1,
+            descuentoCuenta1: null,
             descuentoACuenta: cuenta.descuentoACuenta,
             pagado: cuenta.pagado,
             gastoId,

@@ -26,8 +26,9 @@ const f = (formula: string, result: number) => ({ formula, result });
 /**
  * La planilla en Excel, con el formato de la que armaba Adriana a mano: título de la semana,
  * encabezado amarillo, una fila por empleado y, abajo, la cuenta del feriado. Va con fórmulas —el
- * valor hora es el jornal ÷ 8, el sueldo es horas × valor hora más el feriado menos los adelantos—
- * así se puede retocar ahí mismo como antes. Los totales suman todas las filas.
+ * valor hora es el jornal ÷ 8, el sueldo es horas × valor hora más el feriado, más los bonos de
+ * presentismo y puntualidad (un jornal cada uno), menos los adelantos— así se puede retocar ahí
+ * mismo como antes. Los totales suman todas las filas.
  */
 export async function planillaEnExcel(planillaId: string): Promise<{ archivo: Uint8Array; nombre: string } | null> {
   const datos = await getRenglonesCalculados(planillaId);
@@ -67,30 +68,37 @@ function encabezado(ws: ExcelJS.Worksheet, fila: number, textos: string[], negri
     c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AMARILLO } };
     c.font = { size: 12, bold: negritas.includes(i + 1) };
     c.border = BORDES;
-    c.alignment = { vertical: "middle", horizontal: i >= 2 && i <= 7 ? "center" : "left" };
+    c.alignment = { vertical: "middle", horizontal: i >= 2 && i < textos.length - 1 ? "center" : "left", wrapText: true };
   });
   ws.getRow(fila).height = 22;
 }
 
+/** Lo que se le descontó: lo que tenía a cuenta. Si se le debía de antes, suma (va en negativo). */
+const adelantosDe = (c: Planilla["renglones"][number]["cuenta"]) =>
+  c ? c.descuentoACuenta.minus(c.deudaAnterior).toNumber() : 0;
+
 function semanal(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
-  // A Usuario · B Nombre · C Jornal · D Valor hora · E Horas · F Adelantos · G Sueldo · H Redondeo · I Comentarios
+  // A Usuario · B Nombre · C Jornal · D Valor hora · E Horas · F Presentismo · G Puntualidad ·
+  // H Adelantos · I Sueldo · J Redondeo · K Comentarios
   ws.columns = [
     { width: 9 },
     { width: 24 },
     { width: 14 },
     { width: 14 },
+    { width: 12 },
+    { width: 14 },
     { width: 14 },
     { width: 14 },
     { width: 15 },
     { width: 15 },
-    { width: 46 },
+    { width: 40 },
   ];
-  titulo(ws, nombreDePlanilla(planilla).toUpperCase(), 9);
+  titulo(ws, nombreDePlanilla(planilla).toUpperCase(), 11);
   encabezado(
     ws,
     2,
-    ["Usuario", "Nombre y Apellido", "Valor Jornal", "Valor hora", "Total horas", "Adelantos", "Sueldo", "Redondeo", "Comentarios"],
-    [7, 8]
+    ["Usuario", "Nombre y Apellido", "Valor Jornal", "Valor hora", "Total horas", "Presentismo", "Puntualidad", "Adelantos", "Sueldo", "Redondeo", "Comentarios"],
+    [9, 10]
   );
 
   const primera = 3;
@@ -105,16 +113,9 @@ function semanal(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
     const filaFeriado = primeraFeriado + i;
     const jornal = n(tarifa);
     const hora = tarifa ? valorHora(tarifa).toNumber() : 0;
-    // Lo que se descuenta: la Cuenta 1 y lo que tenía a cuenta. Si se le debía de antes, suma.
-    const adelantos = cuenta ? cuenta.descuentoCuenta1.plus(cuenta.descuentoACuenta).minus(cuenta.deudaAnterior).toNumber() : 0;
+    const adelantos = adelantosDe(cuenta);
     const feriado = n(r.horasFeriado) * hora * RECARGO_FERIADO.toNumber();
-    const comentario = [
-      r.comentario,
-      cuenta?.descuentoCuenta1.greaterThan(0) ? "incluye el sueldo de la Cuenta 1" : null,
-      cuenta?.deudaAnterior.greaterThan(0) ? "incluye lo que se le debía" : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const bono = (si: boolean) => (si ? f(`C${fila}`, jornal) : 0);
 
     const valores: [string, ExcelJS.CellValue, string?][] = [
       ["A", null],
@@ -122,53 +123,65 @@ function semanal(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
       ["C", jornal, MILES],
       ["D", f(`C${fila}/8`, hora), CON_DECIMALES],
       ["E", n(r.horas), "#,##0.##"],
-      ["F", adelantos ? adelantos : null, PESOS],
-      ["G", f(`D${fila}*E${fila}+G${filaFeriado}-F${fila}`, n(r.horas) * hora + feriado - adelantos), PESOS],
-      ["H", cuenta ? cuenta.pagado.toNumber() : null, PESOS],
-      ["I", comentario || null],
+      // Un jornal cada uno, si se lo ganó esa semana.
+      ["F", bono(r.presentismo), PESOS],
+      ["G", bono(r.puntualidad), PESOS],
+      ["H", adelantos ? adelantos : null, PESOS],
+      [
+        "I",
+        f(
+          `D${fila}*E${fila}+G${filaFeriado}+F${fila}+G${fila}-H${fila}`,
+          n(r.horas) * hora + feriado + (r.presentismo ? jornal : 0) + (r.puntualidad ? jornal : 0) - adelantos
+        ),
+        PESOS,
+      ],
+      ["J", cuenta ? cuenta.pagado.toNumber() : null, PESOS],
+      ["K", r.comentario || null],
     ];
     for (const [col, valor, formato] of valores) {
       const c = ws.getCell(`${col}${fila}`);
       c.value = valor;
       c.border = BORDES;
       if (formato) c.numFmt = formato;
-      if (col === "C" || col === "D" || col === "E") c.alignment = { horizontal: col === "E" ? "center" : "right" };
+      if (col === "C" || col === "D") c.alignment = { horizontal: "right" };
+      if (col === "E") c.alignment = { horizontal: "center" };
     }
     ws.getRow(fila).height = 20;
   });
 
-  // Totales: los de la planilla vieja no llegaban a la última fila, o salteaban una vacía.
-  const totalAdelantos = renglones.reduce((a, { cuenta }) => a + (cuenta ? cuenta.descuentoCuenta1.plus(cuenta.descuentoACuenta).minus(cuenta.deudaAnterior).toNumber() : 0), 0);
-  const totalSueldo = renglones.reduce((a, { cuenta }) => a + (cuenta ? cuenta.aPagar.toNumber() : 0), 0);
-  const totalRedondeo = renglones.reduce((a, { cuenta }) => a + (cuenta ? cuenta.pagado.toNumber() : 0), 0);
+  const sumaDe = (pick: (c: NonNullable<Planilla["renglones"][number]["cuenta"]>) => number) =>
+    renglones.reduce((a, { cuenta }) => a + (cuenta ? pick(cuenta) : 0), 0);
+  const totalAdelantos = renglones.reduce((a, { cuenta }) => a + adelantosDe(cuenta), 0);
+  const totalSueldo = sumaDe((c) => c.aPagar.toNumber());
+  const totalRedondeo = sumaDe((c) => c.pagado.toNumber());
   const rango = (col: string) => `${col}${primera}:${col}${ultima}`;
-  ws.getCell(`E${totales}`).value = "Total";
-  ws.getCell(`E${totales}`).alignment = { horizontal: "center" };
-  ws.getCell(`F${totales}`).value = f(`SUM(${rango("F")})`, totalAdelantos);
-  ws.getCell(`G${totales}`).value = f(`SUM(${rango("G")})`, totalSueldo);
-  ws.getCell(`H${totales}`).value = f(`SUM(${rango("H")})`, totalRedondeo);
-  for (const col of ["E", "F", "G", "H"]) {
+  ws.getCell(`G${totales}`).value = "Total";
+  ws.getCell(`G${totales}`).alignment = { horizontal: "center" };
+  ws.getCell(`H${totales}`).value = f(`SUM(${rango("H")})`, totalAdelantos);
+  ws.getCell(`I${totales}`).value = f(`SUM(${rango("I")})`, totalSueldo);
+  ws.getCell(`J${totales}`).value = f(`SUM(${rango("J")})`, totalRedondeo);
+  for (const col of ["G", "H", "I", "J"]) {
     const c = ws.getCell(`${col}${totales}`);
     c.border = RECUADRO;
     c.font = { size: 12 };
-    if (col !== "E") {
+    if (col !== "G") {
       c.numFmt = PESOS;
       c.alignment = { horizontal: "center" };
     }
   }
   // Lo que costó la semana: lo pagado ahora más lo que ya había cobrado a cuenta.
-  const costo = ws.getCell(`F${totales + 1}`);
-  costo.value = f(`F${totales}+G${totales}`, totalAdelantos + totalSueldo);
+  const costo = ws.getCell(`H${totales + 1}`);
+  costo.value = f(`H${totales}+I${totales}`, totalAdelantos + totalSueldo);
   costo.numFmt = PESOS;
   costo.border = RECUADRO;
   costo.alignment = { horizontal: "center" };
 
-  // El feriado: la misma cuenta que hacía a mano, horas × valor hora × 0,5.
+  // El feriado: las horas en feriado van al valor hora más 0,5; acá va ese medio extra.
   const titulosFeriado: [string, string][] = [
     ["B", "Nombre"],
     ["C", "Jornal"],
     ["D", "Valor hora"],
-    ["E", "Horas"],
+    ["E", "Horas feriado"],
     ["F", "Factor 0,5"],
     ["G", "Total"],
   ];
@@ -212,21 +225,23 @@ function semanal(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
 }
 
 function mensual(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
-  // A Nombre · B Sueldo del mes · C Adelantos · D Sueldo · E Redondeo · F Comentarios
-  ws.columns = [{ width: 28 }, { width: 16 }, { width: 14 }, { width: 15 }, { width: 15 }, { width: 46 }];
-  titulo(ws, nombreDePlanilla(planilla).toUpperCase(), 6);
-  encabezado(ws, 2, ["Nombre y Apellido", "Sueldo del mes", "Adelantos", "Sueldo", "Redondeo", "Comentarios"], [4, 5]);
+  // A Nombre · B Sueldo del mes · C Monotributo · D Adelantos · E Sueldo · F Redondeo · G Comentarios
+  ws.columns = [{ width: 28 }, { width: 16 }, { width: 15 }, { width: 14 }, { width: 15 }, { width: 15 }, { width: 40 }];
+  titulo(ws, nombreDePlanilla(planilla).toUpperCase(), 7);
+  encabezado(ws, 2, ["Nombre y Apellido", "Sueldo del mes", "Monotributo", "Adelantos", "Sueldo", "Redondeo", "Comentarios"], [5, 6]);
   const primera = 3;
   renglones.forEach(({ r, tarifa, cuenta }, i) => {
     const fila = primera + i;
-    const adelantos = cuenta ? cuenta.descuentoCuenta1.plus(cuenta.descuentoACuenta).minus(cuenta.deudaAnterior).toNumber() : 0;
+    const adelantos = adelantosDe(cuenta);
+    const mono = cuenta ? cuenta.monotributo.toNumber() : 0;
     const valores: [string, ExcelJS.CellValue, string?][] = [
       ["A", r.entity.name],
       ["B", n(tarifa), PESOS],
-      ["C", adelantos ? adelantos : null, PESOS],
-      ["D", f(`B${fila}-C${fila}`, n(tarifa) - adelantos), PESOS],
-      ["E", cuenta ? cuenta.pagado.toNumber() : null, PESOS],
-      ["F", r.comentario],
+      ["C", mono ? mono : null, PESOS],
+      ["D", adelantos ? adelantos : null, PESOS],
+      ["E", f(`B${fila}+C${fila}-D${fila}`, n(tarifa) + mono - adelantos), PESOS],
+      ["F", cuenta ? cuenta.pagado.toNumber() : null, PESOS],
+      ["G", r.comentario],
     ];
     for (const [col, valor, formato] of valores) {
       const c = ws.getCell(`${col}${fila}`);
@@ -238,7 +253,7 @@ function mensual(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
   const ultima = primera + renglones.length - 1;
   const totales = ultima + 1;
   ws.getCell(`A${totales}`).value = "Total";
-  for (const col of ["C", "D", "E"]) {
+  for (const col of ["C", "D", "E", "F"]) {
     const c = ws.getCell(`${col}${totales}`);
     c.value = { formula: `SUM(${col}${primera}:${col}${ultima})` };
     c.numFmt = PESOS;

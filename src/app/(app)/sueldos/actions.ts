@@ -11,7 +11,7 @@ import { generateUniqueSlug } from "@/lib/slug";
 import { slugDeEntidad } from "@/lib/slug-lookup";
 import { formatMoney, parseNumeroEscrito, ZERO } from "@/lib/money";
 import { formatFecha, parseFecha } from "@/lib/period";
-import { getCajasDeSueldos, getEmpleados, nombreDePlanilla } from "@/lib/sueldos";
+import { getCajasDeSueldos, getEmpleados, getUltimosMonotributos, nombreDePlanilla } from "@/lib/sueldos";
 import { cerrarPlanillaCore, reabrirPlanillaCore } from "@/lib/sueldos-cierre";
 
 const QUIENES = ["ADMIN", "SECRETARIA"] as const;
@@ -181,6 +181,7 @@ export async function crearPlanilla(formData: FormData) {
     throw new UserError(forma === "SEMANAL" ? "No hay empleados que cobren por semana." : "No hay empleados que cobren por mes.");
   }
   const cajas = await getCajasDeSueldos();
+  const monotributos = forma === "MENSUAL" ? await getUltimosMonotributos(empleados.map((e) => e.id)) : new Map();
 
   const planilla = await prisma.$transaction(async (tx) => {
     const planilla = await tx.planillaDeSueldos.create({
@@ -191,7 +192,8 @@ export async function crearPlanilla(formData: FormData) {
         fechaDePago,
         cajaId: cajas[0]?.id ?? null,
         createdById: user.id,
-        renglones: { create: empleados.map((e) => ({ entityId: e.id })) },
+        // El monotributo del mes arranca con el del último mes cerrado: cambia poco.
+        renglones: { create: empleados.map((e) => ({ entityId: e.id, monotributo: monotributos.get(e.id) ?? null })) },
       },
     });
     await logAudit(tx, {
@@ -234,7 +236,9 @@ async function guardarCampos(formData: FormData) {
       id: r.id,
       horas,
       horasFeriado,
-      descuentoCuenta1: leerOpcional(de("cuenta1"), `lo de la Cuenta 1 de ${quien}`),
+      presentismo: de("presentismo") === "on",
+      puntualidad: de("puntualidad") === "on",
+      monotributo: leerOpcional(de("monotributo"), `el monotributo de ${quien}`),
       descuentoACuenta: leerOpcional(de("acuenta"), `lo que se le descuenta a ${quien}`),
       pagado: leerOpcional(de("pagado"), `lo que se le da a ${quien}`),
       comentario: String(de("comentario") ?? "").trim() || null,

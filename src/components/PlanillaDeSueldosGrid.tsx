@@ -18,16 +18,18 @@ export type FilaDePlanilla = {
   /** El jornal (semanal) o el sueldo del mes vigente; null si no tiene cargado. */
   tarifa: string | null;
   saldoAnterior: string;
-  pendienteCuenta1: string;
   horas: string;
   feriado: string;
-  cuenta1: string;
+  presentismo: boolean;
+  puntualidad: boolean;
+  /** Por mes: el monotributo que se le reintegra. */
+  monotributo: string;
   acuenta: string;
   pagado: string;
   comentario: string;
 };
 
-type Campo = "horas" | "feriado" | "cuenta1" | "acuenta" | "pagado" | "comentario";
+type Campo = "horas" | "feriado" | "monotributo" | "acuenta" | "pagado" | "comentario";
 
 const D = (v: string) => new Prisma.Decimal(v);
 const leer = (s: string) => (s.trim() ? parseNumeroSuave(s) : null);
@@ -38,8 +40,9 @@ const entrada = controlClass({ denso: true, extra: "text-right tabular-nums min-
 const entradaPlata = controlClass({ denso: true, extra: "text-right tabular-nums min-w-[8.5rem]" });
 
 /**
- * La planilla de la semana (o del mes) para cargar: horas y feriados de cada uno, y la app hace la
- * cuenta de la planilla de Excel en vivo. Lo que va en gris es lo que sugiere —descontar todo lo que
+ * La planilla de la semana (o del mes) para cargar: horas, feriados y los dos bonos de cada uno
+ * —presentismo y puntualidad, un jornal cada uno—, y la app hace la cuenta en vivo. Por mes, el
+ * sueldo y el monotributo. Lo que va en gris es lo que sugiere —descontar todo lo que
  * tiene a cuenta, redondear para arriba a $ 50— y sólo se escribe encima cuando hay que cambiarlo.
  */
 export function PlanillaDeSueldosGrid({
@@ -80,6 +83,8 @@ export function PlanillaDeSueldosGrid({
 
   const cambiar = (id: string, campo: Campo, valor: string) =>
     setValores((v) => ({ ...v, [id]: { ...v[id], [campo]: valor } }));
+  const marcar = (id: string, bono: "presentismo" | "puntualidad", valor: boolean) =>
+    setValores((v) => ({ ...v, [id]: { ...v[id], [bono]: valor } }));
 
   const semanal = forma === "SEMANAL";
   const cuentas = filas.map((f) => {
@@ -90,9 +95,10 @@ export function PlanillaDeSueldosGrid({
           tarifa: D(f.tarifa),
           horas: leer(v.horas) ?? D("0"),
           horasFeriado: leer(v.feriado) ?? D("0"),
+          presentismo: v.presentismo,
+          puntualidad: v.puntualidad,
+          monotributo: leer(v.monotributo) ?? D("0"),
           saldoAnterior: D(f.saldoAnterior),
-          pendienteCuenta1: D(f.pendienteCuenta1),
-          descuentoCuenta1: leer(v.cuenta1),
           descuentoACuenta: leer(v.acuenta),
           pagado: leer(v.pagado),
         })
@@ -104,7 +110,6 @@ export function PlanillaDeSueldosGrid({
   const totalSueldo = suma((c) => c.sueldo);
   const totalEfectivo = suma((c) => c.pagado);
   const totalHoras = cuentas.reduce((acc, { v }) => acc.plus(leer(v.horas) ?? 0), D("0"));
-  const conCuenta1 = filas.some((f) => D(f.pendienteCuenta1).greaterThan(0) || f.cuenta1);
   const conACuenta = cuentas.some(({ cuenta, v }) => cuenta?.aCuenta.greaterThan(0) || cuenta?.deudaAnterior.greaterThan(0) || v.acuenta);
   const nombreCaja = cajas.find((c) => c.id === caja)?.name ?? "la caja";
   const conDatos = cuentas.filter(({ cuenta }) => cuenta && (cuenta.gasto.greaterThan(0) || cuenta.pagado.greaterThan(0))).length;
@@ -120,16 +125,26 @@ export function PlanillaDeSueldosGrid({
               <th className={celda}>Empleado</th>
               {semanal && <th className={`${celda} text-right`}>Horas</th>}
               {semanal && (
-                <th className={`${celda} text-right`} title="Las horas trabajadas en feriado, que ya están dentro de las horas: suman un 50% más.">
+                <th className={`${celda} text-right`} title="Las horas trabajadas en feriado, que ya están dentro de las horas: van al valor hora más 0,5.">
                   Feriado
                 </th>
               )}
-              <th className={`${celda} text-right`}>Sueldo</th>
-              {conCuenta1 && (
-                <th className={`${celda} text-right`} title="Lo que se le transfirió en la Cuenta 1 y se descuenta de esta semana.">
-                  Cuenta 1
+              {semanal && (
+                <th className={`${celda} text-center`} title="Bono de un jornal por presentismo.">
+                  Presentismo
                 </th>
               )}
+              {semanal && (
+                <th className={`${celda} text-center`} title="Bono de un jornal por puntualidad.">
+                  Puntualidad
+                </th>
+              )}
+              {!semanal && (
+                <th className={`${celda} text-right`} title="Lo que paga de monotributo ese mes: se le reintegra con el sueldo.">
+                  Monotributo
+                </th>
+              )}
+              <th className={`${celda} text-right`}>Sueldo</th>
               {conACuenta && (
                 <th className={`${celda} text-right`} title="Lo que ya cobró a cuenta: adelantos, o un cliente que le pagó directo.">
                   A cuenta
@@ -183,28 +198,51 @@ export function PlanillaDeSueldosGrid({
                     />
                   </td>
                 )}
-                <td className={importe}>{cuenta ? formatMoney(cuenta.sueldo) : "—"}</td>
-                {conCuenta1 && (
-                  <td className={celda}>
-                    {D(f.pendienteCuenta1).greaterThan(0) || v.cuenta1 ? (
-                      <>
+                {semanal &&
+                  (["presentismo", "puntualidad"] as const).map((bono) => (
+                    <td key={bono} className={`${celda} pt-3 text-center`}>
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs tabular-nums text-foreground/60">
                         <input
-                          name={`cuenta1_${f.id}`}
-                          inputMode="decimal"
-                          value={v.cuenta1}
-                          onChange={(e) => cambiar(f.id, "cuenta1", e.target.value)}
+                          type="checkbox"
+                          name={`${bono}_${f.id}`}
+                          checked={v[bono]}
+                          onChange={(e) => marcar(f.id, bono, e.target.checked)}
                           disabled={!puedeEditar}
-                          placeholder={cuenta ? formatMoney(cuenta.descuentoCuenta1) : ""}
-                          aria-label={`Cuenta 1 que se le descuenta a ${f.nombre}`}
-                          className={entradaPlata}
+                          aria-label={`Bono de ${bono} de ${f.nombre}`}
+                          className="h-4 w-4"
                         />
-                        <p className="mt-0.5 text-right text-[11px] text-foreground/50">
-                          por descontar {formatMoney(D(f.pendienteCuenta1))}
-                        </p>
-                      </>
-                    ) : null}
+                        {v[bono] && f.tarifa ? formatMoney(D(f.tarifa)) : ""}
+                      </label>
+                    </td>
+                  ))}
+                {!semanal && (
+                  <td className={celda}>
+                    <input
+                      name={`monotributo_${f.id}`}
+                      inputMode="decimal"
+                      value={v.monotributo}
+                      onChange={(e) => cambiar(f.id, "monotributo", e.target.value)}
+                      disabled={!puedeEditar}
+                      placeholder="0"
+                      aria-label={`Monotributo de ${f.nombre}`}
+                      className={entradaPlata}
+                    />
                   </td>
                 )}
+                <td className={importe}>
+                  {cuenta ? formatMoney(cuenta.sueldo) : "—"}
+                  {cuenta && (cuenta.porFeriado.greaterThan(0) || cuenta.bonos.greaterThan(0)) && (
+                    <p className="text-[11px] font-normal text-foreground/50">
+                      {[
+                        `${formatMoney(cuenta.porHoras)} horas`,
+                        cuenta.porFeriado.greaterThan(0) ? `${formatMoney(cuenta.porFeriado)} feriado` : null,
+                        cuenta.bonos.greaterThan(0) ? `${formatMoney(cuenta.bonos)} bonos` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" + ")}
+                    </p>
+                  )}
+                </td>
                 {conACuenta && (
                   <td className={celda}>
                     {cuenta?.aCuenta.greaterThan(0) || v.acuenta ? (
@@ -267,8 +305,10 @@ export function PlanillaDeSueldosGrid({
               <td className={celda}>Total</td>
               {semanal && <td className={`${celda} text-right`}>{totalHoras.toString().replace(".", ",")}</td>}
               {semanal && <td />}
+              {semanal && <td />}
+              {semanal && <td />}
+              {!semanal && <td className={`${celda} text-right`}>{formatMoney(suma((c) => c.monotributo))}</td>}
               <td className={`${celda} text-right`}>{formatMoney(totalSueldo)}</td>
-              {conCuenta1 && <td />}
               {conACuenta && <td />}
               <td className={`${celda} text-right`}>{formatMoney(suma((c) => c.aPagar))}</td>
               <td className={`${celda} text-right`}>{formatMoney(totalEfectivo)}</td>
@@ -278,6 +318,9 @@ export function PlanillaDeSueldosGrid({
         </table>
       </div>
       <p className="text-xs text-foreground/50">
+        {semanal
+          ? "Horas al valor hora (jornal ÷ 8); las de feriado, que van dentro de las horas, al valor hora más 0,5. Presentismo y puntualidad suman un jornal cada uno. "
+          : "El sueldo del mes más el monotributo, que arranca con el del mes anterior. "}
         Lo que está en gris es lo que sugiere la app: se descuenta todo lo que tiene a cuenta y se redondea para arriba a
         los $ 50. Escribí encima sólo si hay que cambiarlo (un adelanto que se descuenta en partes, el redondeo según los
         billetes). Los pesos de más del redondeo no se descuentan la semana siguiente.

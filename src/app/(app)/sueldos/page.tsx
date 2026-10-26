@@ -201,11 +201,6 @@ export default async function SueldosPage() {
                       ) : (
                         <span className="text-foreground/50">Al día</span>
                       )}
-                      {e.pendienteCuenta1.greaterThan(0) && (
-                        <span className="block text-xs text-foreground/50">
-                          Cuenta 1 por descontar {formatMoney(e.pendienteCuenta1)}
-                        </span>
-                      )}
                     </span>
                     {canEdit && (
                       <>

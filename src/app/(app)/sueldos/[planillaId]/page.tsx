@@ -65,10 +65,11 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
         slug: r.entity.slug,
         tarifa: tarifa ? tarifa.monto.toString() : null,
         saldoAnterior: (e?.saldo ?? ZERO).toString(),
-        pendienteCuenta1: (e?.pendienteCuenta1 ?? ZERO).toString(),
         horas: r.horas.isZero() ? "" : texto(r.horas),
         feriado: r.horasFeriado.isZero() ? "" : texto(r.horasFeriado),
-        cuenta1: texto(r.descuentoCuenta1),
+        presentismo: r.presentismo,
+        puntualidad: r.puntualidad,
+        monotributo: texto(r.monotributo),
         acuenta: texto(r.descuentoACuenta),
         pagado: texto(r.pagado),
         comentario: r.comentario ?? "",
@@ -115,9 +116,10 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
           tarifa: r.tarifa,
           horas: r.horas,
           horasFeriado: r.horasFeriado,
+          presentismo: r.presentismo,
+          puntualidad: r.puntualidad,
+          monotributo: r.monotributo ?? ZERO,
           saldoAnterior: r.saldoAnterior ?? ZERO,
-          pendienteCuenta1: r.descuentoCuenta1 ?? ZERO,
-          descuentoCuenta1: r.descuentoCuenta1,
           descuentoACuenta: r.descuentoACuenta,
           pagado: r.pagado,
         })
@@ -125,7 +127,6 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
   }));
   const total = (pick: (c: NonNullable<(typeof cerradas)[number]["cuenta"]>) => { toString(): string }) =>
     sumDecimals(cerradas.map(({ cuenta }) => (cuenta ? pick(cuenta).toString() : 0)));
-  const conCuenta1 = cerradas.some(({ cuenta }) => cuenta?.descuentoCuenta1.greaterThan(0));
   const conACuenta = cerradas.some(({ cuenta }) => cuenta?.descuentoACuenta.greaterThan(0) || cuenta?.deudaAnterior.greaterThan(0));
 
   return (
@@ -161,8 +162,9 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
               <th className={celda}>Empleado</th>
               {semanal && <th className={`${celda} text-right`}>Horas</th>}
               {semanal && <th className={`${celda} text-right`}>Feriado</th>}
+              {semanal && <th className={`${celda} text-right`}>Bonos</th>}
+              {!semanal && <th className={`${celda} text-right`}>Monotributo</th>}
               <th className={`${celda} text-right`}>Sueldo</th>
-              {conCuenta1 && <th className={`${celda} text-right`}>Cuenta 1</th>}
               {conACuenta && <th className={`${celda} text-right`}>A cuenta</th>}
               <th className={`${celda} text-right`}>A pagar</th>
               <th className={`${celda} text-right`}>En efectivo</th>
@@ -184,12 +186,14 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
                 </td>
                 {semanal && <td className={`${celda} text-right`}>{formatNumeroExacto(r.horas)}</td>}
                 {semanal && <td className={`${celda} text-right`}>{r.horasFeriado.isZero() ? "" : formatNumeroExacto(r.horasFeriado)}</td>}
-                <td className={`${celda} text-right`}>{cuenta ? formatMoney(cuenta.sueldo) : "—"}</td>
-                {conCuenta1 && (
+                {semanal && (
                   <td className={`${celda} text-right`}>
-                    {cuenta?.descuentoCuenta1.greaterThan(0) ? `− ${formatMoney(cuenta.descuentoCuenta1)}` : ""}
+                    {[r.presentismo ? "presentismo" : null, r.puntualidad ? "puntualidad" : null].filter(Boolean).join(" + ")}
+                    {cuenta?.bonos.greaterThan(0) && <span className="block text-xs text-foreground/50">{formatMoney(cuenta.bonos)}</span>}
                   </td>
                 )}
+                {!semanal && <td className={`${celda} text-right`}>{cuenta?.monotributo.greaterThan(0) ? formatMoney(cuenta.monotributo) : ""}</td>}
+                <td className={`${celda} text-right`}>{cuenta ? formatMoney(cuenta.sueldo) : "—"}</td>
                 {conACuenta && (
                   <td className={`${celda} text-right`}>
                     {cuenta?.descuentoACuenta.greaterThan(0)
@@ -210,8 +214,9 @@ export default async function PlanillaPage({ params }: { params: Promise<{ plani
               <td className={celda}>Total</td>
               {semanal && <td className={`${celda} text-right`}>{formatNumeroExacto(sumDecimals(renglones.map((r) => r.horas)))}</td>}
               {semanal && <td />}
+              {semanal && <td className={`${celda} text-right`}>{formatMoney(total((c) => c.bonos))}</td>}
+              {!semanal && <td className={`${celda} text-right`}>{formatMoney(total((c) => c.monotributo))}</td>}
               <td className={`${celda} text-right`}>{formatMoney(total((c) => c.sueldo))}</td>
-              {conCuenta1 && <td />}
               {conACuenta && <td />}
               <td className={`${celda} text-right`}>{formatMoney(total((c) => c.aPagar))}</td>
               <td className={`${celda} text-right`}>{formatMoney(total((c) => c.pagado))}</td>

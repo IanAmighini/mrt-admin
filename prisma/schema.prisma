@@ -1172,8 +1172,15 @@ model RenglonDeSueldo {
   horas            Decimal           @default(0) @db.Decimal(6, 2)
   /// Las horas trabajadas en feriado, que ya están dentro de `horas`: suman un 50% más.
   horasFeriado     Decimal           @default(0) @db.Decimal(6, 2)
-  /// Lo transferido en la Cuenta 1 (el sueldo por banco de Alex) que se descuenta de esta semana.
+  /// Ya no se usa (26/10/2026): el sueldo de Alex en la Cuenta 1 pasó a ser su bono y no se
+  /// descuenta de la semana. Queda por las planillas de antes.
   descuentoCuenta1 Decimal?          @db.Decimal(14, 2)
+  /// Bono de un jornal por presentismo esa semana.
+  presentismo      Boolean           @default(false)
+  /// Bono de un jornal por puntualidad esa semana.
+  puntualidad      Boolean           @default(false)
+  /// Por mes: lo que paga de monotributo, que se le reintegra con el sueldo.
+  monotributo      Decimal?          @db.Decimal(14, 2)
   /// Lo que ya cobró a cuenta —un adelanto, un cliente que le transfirió directo— que se descuenta.
   descuentoACuenta Decimal?          @db.Decimal(14, 2)
   /// Lo que se le dio en efectivo: lo debido, redondeado para arriba según los billetes.

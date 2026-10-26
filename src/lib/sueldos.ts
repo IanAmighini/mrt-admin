@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma, type FormaDeSueldo } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getAccountBalances } from "@/lib/ledger";
-import { sumDecimals, ZERO } from "@/lib/money";
+import { ZERO } from "@/lib/money";
 import { esCaja } from "@/lib/pagos";
 import { UserError } from "@/lib/user-error";
 import { formatFecha } from "@/lib/period";
@@ -38,8 +38,9 @@ export function tarifaVigente<T extends { desde: Date; monto: Prisma.Decimal }>(
 }
 
 /**
- * Los empleados, con lo que hace falta para liquidarlos: la tarifa, el saldo de sus dos cuentas y el
- * sueldo en Cuenta 1 que falta descontar.
+ * Los empleados, con lo que hace falta para liquidarlos: la tarifa y el saldo de su Cuenta 2, que es
+ * donde va el sueldo. La Cuenta 1 queda afuera: ahí va el bono de Alex, que se carga y se paga aparte
+ * (hasta el 26/10 se descontaba de la semana).
  */
 export async function getEmpleados(opciones?: { conBajas?: boolean }) {
   const empleados = await prisma.entity.findMany({
@@ -50,60 +51,28 @@ export async function getEmpleados(opciones?: { conBajas?: boolean }) {
     },
     orderBy: { name: "asc" },
   });
-  const ids = empleados.map((e) => e.id);
-  const [saldos, pendientes] = await Promise.all([
-    getAccountBalances(empleados.flatMap((e) => e.accounts.map((a) => a.id))),
-    getPendientesCuenta1(ids),
-  ]);
+  const negras = empleados.flatMap((e) => e.accounts.filter((a) => a.circuit === "NEGRO"));
+  const saldos = await getAccountBalances(negras.map((a) => a.id));
   return empleados
-    .map((e) => ({
-      ...e,
-      forma: e.formaDeSueldo!,
-      saldo: sumDecimals(e.accounts.map((a) => saldos.get(a.id) ?? ZERO)),
-      pendienteCuenta1: pendientes.get(e.id) ?? ZERO,
-    }))
+    .map((e) => {
+      const negra = e.accounts.find((a) => a.circuit === "NEGRO");
+      return { ...e, forma: e.formaDeSueldo!, saldo: negra ? (saldos.get(negra.id) ?? ZERO) : ZERO };
+    })
     .sort((a, b) => a.name.localeCompare(b.name, "es"));
 }
 
 export type Empleado = Awaited<ReturnType<typeof getEmpleados>>[number];
 
-/**
- * El sueldo cargado en la Cuenta 1 de cada empleado (sus gastos ahí: el recibo de Alex) menos lo que
- * ya se descontó de semanas cerradas. Es lo que todavía tiene que restarse del sueldo en efectivo.
- */
-export async function getPendientesCuenta1(entityIds: string[], hasta?: Date): Promise<Map<string, Prisma.Decimal>> {
-  if (entityIds.length === 0) return new Map();
-  const [gastos, descontados] = await Promise.all([
-    prisma.document.groupBy({
-      by: ["accountId"],
-      where: {
-        type: "GASTO",
-        account: { entityId: { in: entityIds }, circuit: "BLANCO" },
-        ...(hasta ? { date: { lte: hasta } } : {}),
-      },
-      _sum: { totalAmount: true },
-    }),
-    prisma.renglonDeSueldo.groupBy({
-      by: ["entityId"],
-      where: { entityId: { in: entityIds }, planilla: { estado: "CERRADA" } },
-      _sum: { descuentoCuenta1: true },
-    }),
-  ]);
-  const cuentas = await prisma.account.findMany({
-    where: { id: { in: gastos.map((g) => g.accountId) } },
-    select: { id: true, entityId: true },
+/** El monotributo del último mes cerrado de cada uno: el del mes nuevo arranca con ése. */
+export async function getUltimosMonotributos(entityIds: string[]): Promise<Map<string, Prisma.Decimal>> {
+  const renglones = await prisma.renglonDeSueldo.findMany({
+    where: { entityId: { in: entityIds }, monotributo: { not: null }, planilla: { forma: "MENSUAL", estado: "CERRADA" } },
+    orderBy: { planilla: { desde: "desc" } },
+    select: { entityId: true, monotributo: true },
   });
-  const deCuenta = new Map(cuentas.map((c) => [c.id, c.entityId]));
-  const pendientes = new Map<string, Prisma.Decimal>();
-  for (const g of gastos) {
-    const id = deCuenta.get(g.accountId)!;
-    pendientes.set(id, (pendientes.get(id) ?? ZERO).plus(g._sum.totalAmount ?? ZERO));
-  }
-  for (const d of descontados) {
-    pendientes.set(d.entityId, (pendientes.get(d.entityId) ?? ZERO).minus(d._sum.descuentoCuenta1 ?? ZERO));
-  }
-  for (const [id, v] of pendientes) if (v.isNegative()) pendientes.set(id, ZERO);
-  return pendientes;
+  const ultimos = new Map<string, Prisma.Decimal>();
+  for (const r of renglones) if (!ultimos.has(r.entityId)) ultimos.set(r.entityId, r.monotributo!);
+  return ultimos;
 }
 
 /** Las cajas de las que sale el efectivo de los sueldos: la chica primero, después Bufano. El banco no. */
@@ -180,9 +149,10 @@ export async function getRenglonesCalculados(planillaId: string) {
             tarifa,
             horas: r.horas,
             horasFeriado: r.horasFeriado,
+            presentismo: r.presentismo,
+            puntualidad: r.puntualidad,
+            monotributo: r.monotributo ?? ZERO,
             saldoAnterior: r.saldoAnterior ?? ZERO,
-            pendienteCuenta1: r.descuentoCuenta1 ?? ZERO,
-            descuentoCuenta1: r.descuentoCuenta1,
             descuentoACuenta: r.descuentoACuenta,
             pagado: r.pagado,
           });
@@ -196,9 +166,10 @@ export async function getRenglonesCalculados(planillaId: string) {
             tarifa,
             horas: r.horas,
             horasFeriado: r.horasFeriado,
+            presentismo: r.presentismo,
+            puntualidad: r.puntualidad,
+            monotributo: r.monotributo ?? ZERO,
             saldoAnterior: e.saldo,
-            pendienteCuenta1: e.pendienteCuenta1,
-            descuentoCuenta1: r.descuentoCuenta1,
             descuentoACuenta: r.descuentoACuenta,
             pagado: r.pagado,
           });
