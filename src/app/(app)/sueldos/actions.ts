@@ -12,7 +12,7 @@ import { slugDeEntidad } from "@/lib/slug-lookup";
 import { formatMoney, parseNumeroEscrito, ZERO } from "@/lib/money";
 import { formatFecha, parseFecha } from "@/lib/period";
 import { fechaISO, getCajasDeSueldos, getEmpleados, getReglasFichero, getUltimosMonotributos, mesDe, nombreDePlanilla, SETTING_REGLAS_FICHERO } from "@/lib/sueldos";
-import { esHora, esMes, fechasDe, leerReglas, nombreDelMes, rangoDelMes, resumenDeSemana, type DiaFichero, type ReglasFichero } from "@/lib/fichero-calculo";
+import { BONOS_DESDE, esHora, esMes, fechasDe, leerReglas, nombreDelMes, rangoDelMes, resumenDeSemana, type DiaFichero, type ReglasFichero } from "@/lib/fichero-calculo";
 import { setSetting } from "@/lib/settings";
 import { leerArchivoDelFichero } from "@/lib/fichero-xls";
 import { importarMarcasCore, importarMesCore } from "@/lib/sueldos-fichero";
@@ -453,6 +453,9 @@ export async function elegirBonosDe(formData: FormData) {
   if (planilla.estado !== "BORRADOR") throw new UserError("La planilla ya está cerrada: para cambiarla, reabrila.");
   if (mes) {
     if (!esMes(mes)) throw new UserError("Elegí el mes de los bonos.");
+    if (mes < BONOS_DESDE && mes !== planilla.bonosDe) {
+      throw new UserError(`Los bonos se eligen desde los de ${nombreDelMes(BONOS_DESDE)} de ${BONOS_DESDE.slice(0, 4)}.`);
+    }
     if (mes > mesDe(planilla.hasta)) throw new UserError(`La semana termina el ${formatFecha(planilla.hasta)}: los bonos de ${nombreDelMes(mes)} todavía no se ganaron.`);
     const otra = await prisma.planillaDeSueldos.findFirst({ where: { bonosDe: mes, id: { not: planillaId } } });
     if (otra) {

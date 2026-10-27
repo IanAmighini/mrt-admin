@@ -7,14 +7,13 @@ import { formatMoney, formatNumeroExacto, sumDecimals, ZERO } from "@/lib/money"
 import { formatFecha, toDateInputValue } from "@/lib/period";
 import { cuentaDelRenglon } from "@/lib/sueldos-calculo";
 import { bonosDelRenglon, fechaISO, getCajasDeSueldos, getCorreccionesDelMes, getEmpleados, getReglasFichero, mesDe, nombreDePlanilla, tarifaVigente } from "@/lib/sueldos";
-import { conCorrecciones, mesAnterior, nombreDelMes, rangoDelMes, type DiaFichero } from "@/lib/fichero-calculo";
+import { BONOS_DESDE, conCorrecciones, mesSiguiente, nombreDelMes, rangoDelMes, type DiaFichero } from "@/lib/fichero-calculo";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { PlanillaDeSueldosGrid } from "@/components/PlanillaDeSueldosGrid";
 import { buttonClass } from "@/components/ui/Button";
-import { borrarPlanilla, elegirBonosDe, guardarPlanilla, importarFichero, importarFicheroDelMes, reabrirPlanilla } from "../actions";
-import { FormConError } from "@/components/FormConError";
-import { controlClass } from "@/components/ui/Field";
+import { borrarPlanilla, guardarPlanilla, importarFichero, importarFicheroDelMes, reabrirPlanilla } from "../actions";
+import { BonosDeLaSemana } from "@/components/BonosDeLaSemana";
 
 const celda = "px-2 py-1.5";
 
@@ -72,14 +71,15 @@ export default async function PlanillaPage({
     const correcciones = mesDeBonos
       ? await getCorreccionesDelMes(renglones.map((r) => r.entityId), mesDeBonos)
       : new Map<string, DiaFichero[]>();
-    // Los meses que se pueden elegir: el de la semana y los tres anteriores, salvo los que ya van en otra.
+    // Los meses que faltan pagar: desde octubre de 2026 hasta el de la semana, salvo los que ya van en otra.
     const yaPagados = new Set(
       (await prisma.planillaDeSueldos.findMany({ where: { bonosDe: { not: null }, id: { not: planilla.id } }, select: { bonosDe: true } })).map(
         (p) => p.bonosDe!
       )
     );
     const mesesPosibles: string[] = [];
-    for (let m = mesDe(planilla.hasta), i = 0; i < 4; m = mesAnterior(m), i++) if (!yaPagados.has(m)) mesesPosibles.push(m);
+    for (let m = BONOS_DESDE; m <= mesDe(planilla.hasta); m = mesSiguiente(m)) if (!yaPagados.has(m)) mesesPosibles.push(m);
+    if (mesDeBonos && !mesesPosibles.includes(mesDeBonos)) mesesPosibles.unshift(mesDeBonos);
     const filas = renglones.map((r) => {
       const e = porId.get(r.entityId);
       const tarifa = e ? tarifaVigente(e.tarifasDeEmpleado, planilla.desde) : null;
@@ -165,31 +165,15 @@ export default async function PlanillaPage({
           </div>
         )}
         {semanal && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-foreground/10 px-4 py-3">
-            <div className="min-w-0 flex-1 text-sm">
-              <p className="font-medium">{nombreBonos ? `Esta semana paga los bonos de ${nombreBonos}` : "Esta semana no paga bonos"}</p>
-              <p className="text-xs text-foreground/60">
-                Presentismo y puntualidad son por mes: un jornal cada uno, con el jornal de esta semana. Se paga cada mes una
-                sola vez, en la semana que se elija.
-              </p>
-            </div>
-            {canEdit && (
-              <FormConError action={elegirBonosDe} submitLabel={nombreBonos ? "Cambiar" : "Pagar estos bonos"} className="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="planillaId" value={planilla.id} />
-                <select
-                  name="mes"
-                  defaultValue={mesDeBonos ?? ""}
-                  aria-label="Mes de los bonos"
-                  className={controlClass({ denso: true, extra: "w-auto" })}
-                >
-                  <option value="">Sin bonos</option>
-                  {[...new Set([...(mesDeBonos ? [mesDeBonos] : []), ...mesesPosibles])].sort().reverse().map((m) => (
-                    <option key={m} value={m}>
-                      Bonos de {nombreDelMes(m, planilla.fechaDePago.toISOString())}
-                    </option>
-                  ))}
-                </select>
-              </FormConError>
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-foreground/10 px-4 py-3">
+            {canEdit ? (
+              <BonosDeLaSemana
+                planillaId={planilla.id}
+                mes={mesDeBonos}
+                meses={mesesPosibles.map((m) => ({ mes: m, nombre: nombreDelMes(m, planilla.fechaDePago.toISOString()) }))}
+              />
+            ) : (
+              <p className="text-sm font-medium">{nombreBonos ? `Esta semana se pagan los bonos de ${nombreBonos}` : "Esta semana no se pagan bonos"}</p>
             )}
             {canEdit && mesDeBonos && (
               <FormModal triggerLabel={`Fichero de ${nombreBonos}`} title={`Fichero de ${nombreBonos}`} action={importarFicheroDelMes} iconName="plus">

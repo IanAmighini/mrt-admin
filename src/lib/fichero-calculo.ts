@@ -277,6 +277,18 @@ export function mesAnterior(mes: string) {
   return numero === 1 ? `${anio - 1}-12` : `${anio}-${String(numero - 1).padStart(2, "0")}`;
 }
 
+/** El mes siguiente: "2026-12" → "2027-01". */
+export function mesSiguiente(mes: string) {
+  const [anio, numero] = mes.split("-").map(Number);
+  return numero === 12 ? `${anio + 1}-01` : `${anio}-${String(numero + 1).padStart(2, "0")}`;
+}
+
+/**
+ * El primer mes cuyos bonos se eligen en la app. Septiembre de 2026 se pagó en la semana del 17 al
+ * 23/10, antes de que hubiera bonos por mes; los anteriores se pagaron fuera de la app.
+ */
+export const BONOS_DESDE = "2026-10";
+
 /**
  * Los días del mes con las correcciones que se le hicieron a mano en las semanas (la entrada o la
  * salida que se sacó de las cámaras): si un día ya se arregló en su semana, el mes lo toma arreglado.
