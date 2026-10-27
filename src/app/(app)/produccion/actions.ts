@@ -12,7 +12,7 @@ import { resolveOrCreateProduct } from "@/lib/products";
 import { syncPedidoStatuses } from "@/lib/pedidos";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
-import { cajaDelProducto, enteroNoNegativo, recetaPorCaja } from "@/lib/cajas";
+import { cajaDelProducto, enteroNoNegativo, moverMaderaDelPallet, recetaPorCaja } from "@/lib/cajas";
 import { formatNumeroExacto } from "@/lib/money";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
@@ -420,9 +420,10 @@ async function createProductionRunCore(
       }
     }
 
-    // Armar y desarmar mueven pallets y cajas, y nada más: las botellas ya estaban envasadas, así
-    // que no hay aceite ni envases que descontar ni que devolver. Antes se cargaba como producción
-    // con pallets negativos, y eso devolvía al stock insumos que nunca se desenvasaron.
+    // Armar y desarmar mueven pallets, cajas y la madera del pallet, y nada más: las botellas ya
+    // estaban envasadas, así que no hay aceite ni envases que descontar ni que devolver. Antes se
+    // cargaba como producción con pallets negativos, y eso devolvía al stock insumos que nunca se
+    // desenvasaron.
     for (const a of armados) {
       if (a.accion === "CAJAS_DE_BOTELLAS") {
         await armarCajasConBotellas(tx, { ...a, cajas: a.pallets, runId: run.id, date, dateLabel, oilFillEfficiencyPercent, userId: user.id });
@@ -463,6 +464,14 @@ async function createProductionRunCore(
           productionLineId: productionLine.id,
           createdById: user.id,
         },
+      });
+      await moverMaderaDelPallet(tx, {
+        productId: product.id,
+        pallets: signo * a.pallets,
+        date,
+        motivo,
+        userId: user.id,
+        productionLineId: productionLine.id,
       });
     }
 

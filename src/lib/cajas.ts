@@ -106,3 +106,52 @@ export async function getStockParaFormulario(): Promise<Record<string, StockDePr
     ])
   );
 }
+
+/**
+ * El pallet de madera de los pallets que se arman o se desarman con cajas que ya estaban hechas.
+ * Armar uno con cajas sueltas gasta una madera; desarmarlo la deja libre. Sale de la receta del
+ * producto —el renglón de pallet normalizado—, así que un producto sin madera en la receta no mueve
+ * nada. El stretch no: se corta al desarmar y no vuelve, y al armar no se lleva la cuenta.
+ *
+ * `pallets` va con signo: positivo los que se arman, negativo los que se desarman.
+ */
+export async function moverMaderaDelPallet(
+  tx: Prisma.TransactionClient,
+  params: {
+    productId: string;
+    pallets: number;
+    date: Date;
+    motivo: string;
+    userId: string;
+    productionLineId?: string;
+    documentLineId?: string;
+  }
+) {
+  if (params.pallets === 0) return;
+  const maderas = await tx.recipeItem.findMany({
+    where: { productId: params.productId, item: { category: "PALLET_NORMALIZADO" } },
+  });
+  if (maderas.length === 0) return;
+  await tx.itemMovement.createMany({
+    data: maderas.map((m) => ({
+      itemId: m.itemId,
+      date: params.date,
+      quantity: new Prisma.Decimal(m.quantityPerUnit).times(-params.pallets),
+      type: "CONSUMO_PALLET" as const,
+      reason: params.motivo,
+      productionLineId: params.productionLineId ?? null,
+      documentLineId: params.documentLineId ?? null,
+      createdById: params.userId,
+    })),
+  });
+}
+
+/** Los insumos que movieron las líneas de un comprobante: la madera de sus desarmados. */
+export async function insumosDelComprobante(db: Cliente, documentId: string): Promise<string[]> {
+  const movs = await db.itemMovement.findMany({
+    where: { documentLine: { documentId } },
+    select: { itemId: true },
+    distinct: ["itemId"],
+  });
+  return movs.map((m) => m.itemId);
+}

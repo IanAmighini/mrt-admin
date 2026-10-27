@@ -43,7 +43,7 @@ import {
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarCajaAlcanza, asegurarSinNegativos } from "@/lib/sin-negativos";
 import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
-import { cajaDelProducto, enteroNoNegativo } from "@/lib/cajas";
+import { cajaDelProducto, enteroNoNegativo, insumosDelComprobante, moverMaderaDelPallet } from "@/lib/cajas";
 import { aLaMonedaDeLaCuenta, convertirMontos, leerCotizacion, monedaEscrita } from "@/lib/moneda";
 import type { AuditAction } from "@prisma/client";
 import { proximoNumeroDeCaja } from "@/lib/caja";
@@ -406,7 +406,10 @@ export async function deleteDocument(formData: FormData) {
     // que borrar el comprobante devuelve el stock. Sin esto la FK bloquea el borrado con un error
     // de Prisma en crudo.
     await tx.itemMovement.deleteMany({ where: { documentId } });
+    // La madera de los pallets que desarmó una devolución se va con sus líneas.
+    const madera = await insumosDelComprobante(tx, documentId);
     await tx.document.delete({ where: { id: documentId } });
+    if (madera.length > 0) await asegurarSinNegativos(tx, { insumos: madera });
 
     // Borrar una entrada de plata —o la pata que entraba de un pase— puede dejar una caja en rojo.
     const cuentaDeLaOtraPata = otraPata
@@ -1003,6 +1006,14 @@ async function moverStockDeLinea(
       await tx.cajaMovement.create({
         data: { ...base, cajaId, quantity: aDesarmar * bpp, type: "DESARMADO", reason: motivoDesarmado },
       });
+      await moverMaderaDelPallet(tx, {
+        productId: product.id,
+        pallets: -aDesarmar,
+        date,
+        motivo: motivoDesarmado,
+        userId,
+        documentLineId,
+      });
     }
   }
 
@@ -1143,6 +1154,14 @@ async function moverStockDeDevolucion(
     });
     await tx.cajaMovement.create({
       data: { ...base, cajaId, quantity: pallets * line.bpp, type: "DESARMADO", reason: motivoDesarmado },
+    });
+    await moverMaderaDelPallet(tx, {
+      productId: line.productId,
+      pallets: -pallets,
+      date,
+      motivo: motivoDesarmado,
+      userId,
+      documentLineId,
     });
   }
   if (cajas > 0 || botellas > 0) {
@@ -1361,6 +1380,8 @@ async function createRemitoCore(
   let combinedTotal = toDecimal(0);
 
   await prisma.$transaction(async (tx) => {
+    // La madera que devolvían los desarmados del remito que se reemplaza: sin ella puede quedar en rojo.
+    const maderaAntes = reemplaza ? await insumosDelComprobante(tx, reemplaza.documentId) : [];
     if (reemplaza) {
       await tx.paymentAllocation.deleteMany({ where: { documentId: reemplaza.documentId } });
       await tx.document.delete({ where: { id: reemplaza.documentId } });
@@ -1420,6 +1441,7 @@ async function createRemitoCore(
         });
       }
     }
+    if (maderaAntes.length > 0) await asegurarSinNegativos(tx, { insumos: maderaAntes });
 
     if (pedidoIds.length > 0) {
       await tx.pedido.updateMany({
@@ -1516,8 +1538,11 @@ export async function deleteRemito(formData: FormData) {
   const document = await getRemitoOrThrow(documentId);
 
   await prisma.$transaction(async (tx) => {
+    const madera = await insumosDelComprobante(tx, documentId);
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
     await tx.document.delete({ where: { id: documentId } });
+    // Si desarmó pallets, la madera que había devuelto se va con él.
+    if (madera.length > 0) await asegurarSinNegativos(tx, { insumos: madera });
 
     await logAudit(tx, {
       userId: user.id,

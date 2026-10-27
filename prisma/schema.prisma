@@ -449,6 +449,7 @@ model DocumentLine {
 
   productMovements ProductMovement[]
   cajaMovements    CajaMovement[]
+  itemMovements    ItemMovement[]
 
   @@index([documentId])
   @@index([productId])
@@ -716,6 +717,7 @@ model Item {
 enum ItemMovementType {
   INGRESO
   CONSUMO_PRODUCCION
+  /// El pallet de madera al armar un pallet con cajas sueltas (negativo) o al desarmarlo (positivo).
   CONSUMO_PALLET
   AJUSTE
   MERMA
@@ -736,6 +738,10 @@ model ItemMovement {
   document         Document?        @relation(fields: [documentId], references: [id])
   productionLineId String?
   productionLine   ProductionLine?  @relation(fields: [productionLineId], references: [id], onDelete: Cascade)
+  /// El pallet de madera que vuelve al desarmar un pallet para un remito o una devolución: nace y
+  /// muere con la línea.
+  documentLineId   String?
+  documentLine     DocumentLine?    @relation(fields: [documentLineId], references: [id], onDelete: Cascade)
   createdById      String
   createdBy        User             @relation(fields: [createdById], references: [id])
   createdAt        DateTime         @default(now())
@@ -743,6 +749,7 @@ model ItemMovement {
   @@index([itemId])
   @@index([documentId])
   @@index([productionLineId])
+  @@index([documentLineId])
 }
 
 model Product {

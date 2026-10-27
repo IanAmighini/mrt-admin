@@ -103,7 +103,7 @@ export const RETENTION_KIND_ORDER: RetentionKind[] = ["IVA", "GANANCIAS", "IIBB"
 export const ITEM_MOVEMENT_TYPE_LABELS: Record<ItemMovementType, string> = {
   INGRESO: "Ingreso",
   CONSUMO_PRODUCCION: "Consumo por producción",
-  CONSUMO_PALLET: "Consumo por armado de pallet",
+  CONSUMO_PALLET: "Armado o desarmado de pallet",
   AJUSTE: "Ajuste",
   MERMA: "Merma",
   VENTA: "Venta",
