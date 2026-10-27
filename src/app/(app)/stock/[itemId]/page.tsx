@@ -4,9 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getItemMovements, getItemStock } from "@/lib/stock";
-import { formatMoney, formatNumeroExacto, formatQuantity } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { DENSIDAD_ACEITE } from "@/lib/aceite";
-import { getPreformasOrdenadas } from "@/lib/preformas";
+import { getPreformasOrdenadas, precioDeReventaDeEnvase } from "@/lib/preformas";
 import { getCotizador } from "@/lib/cotizaciones";
 import { getCostosUnitarios } from "@/lib/dashboard-kpis";
 import { ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
@@ -67,6 +67,16 @@ export default async function ItemDetailPage({
   // El costo con el que este insumo entra al margen hoy, y de dónde sale: así se ve si hace falta
   // cargarlo en la ficha o si ya lo resuelve una compra.
   const costoHoy = (await getCostosUnitarios(cotizador))(item.id, new Date());
+  // Un envase se vende a soplado + preforma: el precio sugerido de la venta.
+  const precioEnvase = item.category === "ENVASES" ? await precioDeReventaDeEnvase(item) : null;
+  const sugerido = precioEnvase
+    ? {
+        soplado: formatNumeroEditable(precioEnvase.soplado, 4),
+        preforma: formatNumeroEditable(precioEnvase.preforma, 4),
+        total: formatNumeroEditable(precioEnvase.total, 4),
+        preformaNombre: precioEnvase.preformaNombre,
+      }
+    : undefined;
   const movementsDesc = movements.slice().reverse();
 
   // Las ventas del historial, para poder corregirlas desde acá: el formulario arranca con lo que
@@ -118,7 +128,13 @@ export default async function ItemDetailPage({
             <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
             {canEdit && item.llevaStock && (
               <FormModal triggerLabel="Vender" title={`Vender ${item.name}`} action={venderInsumo} maxWidthClass="max-w-xl">
-                <VentaInsumoFields itemId={item.id} unidad={item.unit} entidades={entidades} esAceite={item.category === "ACEITE"} />
+                <VentaInsumoFields
+                  itemId={item.id}
+                  unidad={item.unit}
+                  entidades={entidades}
+                  esAceite={item.category === "ACEITE"}
+                  sugerido={sugerido}
+                />
               </FormModal>
             )}
           </div>
@@ -298,6 +314,7 @@ export default async function ItemDetailPage({
                             // Una venta vieja de aceite cargada en litros se sigue editando en litros.
                             esAceite={item.category === "ACEITE" && Boolean(m.sourceKg)}
                             defaults={defaultsDeVenta(m)!}
+                            sugerido={sugerido}
                           />
                         </FormModal>
                         <DeleteButton

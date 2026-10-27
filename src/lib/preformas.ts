@@ -113,3 +113,43 @@ export async function tiposDePreforma(itemIds: string[]) {
     })
   );
 }
+
+export type PrecioDeEnvase = {
+  /** Todo en dólares, que es en lo que se pactan los dos: el soplado con Teoplast y la preforma con Cristian. */
+  soplado: Prisma.Decimal;
+  preforma: Prisma.Decimal;
+  total: Prisma.Decimal;
+  preformaNombre: string;
+};
+
+/**
+ * El precio al que se sugiere vender un envase: el soplado vigente más lo que costó la preforma la
+ * última vez que se compró. Vender sólo al precio del soplado regalaba la preforma, que pusimos
+ * nosotros (8.820 envases de 900 a Víctor Dilver a U$S 0,0425, el 26/10). Null si falta alguno de
+ * los dos, para no sugerir medio precio.
+ */
+export async function precioDeReventaDeEnvase(item: {
+  precioSopladoUsd: Prisma.Decimal | null;
+  preformaId: string | null;
+}): Promise<PrecioDeEnvase | null> {
+  if (!item.precioSopladoUsd || item.precioSopladoUsd.isZero() || !item.preformaId) return null;
+  const tipo = await prisma.preforma.findUnique({ where: { id: item.preformaId }, select: { name: true } });
+  if (!tipo) return null;
+  const linea = await prisma.purchaseLine.findFirst({
+    where: { item: { category: "PREFORMAS", name: `Preforma ${tipo.name}` }, unitPrice: { gt: 0 } },
+    orderBy: [{ document: { date: "desc" } }, { document: { createdAt: "desc" } }],
+    select: { unitPrice: true, unitPriceUsd: true, document: { select: { currency: true, exchangeRate: true } } },
+  });
+  if (!linea) return null;
+  // En la cuenta de Cristian, que va en dólares, el precio ya es en dólares. Si alguna vez se compra
+  // en pesos, vale el pactado en dólares o, si no lo hay, los pesos a la cotización de esa compra.
+  const preforma =
+    linea.document.currency === "USD"
+      ? linea.unitPrice
+      : (linea.unitPriceUsd ??
+        (linea.document.exchangeRate && !linea.document.exchangeRate.isZero()
+          ? linea.unitPrice.dividedBy(linea.document.exchangeRate)
+          : null));
+  if (!preforma) return null;
+  return { soplado: item.precioSopladoUsd, preforma, total: item.precioSopladoUsd.plus(preforma), preformaNombre: tipo.name };
+}

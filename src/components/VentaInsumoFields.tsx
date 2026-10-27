@@ -26,6 +26,9 @@ export type VentaInsumoDefaults = {
   ivaRate?: string;
 };
 
+/** El precio sugerido de un envase, en dólares: soplado + preforma, ya escritos como se leen. */
+export type PrecioSugeridoEnvase = { soplado: string; preforma: string; total: string; preformaNombre: string };
+
 const inputClass =
   "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 
@@ -43,6 +46,7 @@ export function VentaInsumoFields({
   entidades,
   defaults,
   esAceite = false,
+  sugerido,
 }: {
   itemId: string;
   unidad: string;
@@ -50,14 +54,21 @@ export function VentaInsumoFields({
   defaults?: VentaInsumoDefaults;
   /** El aceite se vende como se compra: kilos del ticket y precio por tonelada. */
   esAceite?: boolean;
+  /** Un envase: arranca con soplado + preforma en dólares, que es lo que nos costó. */
+  sugerido?: PrecioSugeridoEnvase;
 }) {
   const [entityId, setEntityId] = useState(defaults?.entityId ?? "");
   const entidad = entidades.find((e) => e.id === entityId);
   const monedaCuenta: Currency = entidad?.moneda ?? "ARS";
   // El aceite se pacta en dólares por tonelada: arranca ahí aunque la cuenta vaya en pesos.
-  const [moneda, setMoneda] = useState<Currency>(defaults?.monedaPrecio ?? (esAceite ? "USD" : monedaCuenta));
+  // Un envase arranca en el sugerido, que está en dólares; corregir una venta, en lo que se cargó.
+  const conSugerido = !defaults && Boolean(sugerido);
+  const [moneda, setMoneda] = useState<Currency>(
+    defaults?.monedaPrecio ?? (esAceite || conSugerido ? "USD" : monedaCuenta)
+  );
   const [cantidad, setCantidad] = useState(defaults?.quantity ?? "");
-  const [precio, setPrecio] = useState(defaults?.unitPrice ?? "");
+  const [precio, setPrecio] = useState(defaults?.unitPrice ?? (conSugerido ? sugerido!.total : ""));
+  const usaSugerido = Boolean(sugerido) && moneda === "USD" && precio === sugerido!.total;
   const [kilos, setKilos] = useState(defaults?.kilos ?? "");
   const [precioTonelada, setPrecioTonelada] = useState(defaults?.precioTonelada ?? "");
   const [cotizacion, setCotizacion] = useState(defaults?.cotizacion ?? "");
@@ -123,8 +134,8 @@ export function VentaInsumoFields({
             onChange={(e) => {
               setEntityId(e.target.value);
               // El precio arranca en la moneda de la cuenta de quien compra; el aceite no, que se pacta
-              // en dólares por tonelada sea quien sea.
-              if (!esAceite) setMoneda(entidades.find((x) => x.id === e.target.value)?.moneda ?? "ARS");
+              // en dólares por tonelada sea quien sea, ni el envase con el sugerido, que es en dólares.
+              if (!esAceite && !usaSugerido) setMoneda(entidades.find((x) => x.id === e.target.value)?.moneda ?? "ARS");
             }}
             className={inputClass}
           >
@@ -233,6 +244,27 @@ export function VentaInsumoFields({
                   <option value="USD">U$S</option>
                 </select>
               </div>
+              {sugerido && (
+                <p className="text-xs tabular-nums text-foreground/50">
+                  Sugerido: U$S {sugerido.soplado} de soplado + U$S {sugerido.preforma} de preforma{" "}
+                  {sugerido.preformaNombre} = <strong className="font-medium text-foreground/70">U$S {sugerido.total}</strong>
+                  {!usaSugerido && (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMoneda("USD");
+                          setPrecio(sugerido.total);
+                        }}
+                        className="underline underline-offset-2 hover:text-foreground"
+                      >
+                        usar este
+                      </button>
+                    </>
+                  )}
+                </p>
+              )}
             </div>
           </>
         )}
