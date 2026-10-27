@@ -15,7 +15,13 @@ export type EmpleadoDelFichero = {
   marcas: Record<string, string[]>;
 };
 
-export type ExportacionDelFichero = { desde: string; hasta: string; empleados: EmpleadoDelFichero[] };
+export type ExportacionDelFichero = {
+  desde: string;
+  hasta: string;
+  /** El día en que se bajó ("Create Time"): un mes bajado antes de terminar trae los últimos días vacíos. */
+  creado: string | null;
+  empleados: EmpleadoDelFichero[];
+};
 
 type Celda = string | number | null | undefined;
 
@@ -31,6 +37,10 @@ export function leerAttendanceRecord(filas: Celda[][]): ExportacionDelFichero {
   if (!rango) throw new Error('No encontré el período ("Made Date") en la hoja Attendance Record.');
   const desde = `${rango[1]}-${rango[2]}-${rango[3]}`;
   const hasta = `${rango[4]}-${rango[5]}-${rango[6]}`;
+  const creadoEn = filas
+    .map((f) => texto(f[0]).match(/Create Time:\s*(\d{4})\/(\d{2})\/(\d{2})/))
+    .find(Boolean);
+  const creado = creadoEn ? `${creadoEn[1]}-${creadoEn[2]}-${creadoEn[3]}` : null;
 
   const encabezado = filas.findIndex((f) => /employee id/i.test(texto(f[0])));
   if (encabezado < 0) throw new Error('No encontré el encabezado ("Employee ID") en la hoja Attendance Record.');
@@ -66,7 +76,7 @@ export function leerAttendanceRecord(filas: Celda[][]): ExportacionDelFichero {
     });
     empleados.push({ id, nombre, marcas });
   }
-  return { desde, hasta, empleados };
+  return { desde, hasta, creado, empleados };
 }
 
 /** "Lucrecia Iznardo" → "lucrecia": para comparar con el nombre que tiene en la app. */

@@ -6,13 +6,15 @@ import { requireUser } from "@/lib/auth-helpers";
 import { formatMoney, formatNumeroExacto, sumDecimals, ZERO } from "@/lib/money";
 import { formatFecha, toDateInputValue } from "@/lib/period";
 import { cuentaDelRenglon } from "@/lib/sueldos-calculo";
-import { fechaISO, getCajasDeSueldos, getEmpleados, getReglasFichero, nombreDePlanilla, tarifaVigente } from "@/lib/sueldos";
-import type { DiaFichero } from "@/lib/fichero-calculo";
+import { bonosDelRenglon, fechaISO, getCajasDeSueldos, getCorreccionesDelMes, getEmpleados, getReglasFichero, mesDe, nombreDePlanilla, tarifaVigente } from "@/lib/sueldos";
+import { conCorrecciones, mesAnterior, nombreDelMes, rangoDelMes, type DiaFichero } from "@/lib/fichero-calculo";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { PlanillaDeSueldosGrid } from "@/components/PlanillaDeSueldosGrid";
 import { buttonClass } from "@/components/ui/Button";
-import { borrarPlanilla, guardarPlanilla, importarFichero, reabrirPlanilla } from "../actions";
+import { borrarPlanilla, elegirBonosDe, guardarPlanilla, importarFichero, importarFicheroDelMes, reabrirPlanilla } from "../actions";
+import { FormConError } from "@/components/FormConError";
+import { controlClass } from "@/components/ui/Field";
 
 const celda = "px-2 py-1.5";
 
@@ -21,7 +23,7 @@ export default async function PlanillaPage({
   searchParams,
 }: {
   params: Promise<{ planillaId: string }>;
-  searchParams: Promise<{ importados?: string; pendientes?: string; sinMarcas?: string; ambiguos?: string; diasFuera?: string }>;
+  searchParams: Promise<{ importados?: string; bonos?: string; pendientes?: string; sinMarcas?: string; ambiguos?: string; diasFuera?: string }>;
 }) {
   const { planillaId } = await params;
   const importacion = await searchParams;
@@ -62,7 +64,22 @@ export default async function PlanillaPage({
     </a>
   );
 
+  const mesDeBonos = planilla.bonosDe;
+  const nombreBonos = mesDeBonos ? nombreDelMes(mesDeBonos, planilla.fechaDePago.toISOString()) : null;
+
   if (planilla.estado === "BORRADOR") {
+    // Los días del mes de los bonos, con lo que ya se corrigió a mano en sus semanas.
+    const correcciones = mesDeBonos
+      ? await getCorreccionesDelMes(renglones.map((r) => r.entityId), mesDeBonos)
+      : new Map<string, DiaFichero[]>();
+    // Los meses que se pueden elegir: el de la semana y los tres anteriores, salvo los que ya van en otra.
+    const yaPagados = new Set(
+      (await prisma.planillaDeSueldos.findMany({ where: { bonosDe: { not: null }, id: { not: planilla.id } }, select: { bonosDe: true } })).map(
+        (p) => p.bonosDe!
+      )
+    );
+    const mesesPosibles: string[] = [];
+    for (let m = mesDe(planilla.hasta), i = 0; i < 4; m = mesAnterior(m), i++) if (!yaPagados.has(m)) mesesPosibles.push(m);
     const filas = renglones.map((r) => {
       const e = porId.get(r.entityId);
       const tarifa = e ? tarifaVigente(e.tarifasDeEmpleado, planilla.desde) : null;
@@ -82,6 +99,9 @@ export default async function PlanillaPage({
         pagado: texto(r.pagado),
         comentario: r.comentario ?? "",
         dias: (r.dias as DiaFichero[] | null) ?? null,
+        diasDelMes: r.diasDelMes
+          ? conCorrecciones(r.diasDelMes as unknown as DiaFichero[], correcciones.get(r.entityId) ?? [])
+          : null,
       };
     });
     const reglas = await getReglasFichero();
@@ -94,8 +114,8 @@ export default async function PlanillaPage({
               <FormModal triggerLabel="Importar del fichero" title="Importar del fichero" action={importarFichero} iconName="plus">
                 <input type="hidden" name="planillaId" value={planilla.id} />
                 <p className="text-sm text-foreground/80">
-                  El Excel que se baja del reloj (AllReport). Se cargan las horas de cada uno con las reglas del fichero y
-                  se sugieren el presentismo y la puntualidad; después se puede corregir día por día.
+                  El Excel que se baja del reloj (AllReport). Se cargan las horas de cada uno con las reglas del fichero;
+                  después se puede corregir día por día. Los bonos no: son del mes y se importan aparte.
                 </p>
                 <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground/60">
                   <li>Los viernes se cuentan hasta las 19; los días a los que les falta una marca quedan en amarillo.</li>
@@ -126,6 +146,78 @@ export default async function PlanillaPage({
             )}
           </div>
         </div>
+        {importacion.bonos !== undefined && (
+          <div className="space-y-1 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-4 py-3 text-sm">
+            <p>
+              Se calcularon los bonos de {nombreBonos} de <strong>{importacion.bonos}</strong> empleados con el fichero del mes.
+              {Number(importacion.pendientes) > 0 && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {" "}
+                  Hay {importacion.pendientes} {Number(importacion.pendientes) === 1 ? "día" : "días"} del mes con una marca de
+                  menos: a esos no se les sugiere el presentismo. Mirá el motivo debajo de cada casilla.
+                </span>
+              )}
+            </p>
+            {importacion.sinMarcas && <p className="text-foreground/70">No encontré en el fichero a: {importacion.sinMarcas}.</p>}
+            {importacion.ambiguos && (
+              <p className="text-foreground/70">Hay más de uno con el mismo nombre en el fichero para: {importacion.ambiguos}.</p>
+            )}
+          </div>
+        )}
+        {semanal && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-foreground/10 px-4 py-3">
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="font-medium">{nombreBonos ? `Esta semana paga los bonos de ${nombreBonos}` : "Esta semana no paga bonos"}</p>
+              <p className="text-xs text-foreground/60">
+                Presentismo y puntualidad son por mes: un jornal cada uno, con el jornal de esta semana. Se paga cada mes una
+                sola vez, en la semana que se elija.
+              </p>
+            </div>
+            {canEdit && (
+              <FormConError action={elegirBonosDe} submitLabel={nombreBonos ? "Cambiar" : "Pagar estos bonos"} className="flex flex-wrap items-center gap-2">
+                <input type="hidden" name="planillaId" value={planilla.id} />
+                <select
+                  name="mes"
+                  defaultValue={mesDeBonos ?? ""}
+                  aria-label="Mes de los bonos"
+                  className={controlClass({ denso: true, extra: "w-auto" })}
+                >
+                  <option value="">Sin bonos</option>
+                  {[...new Set([...(mesDeBonos ? [mesDeBonos] : []), ...mesesPosibles])].sort().reverse().map((m) => (
+                    <option key={m} value={m}>
+                      Bonos de {nombreDelMes(m, planilla.fechaDePago.toISOString())}
+                    </option>
+                  ))}
+                </select>
+              </FormConError>
+            )}
+            {canEdit && mesDeBonos && (
+              <FormModal triggerLabel={`Fichero de ${nombreBonos}`} title={`Fichero de ${nombreBonos}`} action={importarFicheroDelMes} iconName="plus">
+                <input type="hidden" name="planillaId" value={planilla.id} />
+                <p className="text-sm text-foreground/80">
+                  El AllReport del mes entero ({rangoDelMes(mesDeBonos).desde.split("-").reverse().join("/")} al{" "}
+                  {rangoDelMes(mesDeBonos).hasta.split("-").reverse().join("/")}). Se marcan presentismo y puntualidad de cada uno
+                  con las reglas del fichero, y quedan para corregir.
+                </p>
+                <ul className="list-disc space-y-0.5 pl-5 text-xs text-foreground/60">
+                  <li>Presentismo: todos los días hábiles del mes con {reglas.presentismoHoras} h o más. Los feriados del mes no cuentan.</li>
+                  <li>Puntualidad: todos los días hábiles del mes entrando hasta las {reglas.entradaPuntual}, y además el presentismo.</li>
+                  <li>Lo que se corrigió con las cámaras en las semanas de ese mes se tiene en cuenta.</li>
+                </ul>
+                <input
+                  type="file"
+                  name="archivo"
+                  required
+                  accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="block w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-foreground/10 file:px-3 file:py-2 file:text-sm"
+                />
+                <button type="submit" className={buttonClass("primario", "w-fit")}>
+                  Importar
+                </button>
+              </FormModal>
+            )}
+          </div>
+        )}
         {importacion.importados !== undefined && (
           <div className="space-y-1 rounded-xl border border-foreground/10 bg-foreground/[0.03] px-4 py-3 text-sm">
             <p>
@@ -168,6 +260,11 @@ export default async function PlanillaPage({
           semana={{ desde: fechaISO(planilla.desde), hasta: fechaISO(planilla.hasta) }}
           feriadosIniciales={planilla.feriados}
           reglas={reglas}
+          bonos={
+            mesDeBonos
+              ? { nombre: nombreBonos!, ...rangoDelMes(mesDeBonos), feriadosIniciales: planilla.feriadosDelMes }
+              : null
+          }
         />
       </div>
     );
@@ -182,8 +279,7 @@ export default async function PlanillaPage({
           tarifa: r.tarifa,
           horas: r.horas,
           horasFeriado: r.horasFeriado,
-          presentismo: r.presentismo,
-          puntualidad: r.puntualidad,
+          ...bonosDelRenglon(planilla, r),
           monotributo: r.monotributo ?? ZERO,
           saldoAnterior: r.saldoAnterior ?? ZERO,
           descuentoACuenta: r.descuentoACuenta,
@@ -228,7 +324,7 @@ export default async function PlanillaPage({
               <th className={celda}>Empleado</th>
               {semanal && <th className={`${celda} text-right`}>Horas</th>}
               {semanal && <th className={`${celda} text-right`}>Feriado</th>}
-              {semanal && <th className={`${celda} text-right`}>Bonos</th>}
+              {semanal && nombreBonos && <th className={`${celda} text-right`}>Bonos de {nombreBonos}</th>}
               {!semanal && <th className={`${celda} text-right`}>Monotributo</th>}
               <th className={`${celda} text-right`}>Sueldo</th>
               {conACuenta && <th className={`${celda} text-right`}>A cuenta</th>}
@@ -252,7 +348,7 @@ export default async function PlanillaPage({
                 </td>
                 {semanal && <td className={`${celda} text-right`}>{formatNumeroExacto(r.horas)}</td>}
                 {semanal && <td className={`${celda} text-right`}>{r.horasFeriado.isZero() ? "" : formatNumeroExacto(r.horasFeriado)}</td>}
-                {semanal && (
+                {semanal && nombreBonos && (
                   <td className={`${celda} text-right`}>
                     {[r.presentismo ? "presentismo" : null, r.puntualidad ? "puntualidad" : null].filter(Boolean).join(" + ")}
                     {cuenta?.bonos.greaterThan(0) && <span className="block text-xs text-foreground/50">{formatMoney(cuenta.bonos)}</span>}
@@ -280,7 +376,7 @@ export default async function PlanillaPage({
               <td className={celda}>Total</td>
               {semanal && <td className={`${celda} text-right`}>{formatNumeroExacto(sumDecimals(renglones.map((r) => r.horas)))}</td>}
               {semanal && <td />}
-              {semanal && <td className={`${celda} text-right`}>{formatMoney(total((c) => c.bonos))}</td>}
+              {semanal && nombreBonos && <td className={`${celda} text-right`}>{formatMoney(total((c) => c.bonos))}</td>}
               {!semanal && <td className={`${celda} text-right`}>{formatMoney(total((c) => c.monotributo))}</td>}
               <td className={`${celda} text-right`}>{formatMoney(total((c) => c.sueldo))}</td>
               {conACuenta && <td />}

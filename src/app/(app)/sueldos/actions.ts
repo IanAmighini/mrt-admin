@@ -11,11 +11,11 @@ import { generateUniqueSlug } from "@/lib/slug";
 import { slugDeEntidad } from "@/lib/slug-lookup";
 import { formatMoney, parseNumeroEscrito, ZERO } from "@/lib/money";
 import { formatFecha, parseFecha } from "@/lib/period";
-import { fechaISO, getCajasDeSueldos, getEmpleados, getReglasFichero, getUltimosMonotributos, nombreDePlanilla, SETTING_REGLAS_FICHERO } from "@/lib/sueldos";
-import { esHora, fechasDe, leerReglas, resumenDeSemana, type DiaFichero, type ReglasFichero } from "@/lib/fichero-calculo";
+import { fechaISO, getCajasDeSueldos, getEmpleados, getReglasFichero, getUltimosMonotributos, mesDe, nombreDePlanilla, SETTING_REGLAS_FICHERO } from "@/lib/sueldos";
+import { esHora, esMes, fechasDe, leerReglas, nombreDelMes, rangoDelMes, resumenDeSemana, type DiaFichero, type ReglasFichero } from "@/lib/fichero-calculo";
 import { setSetting } from "@/lib/settings";
 import { leerArchivoDelFichero } from "@/lib/fichero-xls";
-import { importarMarcasCore } from "@/lib/sueldos-fichero";
+import { importarMarcasCore, importarMesCore } from "@/lib/sueldos-fichero";
 import { cerrarPlanillaCore, reabrirPlanillaCore } from "@/lib/sueldos-cierre";
 
 const QUIENES = ["ADMIN", "SECRETARIA"] as const;
@@ -267,6 +267,14 @@ async function guardarCampos(formData: FormData) {
     .getAll("feriado_fecha")
     .map(String)
     .filter((f) => deLaSemana.includes(f));
+  // Los del mes de los bonos, que no cuentan para el presentismo.
+  const delMes = planilla.bonosDe ? rangoDelMes(planilla.bonosDe) : null;
+  const feriadosDelMes = delMes
+    ? formData
+        .getAll("feriado_mes")
+        .map(String)
+        .filter((f) => /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= delMes.desde && f <= delMes.hasta)
+    : [];
   const reglas = await getReglasFichero();
 
   const cambios = planilla.renglones.map((r) => {
@@ -288,8 +296,9 @@ async function guardarCampos(formData: FormData) {
       ...(dias ? { dias: dias as unknown as Prisma.InputJsonValue } : {}),
       horas,
       horasFeriado,
-      presentismo: de("presentismo") === "on",
-      puntualidad: de("puntualidad") === "on",
+      // Los bonos son del mes: sólo los lleva la semana que paga los de algún mes.
+      presentismo: Boolean(planilla.bonosDe) && de("presentismo") === "on",
+      puntualidad: Boolean(planilla.bonosDe) && de("puntualidad") === "on",
       monotributo: leerOpcional(de("monotributo"), `el monotributo de ${quien}`),
       descuentoACuenta: leerOpcional(de("acuenta"), `lo que se le descuenta a ${quien}`),
       pagado: leerOpcional(de("pagado"), `lo que se le da a ${quien}`),
@@ -298,7 +307,7 @@ async function guardarCampos(formData: FormData) {
   });
 
   await prisma.$transaction([
-    prisma.planillaDeSueldos.update({ where: { id: planillaId }, data: { fechaDePago, cajaId, notas, feriados } }),
+    prisma.planillaDeSueldos.update({ where: { id: planillaId }, data: { fechaDePago, cajaId, notas, feriados, feriadosDelMes } }),
     ...cambios.map(({ id, ...data }) => prisma.renglonDeSueldo.update({ where: { id }, data })),
   ]);
   return planillaId;
@@ -425,5 +434,64 @@ export async function importarFichero(formData: FormData) {
   if (r.sinMarcas.length) aviso.set("sinMarcas", r.sinMarcas.join(", "));
   if (r.ambiguos.length) aviso.set("ambiguos", r.ambiguos.join(", "));
   if (r.diasFuera.length) aviso.set("diasFuera", r.diasFuera.map((f) => f.split("-").reverse().slice(0, 2).join("/")).join(", "));
+  redirect(`/sueldos/${planillaId}?${aviso.toString()}`);
+}
+
+// ─── Bonos del mes ────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Elige de qué mes son los bonos que paga esta semana, o los saca ("" en `mes`). Cambiar de mes
+ * borra lo que se había marcado: eran los bonos de otro mes. Un mes se paga una sola vez.
+ */
+export async function elegirBonosDe(formData: FormData) {
+  const user = await requireRole([...QUIENES]);
+  const planillaId = String(formData.get("planillaId") || "");
+  const mes = String(formData.get("mes") || "").trim() || null;
+  const planilla = await prisma.planillaDeSueldos.findUnique({ where: { id: planillaId } });
+  if (!planilla) throw new UserError("Esa planilla ya no existe.");
+  if (planilla.forma !== "SEMANAL") throw new UserError("Los bonos se pagan en las planillas por semana.");
+  if (planilla.estado !== "BORRADOR") throw new UserError("La planilla ya está cerrada: para cambiarla, reabrila.");
+  if (mes) {
+    if (!esMes(mes)) throw new UserError("Elegí el mes de los bonos.");
+    if (mes > mesDe(planilla.hasta)) throw new UserError(`La semana termina el ${formatFecha(planilla.hasta)}: los bonos de ${nombreDelMes(mes)} todavía no se ganaron.`);
+    const otra = await prisma.planillaDeSueldos.findFirst({ where: { bonosDe: mes, id: { not: planillaId } } });
+    if (otra) {
+      throw new UserError(`Los bonos de ${nombreDelMes(mes)} ya van en la ${nombreDePlanilla(otra).toLowerCase()}.`);
+    }
+  }
+  if (mes === planilla.bonosDe) return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.planillaDeSueldos.update({ where: { id: planillaId }, data: { bonosDe: mes, feriadosDelMes: [] } });
+    await tx.renglonDeSueldo.updateMany({
+      where: { planillaId },
+      data: { presentismo: false, puntualidad: false, diasDelMes: Prisma.DbNull },
+    });
+    await logAudit(tx, {
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Planilla de sueldos",
+      entityId: planillaId,
+      summary: mes
+        ? `${nombreDePlanilla(planilla)}: paga los bonos de ${nombreDelMes(mes)}`
+        : `${nombreDePlanilla(planilla)}: ya no paga bonos${planilla.bonosDe ? ` (eran los de ${nombreDelMes(planilla.bonosDe)})` : ""}`,
+      cambios: [{ campo: "Bonos de", antes: planilla.bonosDe ? nombreDelMes(planilla.bonosDe) : null, despues: mes ? nombreDelMes(mes) : null }],
+    });
+  });
+  revalidarSueldos(planillaId);
+}
+
+/** El fichero del mes de los bonos: sugiere presentismo y puntualidad de cada uno. */
+export async function importarFicheroDelMes(formData: FormData) {
+  const user = await requireRole([...QUIENES]);
+  const planillaId = String(formData.get("planillaId") || "");
+  const archivo = formData.get("archivo");
+  if (!(archivo instanceof File) || archivo.size === 0) throw new UserError("Elegí el archivo que exporta el reloj.");
+  const exportacion = leerArchivoDelFichero(await archivo.arrayBuffer());
+  const r = await importarMesCore(planillaId, exportacion, user.id);
+  revalidarSueldos(planillaId);
+  const aviso = new URLSearchParams({ bonos: String(r.importados), pendientes: String(r.pendientes) });
+  if (r.sinMarcas.length) aviso.set("sinMarcas", r.sinMarcas.join(", "));
+  if (r.ambiguos.length) aviso.set("ambiguos", r.ambiguos.join(", "));
   redirect(`/sueldos/${planillaId}?${aviso.toString()}`);
 }

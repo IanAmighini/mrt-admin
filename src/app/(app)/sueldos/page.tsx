@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth-helpers";
 import { formatMoney, sumDecimals, ZERO } from "@/lib/money";
 import { formatDateTime, formatFecha, hoyComoFecha, toDateInputValue } from "@/lib/period";
 import { valorHora } from "@/lib/sueldos-calculo";
+import { nombreDelMes } from "@/lib/fichero-calculo";
 import { getCajasDeSueldos, getEmpleados, getReglasFichero, nombreDePlanilla, proximoPeriodo, tarifaVigente } from "@/lib/sueldos";
 import { FormModal } from "@/components/Modal";
 import { BotonConError } from "@/components/BotonConError";
@@ -101,11 +102,11 @@ export default async function SueldosPage() {
                 <div className="grid grid-cols-2 gap-3">
                   {(
                     [
-                      ["entradaPuntual", "Llega a tiempo hasta las", reglas.entradaPuntual, "Para la puntualidad, todos los días hábiles."],
+                      ["entradaPuntual", "Llega a tiempo hasta las", reglas.entradaPuntual, "Para la puntualidad del mes, todos los días hábiles."],
                       ["corteViernes", "El viernes se cuenta hasta las", reglas.corteViernes, "Lo que se queden después pasa a la semana siguiente."],
                       ["almuerzoMinutos", "Almuerzo (minutos)", String(reglas.almuerzoMinutos), "Se descuenta en los días de semana completos."],
                       ["diaConAlmuerzoHoras", "Desde cuántas horas se descuenta", String(reglas.diaConAlmuerzoHoras).replace(".", ","), "De puerta a puerta."],
-                      ["presentismoHoras", "Horas del día para el presentismo", String(reglas.presentismoHoras).replace(".", ","), "Ya sin el almuerzo, todos los días hábiles."],
+                      ["presentismoHoras", "Horas del día para el presentismo", String(reglas.presentismoHoras).replace(".", ","), "Ya sin el almuerzo, todos los días hábiles del mes."],
                       ["redondeoHoras", "Redondeo del total (horas)", String(reglas.redondeoHoras).replace(".", ","), "0,5 es a la media hora."],
                     ] as const
                   ).map(([name, label, valor, ayuda]) => (
@@ -155,6 +156,7 @@ export default async function SueldosPage() {
                       </span>
                       <span className="block text-xs text-foreground/50">
                         {p.renglones.length} empleados · se paga el {formatFecha(p.fechaDePago)}
+                        {p.bonosDe ? ` · con los bonos de ${nombreDelMes(p.bonosDe, p.fechaDePago.toISOString())}` : ""}
                         {p.cajaId ? ` · ${nombreDeCaja.get(p.cajaId) ?? ""}` : ""}
                       </span>
                     </span>

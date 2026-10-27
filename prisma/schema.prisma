@@ -1140,25 +1140,30 @@ model TarifaDeEmpleado {
 /// Una semana (o un mes) de sueldos. Mientras es borrador no mueve plata; al cerrarla se le carga a
 /// cada uno el gasto de lo que ganó y el pago de lo que se le dio desde la caja. Reabrirla los borra.
 model PlanillaDeSueldos {
-  id          String            @id @default(cuid())
-  forma       FormaDeSueldo
-  desde       DateTime
-  hasta       DateTime
+  id             String            @id @default(cuid())
+  forma          FormaDeSueldo
+  desde          DateTime
+  hasta          DateTime
   /// El día que se paga: la fecha del gasto y del pago.
-  fechaDePago DateTime
+  fechaDePago    DateTime
   /// La caja de la que sale el efectivo: la chica, o Bufano cuando Adriana no está.
-  cajaId      String?
-  estado      EstadoPlanilla    @default(BORRADOR)
+  cajaId         String?
+  estado         EstadoPlanilla    @default(BORRADOR)
   /// Los días feriados de la semana (\"2026-10-12\"): sus horas van al valor hora + 0,5 y no cuentan
   /// para el presentismo.
-  feriados    String[]          @default([])
-  notas       String?
-  createdById String
-  createdBy   User              @relation(fields: [createdById], references: [id])
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  cerradaAt   DateTime?
-  renglones   RenglonDeSueldo[]
+  feriados       String[]          @default([])
+  /// El mes cuyos bonos de presentismo y puntualidad paga esta semana ("2026-09"). Los bonos son
+  /// mensuales y se pagan cuando se puede —septiembre se pagó el 23/10—; sin mes, la semana no lleva bonos.
+  bonosDe        String?
+  /// Los feriados de ese mes: no cuentan para el presentismo.
+  feriadosDelMes String[]          @default([])
+  notas          String?
+  createdById    String
+  createdBy      User              @relation(fields: [createdById], references: [id])
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  cerradaAt      DateTime?
+  renglones      RenglonDeSueldo[]
 
   @@index([desde])
 }
@@ -1189,6 +1194,8 @@ model RenglonDeSueldo {
   /// Los días de la semana importados del fichero: las marcas, y la entrada o la salida corregidas a
   /// mano (de las cámaras). Con días, las horas salen de acá. Ver `lib/fichero-calculo`.
   dias             Json?
+  /// Los días del mes de los bonos, del fichero de ese mes: con eso se sugieren presentismo y puntualidad.
+  diasDelMes       Json?
   /// Lo que ya cobró a cuenta —un adelanto, un cliente que le transfirió directo— que se descuenta.
   descuentoACuenta Decimal?          @db.Decimal(14, 2)
   /// Lo que se le dio en efectivo: lo debido, redondeado para arriba según los billetes.

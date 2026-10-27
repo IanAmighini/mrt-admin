@@ -8,7 +8,7 @@ import { UserError } from "@/lib/user-error";
 import { formatFecha } from "@/lib/period";
 import { cuentaDelRenglon, type CuentaDelRenglon } from "@/lib/sueldos-calculo";
 import { getSetting } from "@/lib/settings";
-import { leerReglas } from "@/lib/fichero-calculo";
+import { leerReglas, rangoDelMes, type DiaFichero } from "@/lib/fichero-calculo";
 
 const DIA = 24 * 60 * 60 * 1000;
 /** Las fechas se guardan a medianoche UTC (ver `parseFecha`), así que sumar días es sumar 24 h. */
@@ -151,8 +151,7 @@ export async function getRenglonesCalculados(planillaId: string) {
             tarifa,
             horas: r.horas,
             horasFeriado: r.horasFeriado,
-            presentismo: r.presentismo,
-            puntualidad: r.puntualidad,
+            ...bonosDelRenglon(planilla, r),
             monotributo: r.monotributo ?? ZERO,
             saldoAnterior: r.saldoAnterior ?? ZERO,
             descuentoACuenta: r.descuentoACuenta,
@@ -168,8 +167,7 @@ export async function getRenglonesCalculados(planillaId: string) {
             tarifa,
             horas: r.horas,
             horasFeriado: r.horasFeriado,
-            presentismo: r.presentismo,
-            puntualidad: r.puntualidad,
+            ...bonosDelRenglon(planilla, r),
             monotributo: r.monotributo ?? ZERO,
             saldoAnterior: e.saldo,
             descuentoACuenta: r.descuentoACuenta,
@@ -190,3 +188,42 @@ export async function getReglasFichero() {
 
 /** Las fechas de una planilla como las usa el fichero: "2026-10-17". */
 export const fechaISO = (d: Date) => d.toISOString().slice(0, 10);
+
+/**
+ * Los bonos que cuentan en un renglón: sólo si la planilla paga los de algún mes. Una semana sin mes
+ * elegido no lleva bonos aunque el renglón tenga marcada una casilla de antes.
+ */
+export function bonosDelRenglon(
+  planilla: { bonosDe: string | null },
+  r: { presentismo: boolean; puntualidad: boolean }
+) {
+  const conBonos = Boolean(planilla.bonosDe);
+  return { presentismo: conBonos && r.presentismo, puntualidad: conBonos && r.puntualidad };
+}
+
+/**
+ * Lo que se corrigió a mano en las semanas de un mes (la entrada o la salida de un día, de las
+ * cámaras), por empleado: el mes de los bonos los toma arreglados.
+ */
+export async function getCorreccionesDelMes(entityIds: string[], mes: string): Promise<Map<string, DiaFichero[]>> {
+  const { desde, hasta } = rangoDelMes(mes);
+  const renglones = await prisma.renglonDeSueldo.findMany({
+    where: {
+      entityId: { in: entityIds },
+      dias: { not: Prisma.DbNull },
+      planilla: { forma: "SEMANAL", desde: { lte: new Date(`${hasta}T00:00:00Z`) }, hasta: { gte: new Date(`${desde}T00:00:00Z`) } },
+    },
+    select: { entityId: true, dias: true },
+  });
+  const porEmpleado = new Map<string, DiaFichero[]>();
+  for (const r of renglones) {
+    const editados = ((r.dias as DiaFichero[] | null) ?? []).filter(
+      (d) => !d.arrastre && d.fecha >= desde && d.fecha <= hasta && (d.entrada !== undefined || d.salida !== undefined)
+    );
+    porEmpleado.set(r.entityId, [...(porEmpleado.get(r.entityId) ?? []), ...editados]);
+  }
+  return porEmpleado;
+}
+
+/** "2026-09" del mes en que cae una fecha. */
+export const mesDe = (d: Date) => d.toISOString().slice(0, 7);

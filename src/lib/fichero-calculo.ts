@@ -11,8 +11,10 @@
  * - el viernes se cuenta hasta las 19, que es cuando se va Adriana con la planilla hecha. Lo que se
  *   queden después pasa a la semana siguiente;
  * - el total se redondea a la media hora;
- * - presentismo: todos los días hábiles de la semana con 8 horas o más (los feriados no cuentan);
- * - puntualidad: todos los días hábiles con entrada antes de las 8, y además el presentismo.
+ * - presentismo: todos los días hábiles **del mes** con 8 horas o más (los feriados no cuentan);
+ * - puntualidad: todos los días hábiles del mes con entrada antes de las 8, y además el presentismo.
+ *
+ * `resumenDeSemana` sirve para cualquier rango: con la semana da las horas, y con el mes, los bonos.
  *
  * Usa sólo las marcas crudas: el horario que tiene cargado el reloj (de 9 a 18, sin nadie asignado)
  * y los días de la semana que muestra (al sábado le dice viernes) están mal, y no se miran.
@@ -243,4 +245,51 @@ export function leerReglas(json: string | null | undefined): ReglasFichero {
   } catch {
     return REGLAS_POR_DEFECTO;
   }
+}
+
+// ─── Los bonos del mes ────────────────────────────────────────────────────────────────────────────
+//
+// Presentismo y puntualidad son por mes, no por semana (lo aclaró Ian el 27/10/2026): un jornal cada
+// uno si se cumplió todo el mes. Se pagan en la semana que se pueda —septiembre se pagó el 23/10—, y
+// se calculan con la misma cuenta que la semana, sobre los días del mes.
+
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+
+export const esMes = (mes: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(mes);
+
+/** "2026-09" → "septiembre"; con el año si no es el de `respectoDe` ("diciembre 2025"). */
+export function nombreDelMes(mes: string, respectoDe?: string) {
+  const [anio, numero] = mes.split("-");
+  const nombre = MESES[Number(numero) - 1] ?? mes;
+  return respectoDe && respectoDe.slice(0, 4) !== anio ? `${nombre} ${anio}` : nombre;
+}
+
+/** "2026-09" → del "2026-09-01" al "2026-09-30". */
+export function rangoDelMes(mes: string) {
+  const [anio, numero] = mes.split("-").map(Number);
+  const ultimo = new Date(Date.UTC(anio, numero, 0)).getUTCDate();
+  return { desde: `${mes}-01`, hasta: `${mes}-${String(ultimo).padStart(2, "0")}` };
+}
+
+/** El mes anterior: "2026-01" → "2025-12". */
+export function mesAnterior(mes: string) {
+  const [anio, numero] = mes.split("-").map(Number);
+  return numero === 1 ? `${anio - 1}-12` : `${anio}-${String(numero - 1).padStart(2, "0")}`;
+}
+
+/**
+ * Los días del mes con las correcciones que se le hicieron a mano en las semanas (la entrada o la
+ * salida que se sacó de las cámaras): si un día ya se arregló en su semana, el mes lo toma arreglado.
+ */
+export function conCorrecciones(dias: DiaFichero[], correcciones: DiaFichero[]): DiaFichero[] {
+  const porFecha = new Map(correcciones.filter((c) => !c.arrastre).map((c) => [c.fecha, c]));
+  return dias.map((d) => {
+    const c = porFecha.get(d.fecha);
+    if (!c) return d;
+    return {
+      ...d,
+      ...(c.entrada !== undefined ? { entrada: c.entrada } : {}),
+      ...(c.salida !== undefined ? { salida: c.salida } : {}),
+    };
+  });
 }

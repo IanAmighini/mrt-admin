@@ -3,7 +3,8 @@ import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
 import { formatFecha } from "@/lib/period";
 import { valorHora, RECARGO_FERIADO } from "@/lib/sueldos-calculo";
-import { getRenglonesCalculados, nombreDePlanilla } from "@/lib/sueldos";
+import { bonosDelRenglon, getRenglonesCalculados, nombreDePlanilla } from "@/lib/sueldos";
+import { nombreDelMes } from "@/lib/fichero-calculo";
 
 type Planilla = NonNullable<Awaited<ReturnType<typeof getRenglonesCalculados>>>;
 
@@ -97,7 +98,20 @@ function semanal(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
   encabezado(
     ws,
     2,
-    ["Usuario", "Nombre y Apellido", "Valor Jornal", "Valor hora", "Total horas", "Presentismo", "Puntualidad", "Adelantos", "Sueldo", "Redondeo", "Comentarios"],
+    [
+      "Usuario",
+      "Nombre y Apellido",
+      "Valor Jornal",
+      "Valor hora",
+      "Total horas",
+      // Los bonos son del mes que paga esta semana: el encabezado dice cuál.
+      planilla.bonosDe ? `Presentismo ${nombreDelMes(planilla.bonosDe)}` : "Presentismo",
+      planilla.bonosDe ? `Puntualidad ${nombreDelMes(planilla.bonosDe)}` : "Puntualidad",
+      "Adelantos",
+      "Sueldo",
+      "Redondeo",
+      "Comentarios",
+    ],
     [9, 10]
   );
 
@@ -116,6 +130,7 @@ function semanal(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
     const adelantos = adelantosDe(cuenta);
     const feriado = n(r.horasFeriado) * hora * RECARGO_FERIADO.toNumber();
     const bono = (si: boolean) => (si ? f(`C${fila}`, jornal) : 0);
+    const { presentismo, puntualidad } = bonosDelRenglon(planilla, r);
 
     const valores: [string, ExcelJS.CellValue, string?][] = [
       ["A", null],
@@ -123,15 +138,15 @@ function semanal(ws: ExcelJS.Worksheet, { planilla, renglones }: Planilla) {
       ["C", jornal, MILES],
       ["D", f(`C${fila}/8`, hora), CON_DECIMALES],
       ["E", n(r.horas), "#,##0.##"],
-      // Un jornal cada uno, si se lo ganó esa semana.
-      ["F", bono(r.presentismo), PESOS],
-      ["G", bono(r.puntualidad), PESOS],
+      // Un jornal cada uno, si se lo ganó en el mes de los bonos.
+      ["F", bono(presentismo), PESOS],
+      ["G", bono(puntualidad), PESOS],
       ["H", adelantos ? adelantos : null, PESOS],
       [
         "I",
         f(
           `D${fila}*E${fila}+G${filaFeriado}+F${fila}+G${fila}-H${fila}`,
-          n(r.horas) * hora + feriado + (r.presentismo ? jornal : 0) + (r.puntualidad ? jornal : 0) - adelantos
+          n(r.horas) * hora + feriado + (presentismo ? jornal : 0) + (puntualidad ? jornal : 0) - adelantos
         ),
         PESOS,
       ],

@@ -8,7 +8,8 @@ import { circuitoDeTesoreria } from "@/lib/pagos";
 import { formatMoney, sumDecimals, ZERO } from "@/lib/money";
 import { formatFecha } from "@/lib/period";
 import { cuentaDelRenglon } from "@/lib/sueldos-calculo";
-import { getEmpleados, nombreDePlanilla, numeroDelGasto, tarifaVigente } from "@/lib/sueldos";
+import { bonosDelRenglon, getEmpleados, nombreDePlanilla, numeroDelGasto, tarifaVigente } from "@/lib/sueldos";
+import { nombreDelMes } from "@/lib/fichero-calculo";
 
 /**
  * Cierra la semana: a cada uno se le carga el gasto de lo que ganó y el pago de lo que se le dio
@@ -39,8 +40,7 @@ export async function cerrarPlanillaCore(planillaId: string, userId: string) {
       tarifa: tarifa.monto,
       horas: r.horas,
       horasFeriado: r.horasFeriado,
-      presentismo: r.presentismo,
-      puntualidad: r.puntualidad,
+      ...bonosDelRenglon(planilla, r),
       monotributo: r.monotributo ?? ZERO,
       saldoAnterior: e.saldo,
       descuentoACuenta: r.descuentoACuenta,
@@ -62,8 +62,7 @@ export async function cerrarPlanillaCore(planillaId: string, userId: string) {
           const detalle = [
             planilla.forma === "SEMANAL" ? `${r.horas.toString().replace(".", ",")} h` : null,
             r.horasFeriado.greaterThan(0) ? `${r.horasFeriado.toString().replace(".", ",")} en feriado` : null,
-            r.presentismo && planilla.forma === "SEMANAL" ? "presentismo" : null,
-            r.puntualidad && planilla.forma === "SEMANAL" ? "puntualidad" : null,
+            textoDeBonos(planilla, r),
             cuenta.monotributo.greaterThan(0) ? `monotributo ${formatMoney(cuenta.monotributo)}` : null,
             cuenta.redondeo.greaterThan(0) ? `redondeo ${formatMoney(cuenta.redondeo)}` : null,
           ].filter(Boolean);
@@ -181,3 +180,11 @@ export async function reabrirPlanillaCore(planillaId: string, userId: string) {
   await reimputarEntidades(...planilla.renglones.map((r) => r.entityId));
 }
 
+
+/** "bonos de septiembre: presentismo + puntualidad", para el detalle del gasto. Null si no lleva. */
+export function textoDeBonos(planilla: { bonosDe: string | null; fechaDePago: Date }, r: { presentismo: boolean; puntualidad: boolean }) {
+  const { presentismo, puntualidad } = bonosDelRenglon(planilla, r);
+  if (!presentismo && !puntualidad) return null;
+  const cuales = [presentismo ? "presentismo" : null, puntualidad ? "puntualidad" : null].filter(Boolean).join(" + ");
+  return `bonos de ${nombreDelMes(planilla.bonosDe!, planilla.fechaDePago.toISOString())}: ${cuales}`;
+}

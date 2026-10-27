@@ -38,6 +38,8 @@ export type FilaDePlanilla = {
   comentario: string;
   /** Los días importados del fichero; null si las horas se cargan a mano. */
   dias: DiaFichero[] | null;
+  /** Los días del mes de los bonos (del fichero de ese mes); null si no se importó. */
+  diasDelMes: DiaFichero[] | null;
 };
 
 type Campo = "horas" | "feriado" | "monotributo" | "acuenta" | "pagado" | "comentario";
@@ -53,8 +55,9 @@ const entradaHora = controlClass({ denso: true, extra: "text-center tabular-nums
 const horasTexto = (h: number) => h.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
 /**
- * La planilla de la semana (o del mes) para cargar: horas, feriados y los dos bonos de cada uno
- * —presentismo y puntualidad, un jornal cada uno—, y la app hace la cuenta en vivo. Por mes, el
+ * La planilla de la semana (o del mes) para cargar: horas y feriados, y la app hace la cuenta en
+ * vivo. Si la semana paga los bonos de un mes —presentismo y puntualidad, un jornal cada uno—, una
+ * casilla de cada uno, con lo que sugiere el fichero de ese mes. Por mes, el
  * sueldo y el monotributo. Lo que va en gris es lo que sugiere —descontar todo lo que
  * tiene a cuenta, redondear para arriba a $ 50— y sólo se escribe encima cuando hay que cambiarlo.
  */
@@ -71,6 +74,7 @@ export function PlanillaDeSueldosGrid({
   semana,
   feriadosIniciales,
   reglas,
+  bonos,
 }: {
   planillaId: string;
   forma: FormaDeSueldo;
@@ -85,10 +89,13 @@ export function PlanillaDeSueldosGrid({
   semana: { desde: string; hasta: string };
   feriadosIniciales: string[];
   reglas: ReglasFichero;
+  /** El mes cuyos bonos paga esta semana; null si no paga. */
+  bonos: { nombre: string; desde: string; hasta: string; feriadosIniciales: string[] } | null;
 }) {
   const [valores, setValores] = useState(() => Object.fromEntries(filas.map((f) => [f.id, f])));
   const [caja, setCaja] = useState(cajaId ?? cajas[0]?.id ?? "");
   const [feriados, setFeriados] = useState<string[]>(feriadosIniciales);
+  const [feriadosMes, setFeriadosMes] = useState<string[]>(bonos?.feriadosIniciales ?? []);
   const [abiertos, setAbiertos] = useState<string[]>([]);
   const fechas = fechasDe(semana.desde, semana.hasta);
   const confirmar = useRef<HTMLDialogElement>(null);
@@ -123,25 +130,31 @@ export function PlanillaDeSueldosGrid({
     }));
 
   const semanal = forma === "SEMANAL";
+  const conBonos = semanal && Boolean(bonos);
   const cuentas = filas.map((f) => {
     const v = valores[f.id];
     // Con los días del fichero, las horas salen de ahí; si no, de lo que se escribió.
     const resumen = semanal && v.dias ? resumenDeSemana(v.dias, reglas, { ...semana, feriados }) : null;
+    // Los bonos, con el fichero del mes: lo que sugiere para cada casilla.
+    const delMes =
+      bonos && f.diasDelMes
+        ? resumenDeSemana(f.diasDelMes, reglas, { desde: bonos.desde, hasta: bonos.hasta, feriados: feriadosMes })
+        : null;
     const cuenta = f.tarifa
       ? cuentaDelRenglon({
           forma,
           tarifa: D(f.tarifa),
           horas: resumen ? D(String(resumen.horas)) : (leer(v.horas) ?? D("0")),
           horasFeriado: resumen ? D(String(resumen.horasFeriado)) : (leer(v.feriado) ?? D("0")),
-          presentismo: v.presentismo,
-          puntualidad: v.puntualidad,
+          presentismo: conBonos && v.presentismo,
+          puntualidad: conBonos && v.puntualidad,
           monotributo: leer(v.monotributo) ?? D("0"),
           saldoAnterior: D(f.saldoAnterior),
           descuentoACuenta: leer(v.acuenta),
           pagado: leer(v.pagado),
         })
       : null;
-    return { f, v, cuenta, resumen };
+    return { f, v, cuenta, resumen, delMes };
   });
   const suma = (pick: (c: NonNullable<(typeof cuentas)[number]["cuenta"]>) => Prisma.Decimal) =>
     cuentas.reduce((acc, { cuenta }) => (cuenta ? acc.plus(pick(cuenta)) : acc), D("0"));
@@ -150,7 +163,7 @@ export function PlanillaDeSueldosGrid({
   const totalHoras = cuentas.reduce((acc, { v, resumen }) => acc.plus(resumen ? resumen.horas : (leer(v.horas) ?? 0)), D("0"));
   const conACuenta = cuentas.some(({ cuenta, v }) => cuenta?.aCuenta.greaterThan(0) || cuenta?.deudaAnterior.greaterThan(0) || v.acuenta);
   const nombreCaja = cajas.find((c) => c.id === caja)?.name ?? "la caja";
-  const columnas = (semanal ? 9 : 7) + (conACuenta ? 1 : 0);
+  const columnas = (semanal ? 7 : 6) + (conBonos ? 2 : 0) + (conACuenta ? 1 : 0);
   const pendientes = cuentas.reduce((acc, { resumen }) => acc + (resumen?.pendientes.length ?? 0), 0);
   const conDatos = cuentas.filter(({ cuenta }) => cuenta && (cuenta.gasto.greaterThan(0) || cuenta.pagado.greaterThan(0))).length;
 
@@ -183,7 +196,41 @@ export function PlanillaDeSueldosGrid({
               </label>
             );
           })}
-          <span className="text-xs text-foreground/40">Sus horas van al valor hora + 0,5 y no cuentan para el presentismo.</span>
+          <span className="text-xs text-foreground/40">Sus horas van al valor hora + 0,5.</span>
+        </div>
+      )}
+
+      {conBonos && bonos && (
+        <div className="flex flex-wrap items-center gap-1.5 text-sm">
+          <span className="mr-1 text-foreground/60">Feriados de {bonos.nombre}:</span>
+          {fechasDe(bonos.desde, bonos.hasta)
+            .filter((fecha) => {
+              const d = diaDeLaSemana(fecha);
+              return d >= 1 && d <= 5;
+            })
+            .map((fecha) => {
+              const activo = feriadosMes.includes(fecha);
+              return (
+                <label
+                  key={fecha}
+                  className={`cursor-pointer rounded-md border px-2 py-1 text-xs tabular-nums transition-colors ${
+                    activo ? "border-primary bg-primary font-medium text-primary-foreground" : "border-foreground/15 text-foreground/60 hover:bg-foreground/5"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    name="feriado_mes"
+                    value={fecha}
+                    checked={activo}
+                    onChange={(e) => setFeriadosMes((fs) => (e.target.checked ? [...fs, fecha] : fs.filter((x) => x !== fecha)))}
+                    disabled={!puedeEditar}
+                    className="sr-only"
+                  />
+                  {DIAS_SEMANA[diaDeLaSemana(fecha)]} {Number(fecha.slice(8))}
+                </label>
+              );
+            })}
+          <span className="text-xs text-foreground/40">No cuentan para el presentismo del mes.</span>
         </div>
       )}
 
@@ -198,14 +245,14 @@ export function PlanillaDeSueldosGrid({
                   Feriado
                 </th>
               )}
-              {semanal && (
-                <th className={`${celda} text-center`} title="Bono de un jornal por presentismo.">
-                  Presentismo
+              {conBonos && (
+                <th className={`${celda} text-center`} title={`Bono de un jornal por el presentismo de ${bonos!.nombre}.`}>
+                  Presentismo {bonos!.nombre}
                 </th>
               )}
-              {semanal && (
-                <th className={`${celda} text-center`} title="Bono de un jornal por puntualidad.">
-                  Puntualidad
+              {conBonos && (
+                <th className={`${celda} text-center`} title={`Bono de un jornal por la puntualidad de ${bonos!.nombre}.`}>
+                  Puntualidad {bonos!.nombre}
                 </th>
               )}
               {!semanal && (
@@ -225,7 +272,7 @@ export function PlanillaDeSueldosGrid({
             </tr>
           </thead>
           <tbody className="divide-y divide-foreground/10">
-            {cuentas.map(({ f, v, cuenta, resumen }) => (
+            {cuentas.map(({ f, v, cuenta, resumen, delMes }) => (
               <Fragment key={f.id}>
               <tr className="align-top">
                 <td className={`${celda} min-w-[10rem]`}>
@@ -289,7 +336,7 @@ export function PlanillaDeSueldosGrid({
                     />
                   </td>
                 )}
-                {semanal &&
+                {conBonos &&
                   (["presentismo", "puntualidad"] as const).map((bono) => (
                     <td key={bono} className={`${celda} pt-3 text-center`}>
                       <label className="inline-flex cursor-pointer items-center gap-1.5 text-xs tabular-nums text-foreground/60">
@@ -304,15 +351,18 @@ export function PlanillaDeSueldosGrid({
                         />
                         {v[bono] && f.tarifa ? formatMoney(D(f.tarifa)) : ""}
                       </label>
-                      {resumen &&
+                      {!delMes && (
+                        <p className="mx-auto mt-0.5 max-w-[9rem] text-[10px] leading-tight text-foreground/40">sin fichero del mes</p>
+                      )}
+                      {delMes &&
                         (() => {
-                          const sugerido = bono === "presentismo" ? resumen.presentismo : resumen.puntualidad;
+                          const sugerido = bono === "presentismo" ? delMes.presentismo : delMes.puntualidad;
                           const motivos =
                             bono === "presentismo"
-                              ? resumen.sinPresentismo
-                              : resumen.sinPresentismo.length
+                              ? delMes.sinPresentismo
+                              : delMes.sinPresentismo.length
                                 ? ["sin presentismo"]
-                                : resumen.sinPuntualidad;
+                                : delMes.sinPuntualidad;
                           return (
                             <p
                               title={motivos.join("; ")}
@@ -489,8 +539,8 @@ export function PlanillaDeSueldosGrid({
               <td className={celda}>Total</td>
               {semanal && <td className={`${celda} text-right`}>{totalHoras.toString().replace(".", ",")}</td>}
               {semanal && <td />}
-              {semanal && <td />}
-              {semanal && <td />}
+              {conBonos && <td />}
+              {conBonos && <td />}
               {!semanal && <td className={`${celda} text-right`}>{formatMoney(suma((c) => c.monotributo))}</td>}
               <td className={`${celda} text-right`}>{formatMoney(totalSueldo)}</td>
               {conACuenta && <td />}
@@ -503,7 +553,7 @@ export function PlanillaDeSueldosGrid({
       </div>
       <p className="text-xs text-foreground/50">
         {semanal
-          ? "Horas al valor hora (jornal ÷ 8); las de feriado, que van dentro de las horas, al valor hora más 0,5. Presentismo y puntualidad suman un jornal cada uno. "
+          ? `Horas al valor hora (jornal ÷ 8); las de feriado, que van dentro de las horas, al valor hora más 0,5.${conBonos ? ` Presentismo y puntualidad de ${bonos!.nombre} suman un jornal cada uno.` : ""} `
           : "El sueldo del mes más el monotributo, que arranca con el del mes anterior. "}
         Lo que está en gris es lo que sugiere la app: se descuenta todo lo que tiene a cuenta y se redondea para arriba a
         los $ 50. Escribí encima sólo si hay que cambiarlo (un adelanto que se descuenta en partes, el redondeo según los
