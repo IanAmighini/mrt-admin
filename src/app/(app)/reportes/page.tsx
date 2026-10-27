@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlarmClock, Download, Factory, Milk, Package, Receipt, Send, ShoppingCart, TrendingUp, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
+import { AlarmClock, Coins, Download, Factory, Milk, Package, Receipt, Send, ShoppingCart, TrendingUp, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
 import type { Circuit } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { FormModal } from "@/components/Modal";
@@ -8,7 +8,7 @@ import { SendWeeklyReportButton } from "@/components/SendWeeklyReportButton";
 import { getLastRunInfo, getRecipients } from "@/lib/weekly-report";
 import { sendWeeklyReportNow, updateWeeklyReportRecipients } from "./actions";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
-import { formatPeriodLabel, periodFromSearchParams, PERIOD_PRESETS } from "@/lib/period";
+import { formatFecha, formatPeriodLabel, hoyComoFecha, periodFromSearchParams, PERIOD_PRESETS, toDateInputValue } from "@/lib/period";
 import { isReportKey, REPORT_LABELS, type ReportKey } from "@/lib/reports";
 import { VencidosSection } from "./sections/VencidosSection";
 import { InsumosSection } from "./sections/InsumosSection";
@@ -20,6 +20,7 @@ import { ResultadoSection } from "./sections/ResultadoSection";
 import { CostoBotellaSection } from "./sections/CostoBotellaSection";
 import { ProduccionSection } from "./sections/ProduccionSection";
 import { StockSection } from "./sections/StockSection";
+import { ValorizacionSection } from "./sections/ValorizacionSection";
 
 const inputClass =
   "rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
@@ -63,6 +64,7 @@ const GRUPOS: { titulo: string; reportes: { key: ReportKey; icono: LucideIcon; d
       { key: "produccion", icono: Factory, descripcion: "Lo envasado y lo que consumió" },
       { key: "stock", icono: Package, descripcion: "Recuentos y diferencias" },
       { key: "insumos-bajo-minimo", icono: TriangleAlert, descripcion: "Lo que hay que reponer" },
+      { key: "valorizacion-insumos", icono: Coins, descripcion: "Cuánto vale lo que hay en el depósito" },
     ],
   },
 ];
@@ -71,6 +73,7 @@ const GRUPOS: { titulo: string; reportes: { key: ReportKey; icono: LucideIcon; d
 const USA_PERIODO: Record<ReportKey, boolean> = {
   "remitos-vencidos": false,
   "insumos-bajo-minimo": false,
+  "valorizacion-insumos": false,
   ventas: true,
   cobranzas: true,
   compras: true,
@@ -85,6 +88,7 @@ const USA_PERIODO: Record<ReportKey, boolean> = {
 const USA_CIRCUITO: Record<ReportKey, boolean> = {
   "remitos-vencidos": true,
   "insumos-bajo-minimo": false,
+  "valorizacion-insumos": false,
   ventas: true,
   cobranzas: false,
   compras: false,
@@ -104,7 +108,7 @@ const CIRCUIT_FILTERS: { value: string; label: string }[] = [
 export default async function ReportesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ report?: string; preset?: string; from?: string; to?: string; circuit?: string }>;
+  searchParams: Promise<{ report?: string; preset?: string; from?: string; to?: string; circuit?: string; al?: string }>;
 }) {
   const user = await requireRole(["ADMIN", "SOLO_LECTURA"]);
   const sp = await searchParams;
@@ -119,6 +123,12 @@ export default async function ReportesPage({
   const circuitSlug = CIRCUIT_FILTERS.some((f) => f.value === sp.circuit) ? (sp.circuit ?? "") : "";
   const circuit: Circuit | undefined = circuitSlug ? CIRCUIT_BY_SLUG[circuitSlug] : undefined;
 
+  // La valorización es una foto a un día: hoy, o el que se elija (el cierre de un mes).
+  const hoy = hoyComoFecha();
+  const alElegido = sp.al && /^\d{4}-\d{2}-\d{2}$/.test(sp.al) ? new Date(`${sp.al}T00:00:00Z`) : null;
+  const al = alElegido && !Number.isNaN(alElegido.getTime()) && alElegido < hoy ? alElegido : hoy;
+  const usaFecha = report === "valorizacion-insumos";
+
   const usaPeriodo = USA_PERIODO[report];
   const usaCircuito = USA_CIRCUITO[report];
 
@@ -130,6 +140,7 @@ export default async function ReportesPage({
     if (!sp.from && !sp.to && preset) exportParams.set("preset", preset);
   }
   if (usaCircuito && circuitSlug) exportParams.set("circuit", circuitSlug);
+  if (usaFecha && al < hoy) exportParams.set("al", toDateInputValue(al));
 
   /** Conserva los filtros vigentes al armar los links de los chips. */
   function queryWith(overrides: Record<string, string | undefined>) {
@@ -192,7 +203,8 @@ export default async function ReportesPage({
             <div>
               <h2 className="text-lg font-semibold">{REPORT_LABELS[report]}</h2>
               <p className="text-sm text-foreground/60">
-                {actual.descripcion} · {usaPeriodo ? formatPeriodLabel(period) : "a hoy"}
+                {actual.descripcion} ·{" "}
+                {usaPeriodo ? formatPeriodLabel(period) : usaFecha && al < hoy ? `al ${formatFecha(al)}` : "a hoy"}
               </p>
             </div>
           </div>
@@ -220,6 +232,33 @@ export default async function ReportesPage({
             </a>
           </div>
         </div>
+
+        {usaFecha && (
+          <form className="flex flex-wrap items-end gap-2 rounded-xl border border-foreground/10 bg-background px-4 py-3 shadow-sm">
+            <input type="hidden" name="report" value={report} />
+            <div className="space-y-1">
+              <label className="text-xs text-foreground/50" htmlFor="al">
+                Al
+              </label>
+              <input
+                id="al"
+                type="date"
+                name="al"
+                defaultValue={toDateInputValue(al)}
+                max={toDateInputValue(hoy)}
+                className={`block ${inputClass}`}
+              />
+            </div>
+            <button type="submit" className={`${inputClass} hover:bg-foreground/5`}>
+              Ver
+            </button>
+            {al < hoy && (
+              <Link href={{ pathname: "/reportes", query: { report } }} className={`${inputClass} hover:bg-foreground/5`}>
+                Hoy
+              </Link>
+            )}
+          </form>
+        )}
 
         {(usaPeriodo || usaCircuito) && (
           <div className="flex flex-wrap items-end gap-x-4 gap-y-3 rounded-xl border border-foreground/10 bg-background px-4 py-3 shadow-sm">
@@ -285,6 +324,7 @@ export default async function ReportesPage({
 
       {report === "remitos-vencidos" && <VencidosSection circuit={circuit} />}
       {report === "insumos-bajo-minimo" && <InsumosSection />}
+      {report === "valorizacion-insumos" && <ValorizacionSection asOf={al} />}
       {report === "ventas" && <VentasSection period={period} circuit={circuit} />}
       {report === "cobranzas" && <CobranzasSection period={period} />}
       {report === "compras" && <ComprasSection period={period} />}

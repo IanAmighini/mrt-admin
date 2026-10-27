@@ -6,7 +6,7 @@ import { getDocumentEffect } from "@/lib/ledger";
 import { getAllItemStocks } from "@/lib/stock";
 import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 import { GASTOS_WHERE } from "@/lib/caja";
-import { monthPeriod, type Period } from "@/lib/period";
+import { formatFecha, monthPeriod, type Period } from "@/lib/period";
 import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
 
 /**
@@ -221,13 +221,33 @@ async function armarCostosUnitarios(cot: Cotizador) {
     if (!costo) return dePreforma;
     return dePreforma ? costo.plus(dePreforma) : costo;
   };
+  // De dónde sale el costo, para que un reporte lo pueda decir: «última compra del 14/10», «ficha».
+  const origenPropio = (itemId: string, fecha: Date): string | null => {
+    const lista = porItem.get(itemId) ?? [];
+    let anterior: (typeof lista)[number] | null = null;
+    for (const c of lista) {
+      if (c.fecha <= fecha) anterior = c;
+      else break;
+    }
+    if (anterior) return `última compra del ${formatFecha(anterior.fecha)}`;
+    if (fijo.has(itemId)) return "costo de la ficha";
+    return lista[0] ? `primera compra, del ${formatFecha(lista[0].fecha)}` : null;
+  };
+  const origen = (itemId: string, fecha: Date): string | null => {
+    const propioOrigen = origenPropio(itemId, fecha);
+    const preforma = preformaDelEnvase.get(itemId);
+    const dePreforma = preforma ? origenPropio(preforma, fecha) : null;
+    if (!dePreforma) return propioOrigen;
+    const nombre = preformaItems.find((p) => p.id === preforma)?.name ?? "preforma";
+    return propioOrigen ? `soplado (${propioOrigen}) + ${nombre} (${dePreforma})` : `${nombre} (${dePreforma})`;
+  };
   // Un envase cuyo soplado tiene precio pero su preforma no: el costo que da es sólo la mitad.
   const faltaPreforma = (itemId: string, fecha: Date): string | null => {
     const preforma = preformaDelEnvase.get(itemId);
     if (!preforma || propio(preforma, fecha)) return null;
     return preformaItems.find((p) => p.id === preforma)?.name ?? "la preforma";
   };
-  return Object.assign(costoDe, { faltaPreforma });
+  return Object.assign(costoDe, { faltaPreforma, origen });
 }
 
 /**

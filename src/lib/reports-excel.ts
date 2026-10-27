@@ -23,6 +23,7 @@ import {
   type ComprasReport,
   type GastosReport,
   type InsumosMinimoReport,
+  type ValorizacionReport,
   type ProduccionReport,
   type StockReport,
   type StockReportRow,
@@ -117,6 +118,43 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
 }
 
 // ---------------------------------------------------------------------------
+
+function valorizacionSheets(report: ValorizacionReport): ExcelSheet<never>[] {
+  const subtitle = [
+    `Al ${formatFecha(report.asOf)}. En pesos: cada insumo a su última compra hasta ese día (con la cotización de la compra si fue en dólares), o al costo de la ficha si nunca se compró. Un envase vale su soplado más la preforma.`,
+    ...(report.sinCosto > 0 ? [`${report.sinCosto} insumo(s) con stock no tienen costo y no suman al total.`] : []),
+  ];
+  return [
+    sheet<ValorizacionReport["rows"][number]>({
+      name: "Detalle",
+      title: "Valorización de insumos en stock",
+      subtitle,
+      columns: [
+        { header: "Insumo", value: (r) => r.itemName, width: 36 },
+        { header: "Categoría", value: (r) => SUPPLIER_CATEGORY_LABELS[r.category], width: 20 },
+        { header: "Unidad", value: (r) => r.unit, width: 10 },
+        { header: "Stock", value: (r) => r.stock, format: "number", width: 14 },
+        { header: "Costo unitario", value: (r) => r.unitario, format: "money", width: 16 },
+        { header: "Valor", value: (r) => r.valor, format: "money", width: 18 },
+        { header: "De dónde sale el costo", value: (r) => r.origen ?? "sin costo", width: 48 },
+      ],
+      rows: report.rows,
+      totals: ["Total", null, null, null, null, report.total, null],
+    }),
+    sheet<ValorizacionReport["porCategoria"][number]>({
+      name: "Por categoría",
+      title: "Valorización por categoría",
+      subtitle,
+      columns: [
+        { header: "Categoría", value: (r) => SUPPLIER_CATEGORY_LABELS[r.category], width: 24 },
+        { header: "Insumos", value: (r) => r.count, format: "integer" },
+        { header: "Valor", value: (r) => r.valor, format: "money", width: 18 },
+      ],
+      rows: report.porCategoria,
+      totals: ["Total", null, report.total],
+    }),
+  ];
+}
 
 function insumosMinimoSheets(report: InsumosMinimoReport): ExcelSheet<never>[] {
   const subtitle = [
@@ -754,6 +792,7 @@ function costoBotellaSheets(report: CostoBotellaReport, generatedAt: Date): Exce
 export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
   | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
+  | { key: "valorizacion-insumos"; report: ValorizacionReport }
   | { key: "ventas"; report: VentasReport }
   /** Los dos lados, igual que la pantalla: cobranzas a clientes y pagos a proveedores. */
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
@@ -770,6 +809,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return vencidosSheets(data.report);
     case "insumos-bajo-minimo":
       return insumosMinimoSheets(data.report);
+    case "valorizacion-insumos":
+      return valorizacionSheets(data.report);
     case "ventas":
       return ventasSheets(data.report, generatedAt);
     case "cobranzas":

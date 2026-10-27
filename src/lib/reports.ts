@@ -22,6 +22,7 @@ import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 export const REPORT_KEYS = [
   "remitos-vencidos",
   "insumos-bajo-minimo",
+  "valorizacion-insumos",
   "ventas",
   "cobranzas",
   "compras",
@@ -37,6 +38,7 @@ export type ReportKey = (typeof REPORT_KEYS)[number];
 export const REPORT_LABELS: Record<ReportKey, string> = {
   "remitos-vencidos": "Comprobantes vencidos",
   "insumos-bajo-minimo": "Insumos bajo mínimo",
+  "valorizacion-insumos": "Valorización de insumos",
   ventas: "Ventas / entregas",
   cobranzas: "Cobranzas y pagos",
   compras: "Compras de insumos",
@@ -48,7 +50,7 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
 };
 
 /** Reportes que son una foto del momento y no de un período: el nombre del archivo lleva "al <fecha>". */
-export const REPORT_KEYS_SNAPSHOT: ReportKey[] = ["remitos-vencidos", "insumos-bajo-minimo"];
+export const REPORT_KEYS_SNAPSHOT: ReportKey[] = ["remitos-vencidos", "insumos-bajo-minimo", "valorizacion-insumos"];
 
 export function isReportKey(value: string | undefined): value is ReportKey {
   return REPORT_KEYS.includes(value as ReportKey);
@@ -308,6 +310,101 @@ export async function getInsumosMinimoReport(options?: { asOf?: Date }): Promise
     itemsSinMinimo,
     totalItems: items.length,
     costoReposicionTotal: sumDecimals(rows.map((r) => r.costoReposicion ?? ZERO)),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 2b. Valorización de insumos en stock
+// ---------------------------------------------------------------------------
+
+export type ValorizacionRow = {
+  itemId: string;
+  itemSlug: string;
+  itemName: string;
+  unit: string;
+  category: SupplierCategory;
+  stock: Prisma.Decimal;
+  /** En pesos, por unidad. Null si el insumo no tiene ni compras ni costo en la ficha. */
+  unitario: Prisma.Decimal | null;
+  valor: Prisma.Decimal | null;
+  /** De dónde sale el costo: «última compra del 14/10», «costo de la ficha», «soplado + preforma». */
+  origen: string | null;
+  /** Un envase sin precio de su preforma: el costo es sólo el soplado. */
+  faltaPreforma: string | null;
+};
+
+export type ValorizacionReport = {
+  /** El día de la foto: el stock hasta ese día, a lo que costaba ese día. */
+  asOf: Date;
+  /** Por categoría (la de más valor primero) y adentro, el de más valor primero. */
+  rows: ValorizacionRow[];
+  porCategoria: { category: SupplierCategory; count: number; valor: Prisma.Decimal }[];
+  total: Prisma.Decimal;
+  /** Con stock pero sin ningún costo: no suman al total y hay que decirlo. */
+  sinCosto: number;
+};
+
+/**
+ * Lo que vale lo que hay en el depósito: el stock de cada insumo a una fecha por lo que costaba ese
+ * día, en pesos. El costo es el mismo del margen (`getCostosUnitarios`): la última compra con precio
+ * pasada a pesos con su cotización, o el de la ficha si nunca se compró; y un envase vale su soplado
+ * más la preforma. Así este total y el costo de lo vendido hablan del mismo número.
+ *
+ * Quedan afuera los insumos que no llevan stock (se usan al comprarlos) y los que están en cero.
+ */
+export async function getValorizacionReport(options?: { asOf?: Date }): Promise<ValorizacionReport> {
+  const asOf = options?.asOf ?? hoyComoFecha();
+  // El día entero: hay movimientos con hora (el stock inicial del 29/09 es de las 3:00).
+  const finDelDia = new Date(asOf.getTime() + 24 * 60 * 60 * 1000 - 1);
+  const cot = await getCotizador();
+  const [items, movimientos, costoDe] = await Promise.all([
+    prisma.item.findMany({ where: { llevaStock: true } }),
+    prisma.itemMovement.groupBy({ by: ["itemId"], where: { date: { lte: finDelDia } }, _sum: { quantity: true } }),
+    getCostosUnitarios(cot),
+  ]);
+  const stockDe = new Map(movimientos.map((m) => [m.itemId, m._sum.quantity ?? ZERO]));
+
+  const filas: ValorizacionRow[] = [];
+  for (const item of items) {
+    const stock = toDecimal(stockDe.get(item.id) ?? ZERO);
+    if (stock.isZero()) continue;
+    const unitario = costoDe(item.id, finDelDia);
+    filas.push({
+      itemId: item.id,
+      itemSlug: item.slug,
+      itemName: item.name,
+      unit: item.unit,
+      category: item.category,
+      stock,
+      unitario,
+      valor: unitario ? stock.times(unitario) : null,
+      origen: costoDe.origen(item.id, finDelDia),
+      faltaPreforma: costoDe.faltaPreforma(item.id, finDelDia),
+    });
+  }
+
+  const porCategoriaMap = new Map<SupplierCategory, { category: SupplierCategory; count: number; valor: Prisma.Decimal }>();
+  for (const f of filas) {
+    const c = porCategoriaMap.get(f.category) ?? { category: f.category, count: 0, valor: ZERO };
+    c.count++;
+    c.valor = c.valor.plus(f.valor ?? ZERO);
+    porCategoriaMap.set(f.category, c);
+  }
+  const porCategoria = Array.from(porCategoriaMap.values()).sort((a, b) => b.valor.comparedTo(a.valor));
+  const orden = new Map(porCategoria.map((c, i) => [c.category, i]));
+  filas.sort(
+    (a, b) =>
+      orden.get(a.category)! - orden.get(b.category)! ||
+      (b.valor ?? ZERO).comparedTo(a.valor ?? ZERO) ||
+      a.itemName.localeCompare(b.itemName, "es")
+  );
+
+  return {
+    asOf,
+    rows: filas,
+    porCategoria,
+    total: sumDecimals(filas.map((f) => f.valor ?? ZERO)),
+    sinCosto: filas.filter((f) => !f.unitario).length,
   };
 }
 

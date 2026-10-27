@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import type { Circuit } from "@prisma/client";
 import { getCurrentUser } from "@/lib/auth-helpers";
 import { CIRCUIT_BY_SLUG } from "@/lib/labels";
-import { periodFromSearchParams } from "@/lib/period";
+import { hoyComoFecha, periodFromSearchParams } from "@/lib/period";
 import {
   getCobranzasReport,
   getComprasReport,
@@ -10,6 +10,7 @@ import {
   getResultadoReport,
   getCostoBotellaReport,
   getInsumosMinimoReport,
+  getValorizacionReport,
   getProduccionReport,
   getStockReport,
   getVencidosReport,
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
   const circuitSlug = sp.get("circuit");
   const circuit: Circuit | undefined = circuitSlug ? CIRCUIT_BY_SLUG[circuitSlug] : undefined;
 
-  const asOf = new Date();
+  let asOf = new Date();
   let data: ReportData;
 
   switch (key) {
@@ -54,6 +55,15 @@ export async function GET(request: NextRequest) {
     case "insumos-bajo-minimo":
       data = { key, report: await getInsumosMinimoReport({ asOf }) };
       break;
+    case "valorizacion-insumos": {
+      // Al día que se eligió en la pantalla, o a hoy.
+      const al = sp.get("al");
+      const hoy = hoyComoFecha();
+      const elegido = al && /^\d{4}-\d{2}-\d{2}$/.test(al) ? new Date(`${al}T00:00:00Z`) : null;
+      asOf = elegido && !Number.isNaN(elegido.getTime()) && elegido < hoy ? elegido : hoy;
+      data = { key, report: await getValorizacionReport({ asOf }) };
+      break;
+    }
     case "ventas":
       data = { key, report: await getVentasReport(period, { circuit }) };
       break;
