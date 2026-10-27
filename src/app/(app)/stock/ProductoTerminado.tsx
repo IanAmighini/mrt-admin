@@ -3,73 +3,46 @@ import type { Caja, Prisma, Product } from "@prisma/client";
 import { formatQuantity } from "@/lib/money";
 import { palletsYCajas } from "@/lib/product-label";
 
-type Formato = { product: Product; pallets: number; cajas: number; negativo: boolean };
+type Formato = { product: Product; pallets: number; cajas: number };
 
-/** Una caja de una marca (12 × 900 ml): los formatos que se arman con ella y sus cajas sueltas. */
-type Grupo = {
-  clave: string;
-  ml: number;
-  porCaja: number | null;
-  formatos: Formato[];
-  sueltas: number;
-  botellas: number;
-};
+/** Una marca dentro de un tamaño: sus formatos de pallet y las cajas sueltas de esa botella. */
+type Fila = { clave: string; nombre: string; aceite: string; formatos: Formato[]; sueltas: number; botellas: number };
 
-type Marca = { clave: string; nombre: string; aceite: string; grupos: Grupo[]; pallets: number; cajas: number };
+type Tamano = { ml: number; filas: Map<string, Fila>; pallets: number; cajas: number };
 
 const plural = (n: number, uno: string, varios: string) => `${formatQuantity(n)} ${Math.abs(n) === 1 ? uno : varios}`;
 const rojo = (n: number) => (n < 0 ? "text-red-600 dark:text-red-400" : "");
 
-/**
- * "14 pallets" grande y "+ 3 cajas" chico; lo que hay en el depósito, en el orden en que se cuenta.
- * `apilada` pone las cajas abajo: en los cuadros chicos de arriba, al lado no entraban.
- */
-function Cantidad({
-  pallets,
-  cajas,
-  grande = false,
-  apilada = false,
-}: {
-  pallets: number;
-  cajas: number;
-  grande?: boolean;
-  apilada?: boolean;
-}) {
-  // Sólo cajas (una marca que no tiene pallets armados): el número grande son las cajas.
+/** "14 pallets" y "+ 3 cajas" chico; sólo cajas si no hay ningún pallet armado. */
+function Cantidad({ pallets, cajas, grande = false }: { pallets: number; cajas: number; grande?: boolean }) {
+  const tamano = grande ? "text-2xl" : "text-base";
   if (pallets === 0 && cajas !== 0) {
-    return (
-      <span className={`${grande ? "text-2xl" : "text-base"} whitespace-nowrap font-semibold tabular-nums ${rojo(cajas)}`}>
-        {plural(cajas, "caja", "cajas")}
-      </span>
-    );
+    return <span className={`${tamano} whitespace-nowrap font-semibold tabular-nums ${rojo(cajas)}`}>{plural(cajas, "caja", "cajas")}</span>;
   }
   return (
-    <span className={`tabular-nums ${apilada ? "flex flex-col" : "whitespace-nowrap"}`}>
-      <span className={`${grande ? "text-2xl" : "text-base"} whitespace-nowrap font-semibold ${rojo(pallets)}`}>
-        {plural(pallets, "pallet", "pallets")}
-      </span>
+    <span className="whitespace-nowrap tabular-nums">
+      <span className={`${tamano} font-semibold ${rojo(pallets)}`}>{plural(pallets, "pallet", "pallets")}</span>
       {cajas !== 0 && (
-        <span className={`whitespace-nowrap text-sm text-foreground/60 ${apilada ? "" : "ml-1"} ${rojo(cajas)}`}>
-          + {plural(cajas, "caja", "cajas")}
-        </span>
+        <span className={`ml-1.5 text-sm text-foreground/60 ${rojo(cajas)}`}>+ {plural(cajas, "caja", "cajas")}</span>
       )}
     </span>
   );
 }
 
 /**
- * El producto terminado en un cuadro: una fila por marca y aceite, una columna por tamaño de
- * botella, y los totales abajo y a la derecha. En cada casillero, los pallets de cada formato (con
- * su "105 × 12" abajo) y las cajas sueltas de esa caja.
+ * El producto terminado por tamaño de botella, que es como se pregunta en el depósito: "¿cuánto
+ * hay de 900?", y después "¿de qué marca y de qué pallet?". Una franja por tamaño con su total, una
+ * fila por marca, y en la fila un recuadro por formato de pallet ("de 105 cajas · 25 pallets") con
+ * las cajas sueltas al final.
  *
- * Antes fue una tabla de una fila por formato, donde no se veía el total y se perdía el renglón, y
- * después tarjetas por marca, donde el formato quedaba escondido y las tarjetas se escalonaban. El
- * cuadro responde las dos preguntas de todos los días —cuántos pallets hay en total y cuántos de
- * 900— sin buscar, y con cuatro tamaños entra en una pantalla.
+ * Antes se probó una tabla de una fila por formato (no se veía el total y se perdía el renglón),
+ * tarjetas por marca (el formato quedaba escondido y se escalonaban) y un cuadro marca × tamaño
+ * (con 12 marcas y 7 tamaños no entraba, y el 84 y el 105 de una marca quedaban apilados en el
+ * mismo casillero). Así, una marca o un formato nuevo es una fila o un recuadro más, y nada se
+ * ensancha.
  *
- * Las cajas sueltas van una sola vez por caja, abajo de los formatos que la usan: las de un 84 y un
- * 105 de la misma marca y botella son las mismas cajas, y repetirlas en cada formato las contaría
- * dos veces.
+ * Las cajas sueltas van una sola vez por marca y botella: las de un 84 y un 105 son las mismas
+ * cajas, y ponerlas en cada formato las contaría dos veces.
  */
 export function ProductoTerminado({
   productos,
@@ -86,75 +59,40 @@ export function ProductoTerminado({
   /** Con una búsqueda el total es sólo de lo que se ve, y tiene que decirlo. */
   buscando: boolean;
 }) {
-  const marcas = new Map<string, Marca>();
-  const marcaDe = (nombre: string, aceite: string) => {
+  const tamanos = new Map<number, Tamano>();
+  const filaDe = (ml: number, nombre: string, aceite: string) => {
+    let tamano = tamanos.get(ml);
+    if (!tamano) {
+      tamano = { ml, filas: new Map(), pallets: 0, cajas: 0 };
+      tamanos.set(ml, tamano);
+    }
     const clave = `${nombre}|${aceite}`;
-    let marca = marcas.get(clave);
-    if (!marca) {
-      marca = { clave, nombre, aceite, grupos: [], pallets: 0, cajas: 0 };
-      marcas.set(clave, marca);
+    let fila = tamano.filas.get(clave);
+    if (!fila) {
+      fila = { clave, nombre, aceite, formatos: [], sueltas: 0, botellas: 0 };
+      tamano.filas.set(clave, fila);
     }
-    return marca;
-  };
-  const grupoDe = (marca: Marca, clave: string, ml: number, porCaja: number | null) => {
-    let grupo = marca.grupos.find((g) => g.clave === clave);
-    if (!grupo) {
-      grupo = { clave, ml, porCaja, formatos: [], sueltas: 0, botellas: 0 };
-      marca.grupos.push(grupo);
-    }
-    return grupo;
+    return { tamano, fila };
   };
 
   for (const product of productos) {
     const stock = stocks.get(product.id);
     if (!stock || stock.isZero()) continue;
     const { pallets, cajas: fraccion } = palletsYCajas(stock, product.boxesPerPallet);
-    const marca = marcaDe(product.name, product.oilType);
-    // Sin caja asignada (un producto viejo al que nunca se le cargó una producción) se agrupa por
-    // botella y unidades, que es lo mismo que define la caja.
-    const clave = product.cajaId ?? `${product.bottleCapacityMl}x${product.unitsPerBox}`;
-    grupoDe(marca, clave, Number(product.bottleCapacityMl ?? 0), product.unitsPerBox).formatos.push({
-      product,
-      pallets,
-      cajas: fraccion,
-      negativo: stock.isNegative(),
-    });
-    marca.pallets += pallets;
-    marca.cajas += fraccion;
+    const { tamano, fila } = filaDe(Number(product.bottleCapacityMl ?? 0), product.name, product.oilType);
+    fila.formatos.push({ product, pallets, cajas: fraccion });
+    tamano.pallets += pallets;
+    tamano.cajas += fraccion;
   }
   for (const { caja, sueltas, botellas } of cajas) {
-    const marca = marcaDe(caja.name, caja.oilType);
-    const grupo = grupoDe(marca, caja.id, Number(caja.bottleCapacityMl), caja.unitsPerBox);
-    grupo.sueltas += sueltas;
-    grupo.botellas += botellas;
-    marca.cajas += sueltas;
+    const { tamano, fila } = filaDe(Number(caja.bottleCapacityMl), caja.name, caja.oilType);
+    fila.sueltas += sueltas;
+    fila.botellas += botellas;
+    tamano.cajas += sueltas;
   }
 
-  const lista = Array.from(marcas.values()).sort(
-    (a, b) => a.nombre.localeCompare(b.nombre, "es") || a.aceite.localeCompare(b.aceite, "es")
-  );
-  for (const marca of lista) {
-    marca.grupos.sort((a, b) => a.ml - b.ml || (a.porCaja ?? 0) - (b.porCaja ?? 0));
-    for (const grupo of marca.grupos) {
-      grupo.formatos.sort((a, b) => (b.product.boxesPerPallet ?? 0) - (a.product.boxesPerPallet ?? 0));
-    }
-  }
-
-  // Los totales por tamaño de botella: "¿cuántos pallets de 900 hay?" es la pregunta de todos los días.
-  const porTamano = new Map<number, { pallets: number; cajas: number }>();
-  for (const marca of lista) {
-    for (const grupo of marca.grupos) {
-      const t = porTamano.get(grupo.ml) ?? { pallets: 0, cajas: 0 };
-      for (const f of grupo.formatos) {
-        t.pallets += f.pallets;
-        t.cajas += f.cajas;
-      }
-      t.cajas += grupo.sueltas;
-      porTamano.set(grupo.ml, t);
-    }
-  }
-  const tamanos = Array.from(porTamano.entries()).sort(([a], [b]) => a - b);
-  const total = lista.reduce((acc, m) => ({ pallets: acc.pallets + m.pallets, cajas: acc.cajas + m.cajas }), {
+  const lista = Array.from(tamanos.values()).sort((a, b) => a.ml - b.ml);
+  const total = lista.reduce((acc, t) => ({ pallets: acc.pallets + t.pallets, cajas: acc.cajas + t.cajas }), {
     pallets: 0,
     cajas: 0,
   });
@@ -167,102 +105,81 @@ export function ProductoTerminado({
     );
   }
 
-  // Una celda del cuadro: los formatos de esa marca con botellas de ese tamaño, y sus cajas sueltas.
-  const celda = (marca: Marca, ml: number) => marca.grupos.filter((g) => g.ml === ml);
-  const borde = "border-l border-foreground/10";
-  // La columna de la marca queda fija al deslizar el cuadro en el celular; una sombra de un pixel
-  // la separa, porque el borde de una celda fija no se queda con ella.
-  const fija = "sticky left-0 z-10 shadow-[1px_0_0_0_color-mix(in_srgb,var(--foreground)_12%,transparent)]";
-
   return (
-    <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
-      <table className="w-full min-w-[640px] border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-foreground/10 text-xs font-semibold uppercase tracking-wide text-foreground/50">
-            <th className={`${fija} bg-background px-4 py-3 text-left`}>Marca</th>
-            {tamanos.map(([ml]) => (
-              <th key={ml} className={`${borde} px-4 py-3 text-right`}>
-                {ml ? `${formatQuantity(ml)} ml` : "Sin botella"}
-              </th>
-            ))}
-            <th className="border-l-2 border-foreground/15 bg-primary/10 px-4 py-3 text-right">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lista.map((marca) => (
-            <tr key={marca.clave} className="group border-b border-foreground/5 align-top">
-              <td className={`${fija} bg-background px-4 py-3 transition-colors group-hover:bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))]`}>
-                <p className="font-semibold leading-snug">{marca.nombre}</p>
-                <p className="text-xs text-foreground/50">{marca.aceite}</p>
-              </td>
-              {tamanos.map(([ml]) => {
-                const grupos = celda(marca, ml);
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 rounded-xl bg-primary/20 px-4 py-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-foreground/60">
+          {buscando ? "Total de la búsqueda" : "Total"}
+        </span>
+        <Cantidad pallets={total.pallets} cajas={total.cajas} grande />
+      </div>
+
+      {lista.map((tamano) => {
+        const filas = Array.from(tamano.filas.values()).sort(
+          (a, b) => a.nombre.localeCompare(b.nombre, "es") || a.aceite.localeCompare(b.aceite, "es")
+        );
+        return (
+          <section key={tamano.ml} className="overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-sm">
+            {/* El total pegado al tamaño y no en la otra punta: en la compu quedaba a un metro. */}
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-foreground/10 bg-foreground/[0.03] px-4 py-2.5">
+              <h3 className="font-semibold sm:w-44">{tamano.ml ? `${formatQuantity(tamano.ml)} ml` : "Sin botella"}</h3>
+              <Cantidad pallets={tamano.pallets} cajas={tamano.cajas} />
+            </div>
+            <div className="divide-y divide-foreground/5">
+              {filas.map((fila) => {
+                const formatos = [...fila.formatos].sort(
+                  (a, b) => (b.product.boxesPerPallet ?? 0) - (a.product.boxesPerPallet ?? 0)
+                );
                 return (
-                  <td key={ml} className={`${borde} px-4 py-3 text-right transition-colors group-hover:bg-foreground/[0.03]`}>
-                    {grupos.length === 0 ? (
-                      <span className="text-foreground/25">—</span>
-                    ) : (
-                      <div className="flex flex-col items-end gap-2">
-                        {grupos.map((grupo) => (
-                          <div key={grupo.clave} className="flex flex-col items-end gap-1.5">
-                            {grupo.formatos.map((f) => (
-                              <Link
-                                key={f.product.id}
-                                href={`/produccion/${f.product.slug}`}
-                                title={`${f.product.name} ${f.product.oilType} ${f.product.presentation}`}
-                                className="flex flex-col items-end rounded-md px-1.5 py-0.5 -mx-1.5 transition-colors hover:bg-primary/15"
-                              >
-                                <Cantidad pallets={f.pallets} cajas={f.cajas} />
-                                <span className="mt-0.5 rounded bg-foreground/[0.06] px-1.5 text-xs font-medium tabular-nums text-foreground/70">
-                                  {f.product.boxesPerPallet && f.product.unitsPerBox
-                                    ? `${f.product.boxesPerPallet} × ${f.product.unitsPerBox}`
-                                    : f.product.presentation}
-                                </span>
-                              </Link>
-                            ))}
-                            {(grupo.sueltas !== 0 || grupo.botellas !== 0) && (
-                              <span className="whitespace-nowrap text-xs tabular-nums text-foreground/60">
-                                {grupo.sueltas !== 0 && (
-                                  <span className={rojo(grupo.sueltas)}>
-                                    + {plural(grupo.sueltas, "caja suelta", "cajas sueltas")}
-                                  </span>
-                                )}
-                                {grupo.botellas !== 0 && (
-                                  <span className={`block ${rojo(grupo.botellas)}`}>
-                                    + {plural(grupo.botellas, "botella", "botellas")}
-                                  </span>
-                                )}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </td>
+                  <div
+                    key={fila.clave}
+                    className="flex flex-col gap-2 px-4 py-2.5 sm:flex-row sm:items-center sm:gap-4"
+                  >
+                    <div className="min-w-0 sm:w-44 sm:shrink-0">
+                      <p className="font-medium leading-snug">{fila.nombre}</p>
+                      <p className="text-xs text-foreground/50">{fila.aceite}</p>
+                    </div>
+                    <div className="flex min-w-0 flex-wrap gap-2">
+                      {formatos.map((f) => (
+                        <Link
+                          key={f.product.id}
+                          href={`/produccion/${f.product.slug}`}
+                          title={`${f.product.name} ${f.product.oilType} ${f.product.presentation}`}
+                          className={`flex items-baseline gap-2 rounded-lg border px-3 py-1.5 transition-colors hover:border-primary hover:bg-primary/10 ${
+                            f.pallets < 0 || f.cajas < 0 ? "border-red-300 dark:border-red-900/60" : "border-foreground/15"
+                          }`}
+                        >
+                          <span className="whitespace-nowrap text-xs text-foreground/60">
+                            {f.product.boxesPerPallet ? `de ${f.product.boxesPerPallet} cajas` : f.product.presentation}
+                          </span>
+                          <Cantidad pallets={f.pallets} cajas={f.cajas} />
+                        </Link>
+                      ))}
+                      {(fila.sueltas !== 0 || fila.botellas !== 0) && (
+                        // Punteado: no es un formato de pallet sino lo que quedó suelto de esa caja.
+                        <span className="flex items-baseline gap-2 rounded-lg border border-dashed border-foreground/20 px-3 py-1.5">
+                          <span className="whitespace-nowrap text-xs text-foreground/60">sueltas</span>
+                          {fila.sueltas !== 0 && (
+                            <span className={`whitespace-nowrap text-base font-semibold tabular-nums ${rojo(fila.sueltas)}`}>
+                              {plural(fila.sueltas, "caja", "cajas")}
+                            </span>
+                          )}
+                          {fila.botellas !== 0 && (
+                            <span className={`whitespace-nowrap text-sm tabular-nums text-foreground/60 ${rojo(fila.botellas)}`}>
+                              {fila.sueltas !== 0 ? "+ " : ""}
+                              {plural(fila.botellas, "botella", "botellas")}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 );
               })}
-              <td className="border-l-2 border-foreground/15 bg-primary/10 px-4 py-3 text-right">
-                <Cantidad pallets={marca.pallets} cajas={marca.cajas} apilada />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-t-2 border-foreground/15 bg-primary/10 align-top">
-            <th className={`${fija} bg-[color-mix(in_srgb,var(--primary)_10%,var(--background))] px-4 py-3 text-left font-semibold`}>
-              {buscando ? "Total de la búsqueda" : "Total"}
-            </th>
-            {tamanos.map(([ml, t]) => (
-              <td key={ml} className={`${borde} px-4 py-3 text-right`}>
-                <Cantidad pallets={t.pallets} cajas={t.cajas} apilada />
-              </td>
-            ))}
-            <td className="border-l-2 border-foreground/15 bg-primary/20 px-4 py-3 text-right">
-              <Cantidad pallets={total.pallets} cajas={total.cajas} grande apilada />
-            </td>
-          </tr>
-        </tfoot>
-      </table>
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }
