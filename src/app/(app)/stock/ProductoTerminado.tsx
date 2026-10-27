@@ -1,6 +1,5 @@
 import Link from "next/link";
 import type { Caja, Prisma, Product } from "@prisma/client";
-import { ChevronRight, Layers } from "lucide-react";
 import { formatQuantity } from "@/lib/money";
 import { palletsYCajas } from "@/lib/product-label";
 
@@ -59,11 +58,14 @@ function Cantidad({
 }
 
 /**
- * El producto terminado por marca, en tarjetas. Antes era una tabla de una fila por formato
- * (Marca · Aceite · Formato · Stock) y otra aparte para las cajas sueltas: con once filas no se veía
- * cuántos pallets había en total, y seguir una fila hasta el número de la otra punta hacía perder
- * el renglón. Ahora arriba van los totales —en general y por tamaño de botella— y abajo una
- * tarjeta por marca con sus formatos agrupados por caja.
+ * El producto terminado en un cuadro: una fila por marca y aceite, una columna por tamaño de
+ * botella, y los totales abajo y a la derecha. En cada casillero, los pallets de cada formato (con
+ * su "105 × 12" abajo) y las cajas sueltas de esa caja.
+ *
+ * Antes fue una tabla de una fila por formato, donde no se veía el total y se perdía el renglón, y
+ * después tarjetas por marca, donde el formato quedaba escondido y las tarjetas se escalonaban. El
+ * cuadro responde las dos preguntas de todos los días —cuántos pallets hay en total y cuántos de
+ * 900— sin buscar, y con cuatro tamaños entra en una pantalla.
  *
  * Las cajas sueltas van una sola vez por caja, abajo de los formatos que la usan: las de un 84 y un
  * 105 de la misma marca y botella son las mismas cajas, y repetirlas en cada formato las contaría
@@ -165,92 +167,102 @@ export function ProductoTerminado({
     );
   }
 
+  // Una celda del cuadro: los formatos de esa marca con botellas de ese tamaño, y sus cajas sueltas.
+  const celda = (marca: Marca, ml: number) => marca.grupos.filter((g) => g.ml === ml);
+  const borde = "border-l border-foreground/10";
+  // La columna de la marca queda fija al deslizar el cuadro en el celular; una sombra de un pixel
+  // la separa, porque el borde de una celda fija no se queda con ella.
+  const fija = "sticky left-0 z-10 shadow-[1px_0_0_0_color-mix(in_srgb,var(--foreground)_12%,transparent)]";
+
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <div className="col-span-2 flex min-w-0 flex-col justify-center rounded-xl bg-primary/20 px-4 py-3 sm:col-span-1 lg:col-span-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-foreground/60">{buscando ? "Total de la búsqueda" : "Total"}</p>
-          <Cantidad pallets={total.pallets} cajas={total.cajas} grande apilada />
-        </div>
-        {tamanos.map(([ml, t]) => (
-          <div key={ml} className="flex min-w-0 flex-col justify-center rounded-xl border border-foreground/10 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-foreground/50">
-              {ml ? `${formatQuantity(ml)} ml` : "Sin botella"}
-            </p>
-            <Cantidad pallets={t.pallets} cajas={t.cajas} apilada />
-          </div>
-        ))}
-      </div>
-
-      {/* En columnas y no en grilla: las marcas tienen de uno a seis formatos, y en una grilla las
-          chicas se estiraban al alto de la más grande y quedaban medio vacías. */}
-      <div className="gap-3 md:columns-2 xl:columns-3">
-        {lista.map((marca) => (
-          <section
-            key={marca.clave}
-            className="mb-3 flex min-w-0 break-inside-avoid flex-col rounded-xl border border-foreground/10 bg-background p-4 shadow-sm"
-          >
-            <div className="mb-3 flex items-start gap-3">
-              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/20 text-foreground/80">
-                <Layers size={20} strokeWidth={2} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <h3 className="font-semibold leading-snug">{marca.nombre}</h3>
+    <div className="overflow-x-auto rounded-xl border border-foreground/10 bg-background shadow-sm">
+      <table className="w-full min-w-[640px] border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-foreground/10 text-xs font-semibold uppercase tracking-wide text-foreground/50">
+            <th className={`${fija} bg-background px-4 py-3 text-left`}>Marca</th>
+            {tamanos.map(([ml]) => (
+              <th key={ml} className={`${borde} px-4 py-3 text-right`}>
+                {ml ? `${formatQuantity(ml)} ml` : "Sin botella"}
+              </th>
+            ))}
+            <th className="border-l-2 border-foreground/15 bg-primary/10 px-4 py-3 text-right">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {lista.map((marca) => (
+            <tr key={marca.clave} className="group border-b border-foreground/5 align-top">
+              <td className={`${fija} bg-background px-4 py-3 transition-colors group-hover:bg-[color-mix(in_srgb,var(--foreground)_3%,var(--background))]`}>
+                <p className="font-semibold leading-snug">{marca.nombre}</p>
                 <p className="text-xs text-foreground/50">{marca.aceite}</p>
-              </div>
-              <div className="shrink-0 text-right">
-                <Cantidad pallets={marca.pallets} cajas={marca.cajas} apilada />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              {marca.grupos.map((grupo) => (
-                <div key={grupo.clave}>
-                  <h4 className="border-b border-foreground/10 pb-1 text-xs font-semibold uppercase tracking-wide text-foreground/50">
-                    {grupo.porCaja ? `${grupo.porCaja} × ` : ""}
-                    {formatQuantity(grupo.ml)} ml
-                  </h4>
-                  <div className="divide-y divide-foreground/5">
-                    {grupo.formatos.map((f) => (
-                      <Link
-                        key={f.product.id}
-                        href={`/produccion/${f.product.slug}`}
-                        className="group -mx-2 flex items-center justify-between gap-3 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-foreground/[0.04]"
-                      >
-                        <span className="min-w-0 truncate text-foreground/70">
-                          {f.product.boxesPerPallet ? `Pallet de ${f.product.boxesPerPallet} cajas` : f.product.presentation}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-1">
-                          <Cantidad pallets={f.pallets} cajas={f.cajas} />
-                          <ChevronRight size={14} className="text-foreground/25 group-hover:text-foreground/60" />
-                        </span>
-                      </Link>
-                    ))}
-                    {(grupo.sueltas !== 0 || grupo.botellas !== 0) && (
-                      <div className="flex items-center justify-between gap-3 py-1.5 pr-[18px] text-sm">
-                        <span className="min-w-0 truncate text-foreground/50">Cajas sueltas</span>
-                        <span className="shrink-0 whitespace-nowrap text-right tabular-nums">
-                          {grupo.sueltas !== 0 && (
-                            <span className={`font-semibold ${rojo(grupo.sueltas)}`}>
-                              {plural(grupo.sueltas, "caja", "cajas")}
-                            </span>
-                          )}
-                          {grupo.botellas !== 0 && (
-                            <span className={`ml-1 text-xs text-foreground/50 ${rojo(grupo.botellas)}`}>
-                              {grupo.sueltas !== 0 ? "+ " : ""}
-                              {plural(grupo.botellas, "botella", "botellas")}
-                            </span>
-                          )}
-                        </span>
+              </td>
+              {tamanos.map(([ml]) => {
+                const grupos = celda(marca, ml);
+                return (
+                  <td key={ml} className={`${borde} px-4 py-3 text-right transition-colors group-hover:bg-foreground/[0.03]`}>
+                    {grupos.length === 0 ? (
+                      <span className="text-foreground/25">—</span>
+                    ) : (
+                      <div className="flex flex-col items-end gap-2">
+                        {grupos.map((grupo) => (
+                          <div key={grupo.clave} className="flex flex-col items-end gap-1.5">
+                            {grupo.formatos.map((f) => (
+                              <Link
+                                key={f.product.id}
+                                href={`/produccion/${f.product.slug}`}
+                                title={`${f.product.name} ${f.product.oilType} ${f.product.presentation}`}
+                                className="flex flex-col items-end rounded-md px-1.5 py-0.5 -mx-1.5 transition-colors hover:bg-primary/15"
+                              >
+                                <Cantidad pallets={f.pallets} cajas={f.cajas} />
+                                <span className="mt-0.5 rounded bg-foreground/[0.06] px-1.5 text-xs font-medium tabular-nums text-foreground/70">
+                                  {f.product.boxesPerPallet && f.product.unitsPerBox
+                                    ? `${f.product.boxesPerPallet} × ${f.product.unitsPerBox}`
+                                    : f.product.presentation}
+                                </span>
+                              </Link>
+                            ))}
+                            {(grupo.sueltas !== 0 || grupo.botellas !== 0) && (
+                              <span className="whitespace-nowrap text-xs tabular-nums text-foreground/60">
+                                {grupo.sueltas !== 0 && (
+                                  <span className={rojo(grupo.sueltas)}>
+                                    + {plural(grupo.sueltas, "caja suelta", "cajas sueltas")}
+                                  </span>
+                                )}
+                                {grupo.botellas !== 0 && (
+                                  <span className={`block ${rojo(grupo.botellas)}`}>
+                                    + {plural(grupo.botellas, "botella", "botellas")}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
-      </div>
+                  </td>
+                );
+              })}
+              <td className="border-l-2 border-foreground/15 bg-primary/10 px-4 py-3 text-right">
+                <Cantidad pallets={marca.pallets} cajas={marca.cajas} apilada />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-foreground/15 bg-primary/10 align-top">
+            <th className={`${fija} bg-[color-mix(in_srgb,var(--primary)_10%,var(--background))] px-4 py-3 text-left font-semibold`}>
+              {buscando ? "Total de la búsqueda" : "Total"}
+            </th>
+            {tamanos.map(([ml, t]) => (
+              <td key={ml} className={`${borde} px-4 py-3 text-right`}>
+                <Cantidad pallets={t.pallets} cajas={t.cajas} apilada />
+              </td>
+            ))}
+            <td className="border-l-2 border-foreground/15 bg-primary/20 px-4 py-3 text-right">
+              <Cantidad pallets={total.pallets} cajas={total.cajas} grande apilada />
+            </td>
+          </tr>
+        </tfoot>
+      </table>
     </div>
   );
 }
