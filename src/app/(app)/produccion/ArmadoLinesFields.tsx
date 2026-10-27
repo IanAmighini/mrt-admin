@@ -52,7 +52,7 @@ export function ArmadoLinesFields({
       <div>
         <p className="text-sm font-medium">Armado y desarmado</p>
         <p className="text-xs text-foreground/50">
-          Con cajas que ya estaban hechas: pasa cajas de sueltas a pallet, o al revés, sin descontar insumos.
+          Con cajas que ya estaban hechas: pasa cajas de sueltas a pallet, o al revés. Sólo se mueve el pallet de madera: armar lo descuenta y desarmar lo devuelve.
           Las cajas armadas con botellas sueltas (las sanas de una devolución) descuentan sólo la caja de cartón.
         </p>
       </div>

@@ -897,9 +897,9 @@ enum ProductionLineTipo {
   PALLETS
   /// Cajas sueltas: consume la receta por caja, sin pallet de madera ni stretch.
   CAJAS
-  /// Cajas sueltas apiladas en pallets. No mueve insumos.
+  /// Cajas sueltas apiladas en pallets. De los insumos, sólo descuenta el pallet de madera.
   ARMADO
-  /// Pallets desarmados en cajas sueltas. No mueve insumos.
+  /// Pallets desarmados en cajas sueltas. De los insumos, sólo devuelve el pallet de madera.
   DESARMADO
   /// Cajas armadas con botellas sueltas (las sanas de una devolución). Consume sólo la caja de
   /// cartón: las botellas ya estaban envasadas.
