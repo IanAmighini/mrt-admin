@@ -79,7 +79,8 @@ export function GastoFormFields({
   // El rubro arranca con el del proveedor: a Edenor se le cargan servicios, al transportista flete.
   // Se puede cambiar, y una vez tocado deja de seguir al proveedor.
   const [rubro, setRubro] = useState(defaultValues?.expenseCategory ?? "");
-  const [rubroTocado, setRubroTocado] = useState(false);
+  // Al editar, el rubro ya es el que se eligió: cambiarle el proveedor no lo pisa.
+  const [rubroTocado, setRubroTocado] = useState(Boolean(editingDocumentId));
 
   const totals =
     circuit === "NEGRO"

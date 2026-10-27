@@ -93,6 +93,7 @@ export function NuevaCompraFields({
   factura,
   sopladores,
   defaultSopladorId,
+  proveedorInicial,
   error,
   pending,
 }: {
@@ -115,6 +116,8 @@ export function NuevaCompraFields({
   sopladores?: { id: string; name: string }[];
   /** Al editar: a quién se le entregaron ("" si a nadie). Sin esto, el primero. */
   defaultSopladorId?: string;
+  /** Al editar con el selector a la vista: el proveedor que la compra ya tiene. */
+  proveedorInicial?: string;
   /** El error de la acción, cuando el formulario no vive adentro de un FormModal que ya lo muestra. */
   error?: string | null;
   pending?: boolean;
@@ -130,7 +133,7 @@ export function NuevaCompraFields({
       : [filaVacia(0)]
   );
   const [nextKey, setNextKey] = useState(() => Math.max(1, defaultRows?.length ?? 1));
-  const [proveedorId, setProveedorId] = useState(fixedEntity?.id ?? "");
+  const [proveedorId, setProveedorId] = useState(fixedEntity?.id ?? proveedorInicial ?? "");
   const proveedor = fixedEntity ?? proveedores.find((p) => p.id === proveedorId);
   const moneda: Currency = proveedor?.moneda ?? "ARS";
   const cuentaEnDolares = moneda === "USD";

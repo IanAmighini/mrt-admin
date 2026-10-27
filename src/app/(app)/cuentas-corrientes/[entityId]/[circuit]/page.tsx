@@ -118,6 +118,13 @@ export default async function AccountLedgerPage({
       entity.llevaViajes ? getEntregasParaElegir(entityId) : Promise.resolve([]),
       entity.llevaViajes ? getDestinatarios(entityId) : Promise.resolve([]),
     ]);
+  // Para corregir a qué proveedor se le cargó una compra o un gasto. Sólo los de la misma moneda: los
+  // importes guardados están en la de esta cuenta.
+  const proveedoresParaEditar = await prisma.entity.findMany({
+    where: { type: { in: ["PROVEEDOR", "AMBOS"] }, moneda: monedaCuenta },
+    select: { id: true, name: true, moneda: true, expenseCategory: true },
+    orderBy: { name: "asc" },
+  });
 
   const priceMapByCircuit: Record<"BLANCO" | "NEGRO", Record<string, { amount: number; currency: string }>> = {
     BLANCO: {},
@@ -351,6 +358,7 @@ export default async function AccountLedgerPage({
               factura={facturaDeCompra(doc)}
               sopladores={sopladores}
               defaultSopladorId={sopladorDe.get(doc.id) ?? ""}
+              proveedores={proveedoresParaEditar}
             />
           </FormModal>
           <DeleteButton
@@ -404,10 +412,11 @@ export default async function AccountLedgerPage({
           >
             <GastoFormFields
               monedaCuenta={monedaCuenta}
-              entityId={entityId}
+              proveedores={proveedoresParaEditar}
               editingDocumentId={doc.id}
               defaultValues={{
                 ...headerDefaults,
+                entityId,
                 circuit,
                 expenseCategory: doc.expenseCategory ?? undefined,
                 reason: doc.reason ?? undefined,
@@ -415,8 +424,7 @@ export default async function AccountLedgerPage({
                 retentionAmount: formatNumeroExacto(doc.retentionAmount),
                 tributos: desgloseDesdeDocumento(doc),
               }}
-              viajes={viajes}
-              rotuloSubcuenta={rotuloSubcuenta}
+              subcuentasPorProveedor={viajes.length > 0 ? { [entityId]: { viajes, rotulo: rotuloSubcuenta } } : undefined}
             />
           </FormModal>
           <DeleteButton

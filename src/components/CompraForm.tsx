@@ -20,8 +20,15 @@ export function CompraFormFields({
   defaultRows,
   sopladores,
   defaultSopladorId,
+  proveedores,
 }: {
   entidad: { id: string; name: string; moneda: Currency };
+  /**
+   * Para poder cambiarle el proveedor (Adriana cargó un remito de Teoplast a Rainap). Sólo los de la
+   * misma moneda: los precios guardados están en la de la cuenta, y en una cuenta en dólares se
+   * leerían como dólares. Sin la lista, el proveedor queda fijo.
+   */
+  proveedores?: { id: string; name: string; moneda: Currency }[];
   items: Item[];
   editingDocumentId?: string;
   defaultValues?: { number?: string; date?: string; dueDate?: string; exchangeRate?: string };
@@ -42,8 +49,9 @@ export function CompraFormFields({
         recalcula. Vienen cargadas las que ya tenía.
       </p>
       <NuevaCompraFields
-        proveedores={[entidad]}
-        fixedEntity={entidad}
+        proveedores={proveedores ? proveedores.filter((p) => p.moneda === entidad.moneda) : [entidad]}
+        fixedEntity={proveedores ? undefined : entidad}
+        proveedorInicial={entidad.id}
         items={items.map((i) => ({
           id: i.id,
           name: i.name,

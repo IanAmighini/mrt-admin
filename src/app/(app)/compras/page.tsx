@@ -56,7 +56,7 @@ export default async function ComprasPage({
   };
   const hayFiltro = Boolean(q?.trim() || pagoFilter || tipoFilter || from || to);
 
-  const [items, compras, gastos, gastosDeCaja, subcuentas] = await Promise.all([
+  const [items, compras, gastos, gastosDeCaja, subcuentas, proveedores] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
     tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q, period),
@@ -75,7 +75,15 @@ export default async function ComprasPage({
         entregas: { select: { id: true, nombre: true, destino: true }, orderBy: [{ fecha: "desc" }, { createdAt: "desc" }] },
       },
     }),
+    // Para corregir a qué proveedor se le cargó una compra o un gasto (Adriana cargó a Rainap un
+    // remito de Teoplast). Cada formulario ofrece sólo los de la misma moneda que la cuenta.
+    prisma.entity.findMany({
+      where: { type: { in: ["PROVEEDOR", "AMBOS"] } },
+      select: { id: true, name: true, moneda: true, expenseCategory: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
+  const proveedoresEn = (moneda: Currency) => proveedores.filter((p) => p.moneda === moneda);
   const subcuentasPorProveedor = Object.fromEntries(
     subcuentas.map((e) => [e.id, { viajes: e.entregas, rotulo: e.rotuloSubcuenta ?? "Subcuenta" }])
   );
@@ -338,11 +346,11 @@ export default async function ComprasPage({
                             >
                               <GastoFormFields
                                 monedaCuenta={doc.account.entity.moneda}
-                                entityId={doc.account.entityId}
+                                proveedores={proveedoresEn(doc.account.entity.moneda)}
                                 editingDocumentId={doc.id}
-                                viajes={subcuentasPorProveedor[doc.account.entityId]?.viajes}
-                                rotuloSubcuenta={subcuentasPorProveedor[doc.account.entityId]?.rotulo}
+                                subcuentasPorProveedor={subcuentasPorProveedor}
                                 defaultValues={{
+                                  entityId: doc.account.entityId,
                                   circuit: doc.account.circuit,
                                   expenseCategory: doc.expenseCategory ?? undefined,
                                   reason: doc.reason ?? undefined,
@@ -389,6 +397,7 @@ export default async function ComprasPage({
                                 factura={facturaDeCompra(doc)}
                                 sopladores={sopladores}
                                 defaultSopladorId={sopladorDe.get(doc.id) ?? ""}
+                                proveedores={proveedoresEn(doc.account.entity.moneda)}
                               />
                             </FormModal>
                             <DeleteButton

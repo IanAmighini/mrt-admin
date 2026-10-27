@@ -2053,6 +2053,23 @@ export async function updateCompra(formData: FormData) {
     facturaId: document.facturaPropia?.id ?? null,
     itemIds: document.purchaseLines.map((l) => l.itemId),
   });
+
+  // Si se le cambió el proveedor, la cuenta de antes perdió la compra: sus pagos imputados a ella
+  // vuelven a quedar libres. El núcleo sólo reimputa la del proveedor nuevo.
+  const nuevoEntityId = String(formData.get("entityId") || "");
+  if (nuevoEntityId !== document.account.entityId) {
+    const nuevo = await prisma.entity.findUnique({ where: { id: nuevoEntityId }, select: { name: true } });
+    await logAudit(prisma, {
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Compra",
+      entityId: nuevoEntityId,
+      summary: `#${document.number} — cambio de proveedor: ${document.account.entity.name} → ${nuevo?.name ?? "?"}`,
+      cambios: [{ campo: "Proveedor", antes: document.account.entity.name, despues: nuevo?.name ?? null }],
+    });
+    await reimputarEntidades(document.account.entityId);
+    revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
+  }
 }
 
 export async function createFactura(formData: FormData) {
@@ -3318,17 +3335,21 @@ export async function updateGasto(formData: FormData) {
   const documentId = String(formData.get("documentId") || "");
   const existente = await prisma.document.findUnique({
     where: { id: documentId },
-    include: { entrega: { select: { nombre: true } } },
+    include: { entrega: { select: { nombre: true } }, account: { include: { entity: true } } },
   });
   if (!existente) throw new UserError("El gasto ya no existe.");
   if (existente.type !== "GASTO") throw new UserError("Este comprobante no es un gasto.");
 
   const g = await parseGasto(formData);
+  const cambioDeProveedor = g.account.entityId !== existente.account.entityId;
   // El selector sólo aparece si la cuenta se divide: sin el campo, la subcuenta que tenía se queda.
+  // Salvo que haya cambiado el proveedor: la subcuenta era del de antes (el alquiler de Goloeste).
   const traeSubcuenta = formData.has("entregaId");
   const subcuenta = traeSubcuenta
     ? await subcuentaDelGasto(formData, g.account.entityId)
-    : { entregaId: existente.entregaId, nombre: existente.entrega?.nombre ?? null };
+    : cambioDeProveedor
+      ? { entregaId: null, nombre: null }
+      : { entregaId: existente.entregaId, nombre: existente.entrega?.nombre ?? null };
 
   await prisma.$transaction(async (tx) => {
     await tx.documentTax.deleteMany({ where: { documentId } });
@@ -3360,13 +3381,21 @@ export async function updateGasto(formData: FormData) {
       action: "UPDATE",
       entityType: "Gasto",
       entityId: g.account.entityId,
-      summary: `#${g.number} — ${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
-      cambios: diffDeCampos(fotoDelDocumento(existente), fotoDelGastoCargado(g, subcuenta.nombre), CAMPOS_DEL_COMPROBANTE),
+      summary: `#${g.number} — ${cambioDeProveedor ? `${existente.account.entity.name} → ` : ""}${g.account.entity.name} — ${EXPENSE_CATEGORY_LABELS[g.expenseCategory]} — ${formatMoney(g.totals.totalAmount, g.currency)}`,
+      cambios: [
+        ...(cambioDeProveedor
+          ? [{ campo: "Proveedor", antes: existente.account.entity.name, despues: g.account.entity.name }]
+          : []),
+        ...diffDeCampos(fotoDelDocumento(existente), fotoDelGastoCargado(g, subcuenta.nombre), CAMPOS_DEL_COMPROBANTE),
+      ],
     });
   });
 
-  await reimputarEntidades(g.account.entityId);
+  // Con el proveedor cambiado, los pagos del de antes que estaban imputados a este gasto se liberan.
+  await reimputarEntidades(g.account.entityId, existente.account.entityId);
   revalidatePath(`/cuentas-corrientes/${g.account.entity.slug}`);
+  if (cambioDeProveedor) revalidatePath(`/cuentas-corrientes/${existente.account.entity.slug}`);
+  revalidatePath("/compras");
 }
 
 export async function deleteGasto(formData: FormData) {
