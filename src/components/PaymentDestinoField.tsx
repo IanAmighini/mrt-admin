@@ -6,6 +6,7 @@ import { PROVEEDOR_DIRECTO_VALUE } from "@/lib/payment-destino";
 import { formatMoney, parseNumeroSuave } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { segmentoClass, segmentosClass } from "./ui/Segmentos";
+import { SelectBuscable } from "./ui/SelectBuscable";
 
 const inputClass = "w-full rounded-lg border border-foreground/20 bg-background transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary px-3 py-2 text-sm";
 
@@ -140,23 +141,23 @@ export function PaymentDestinoField({
             <label className="text-sm" htmlFor="proveedorId">
               Proveedor o empleado
             </label>
-            <select
+            {/* Con buscador: son más de cuarenta entre proveedores y empleados, y el select común
+                abría una lista que tapaba todo el formulario. */}
+            <SelectBuscable
               id="proveedorId"
               name="proveedorId"
               value={proveedorId}
-              onChange={(e) => setProveedorId(e.target.value)}
+              onChange={setProveedorId}
+              required
+              placeholder="Escribí el nombre: «teo», «adriana»…"
               className={inputClass}
-            >
-              <option value="" disabled>
-                Seleccionar proveedor...
-              </option>
-              {proveedores.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {/* "Cristian", el empleado, al lado de "Cristian Amighini": sin esto se confunden. */}
-                  {p.formaDeSueldo ? `${p.name} (empleado)` : p.name}
-                </option>
-              ))}
-            </select>
+              opciones={proveedores.map((p) => ({
+                value: p.id,
+                label: p.name,
+                // "Cristian", el empleado, al lado de "Cristian Amighini": sin esto se confunden.
+                detalle: p.formaDeSueldo ? "empleado" : undefined,
+              }))}
+            />
           </div>
 
           {/* La plata no cambia de cuenta por pasar de mano: un cobro en negro puede cancelar
