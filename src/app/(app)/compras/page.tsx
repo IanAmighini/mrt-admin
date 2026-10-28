@@ -46,6 +46,7 @@ export default async function ComprasPage({
   const { q, pago, tipo, from, to } = await searchParams;
   const user = await requireUser();
   const canEdit = user.role === "ADMIN" || user.role === "SECRETARIA";
+  const veTesoreria = puedeVerRuta(user.role, "/tesoreria");
 
   const pagoFilter = PAGO_FILTERS.some((f) => f.value === pago) ? (pago as "" | "pagado" | "sin_pagar") : "";
   const tipoFilter = TIPO_FILTERS.some((f) => f.value === tipo) ? (tipo as "" | "insumos" | "gastos") : "";
@@ -61,10 +62,8 @@ export default async function ComprasPage({
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
     tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q, period),
     // Lo que sale de la caja —el agua, la garrafa, los sueldos— también es un gasto, y no aparecía
-    // acá. Quien no ve Tesorería ve sólo los de la caja chica.
-    tipoFilter === "insumos"
-      ? Promise.resolve([])
-      : getRecentGastosDeCaja(500, q, period, !puedeVerRuta(user.role, "/tesoreria")),
+    // acá. Quien no ve Tesorería ve los de todas las cajas menos el sueldo de Pedro.
+    tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastosDeCaja(500, q, period, !veTesoreria),
     // Los proveedores que dividen su cuenta (Goloeste: alquiler y gastos comunes), para que el gasto
     // se pueda asignar a una parte también desde acá.
     prisma.entity.findMany({
@@ -240,7 +239,8 @@ export default async function ComprasPage({
                 if (deCaja) {
                   const esChica = doc.account.entity.slug === CAJA_CHICA_SLUG;
                   const rubro = rubroDelGasto(doc);
-                  const hrefCaja = esChica ? "/caja-chica" : `/cuentas-corrientes/${doc.account.entity.slug}`;
+                  // A Bufano y al banco se entra por Tesorería: sin ella, el link la mandaba al inicio.
+                  const hrefCaja = esChica ? "/caja-chica" : veTesoreria ? `/cuentas-corrientes/${doc.account.entity.slug}` : null;
                   return (
                     <div key={doc.id} className="flex items-center gap-3 px-4 py-3 first:rounded-t-xl last:rounded-b-xl">
                       <span
@@ -250,9 +250,13 @@ export default async function ComprasPage({
                         <Coins size={17} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <Link href={hrefCaja} className="font-medium hover:underline hover:underline-offset-2">
-                          {doc.reason || doc.account.entity.name}
-                        </Link>
+                        {hrefCaja ? (
+                          <Link href={hrefCaja} className="font-medium hover:underline hover:underline-offset-2">
+                            {doc.reason || doc.account.entity.name}
+                          </Link>
+                        ) : (
+                          <p className="font-medium">{doc.reason || doc.account.entity.name}</p>
+                        )}
                         <p className="font-semibold tabular-nums sm:hidden">{formatMoney(doc.netAmount, doc.currency)}</p>
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           <span className={PILL}>Gasto de {doc.account.entity.name}</span>
@@ -266,7 +270,7 @@ export default async function ComprasPage({
                         {formatMoney(doc.netAmount, doc.currency)}
                       </p>
                       {/* Se corrige donde se cargó: en la caja, que es la que lo descuenta. */}
-                      {canEdit && (
+                      {canEdit && hrefCaja && (
                         <Link
                           href={hrefCaja}
                           title={`Corregirlo en ${doc.account.entity.name}`}

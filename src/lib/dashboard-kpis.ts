@@ -317,7 +317,14 @@ async function getCostoDeLoVendido(period: Period, cot: Cotizador) {
     select: {
       type: true,
       date: true,
-      lines: { select: { quantity: true, productId: true, product: { select: { recipe: { select: { itemId: true, quantityPerUnit: true } } } } } },
+      lines: {
+        select: {
+          quantity: true,
+          subtotal: true,
+          productId: true,
+          product: { select: { recipe: { select: { itemId: true, quantityPerUnit: true } } } },
+        },
+      },
     },
   });
   const costoDe = await getCostosUnitarios(cot);
@@ -329,6 +336,9 @@ async function getCostoDeLoVendido(period: Period, cot: Cotizador) {
     // Una devolución resta lo que había costado: si volvió sano, vuelve al depósito.
     const signo = doc.type === "NOTA_CREDITO" ? -1 : 1;
     for (const line of doc.lines) {
+      // Lo entregado en $ 0 ya se vendió antes —San Joaquín se cobró en julio y se retiró el 27/10—:
+      // su costo no es de este mes, igual que no cuenta como venta (decidido por Ian el 28/10/2026).
+      if (toDecimal(line.subtotal).isZero()) continue;
       if (line.product.recipe.length === 0) productosSinReceta.add(line.productId);
       for (const r of line.product.recipe) {
         const unitario = costoDe(r.itemId, doc.date);
