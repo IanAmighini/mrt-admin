@@ -1640,6 +1640,9 @@ export async function getCostoBotellaReport(period: Period): Promise<CostoBotell
     let vendido = ZERO;
     for (const l of lineas) {
       if (l.productId !== producto.id) continue;
+      // Lo entregado en $ 0 no es una venta de este período: San Joaquín, que se facturó y cobró en
+      // julio y se retiró el 27/10, se carga así. Contarlo bajaba el precio promedio a nada.
+      if (toDecimal(l.subtotal).isZero()) continue;
       const signo = l.document.type === "NOTA_CREDITO" ? -1 : 1;
       vendidas = vendidas.plus(toDecimal(l.quantity).times(porPallet).times(signo));
       vendido = vendido.plus(cot.aPesos(l.subtotal, l.document.currency, l.document.date, l.document.exchangeRate).times(signo));
