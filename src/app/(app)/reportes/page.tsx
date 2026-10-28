@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlarmClock, Coins, Download, Factory, Milk, Package, Receipt, Send, ShoppingCart, TrendingUp, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
+import { AlarmClock, CalendarCheck, Coins, Download, Factory, Milk, Package, Receipt, Send, ShoppingCart, TrendingUp, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
 import type { Circuit } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { FormModal } from "@/components/Modal";
@@ -21,6 +21,7 @@ import { CostoBotellaSection } from "./sections/CostoBotellaSection";
 import { ProduccionSection } from "./sections/ProduccionSection";
 import { StockSection } from "./sections/StockSection";
 import { ValorizacionSection } from "./sections/ValorizacionSection";
+import { CierreSection } from "./sections/CierreSection";
 
 const inputClass =
   "rounded-lg border border-foreground/20 bg-background px-3 py-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary";
@@ -55,6 +56,7 @@ const GRUPOS: { titulo: string; reportes: { key: ReportKey; icono: LucideIcon; d
     titulo: "Resultado",
     reportes: [
       { key: "resultado", icono: TrendingUp, descripcion: "Ventas menos insumos y gastos" },
+      { key: "cierre-mes", icono: CalendarCheck, descripcion: "Si se ganó y cómo quedó el stock" },
       { key: "costo-botella", icono: Milk, descripcion: "Lo que cuesta y deja cada presentación" },
     ],
   },
@@ -79,6 +81,7 @@ const USA_PERIODO: Record<ReportKey, boolean> = {
   compras: true,
   gastos: true,
   resultado: true,
+  "cierre-mes": true,
   "costo-botella": true,
   produccion: true,
   stock: true,
@@ -94,6 +97,7 @@ const USA_CIRCUITO: Record<ReportKey, boolean> = {
   compras: false,
   gastos: false,
   resultado: false,
+  "cierre-mes": false,
   "costo-botella": false,
   produccion: false,
   stock: false,
@@ -330,6 +334,7 @@ export default async function ReportesPage({
       {report === "compras" && <ComprasSection period={period} />}
       {report === "gastos" && <GastosSection period={period} />}
       {report === "resultado" && <ResultadoSection period={period} />}
+      {report === "cierre-mes" && <CierreSection period={period} />}
       {report === "costo-botella" && <CostoBotellaSection period={period} />}
       {report === "produccion" && <ProduccionSection period={period} />}
       {report === "stock" && <StockSection period={period} />}

@@ -10,6 +10,7 @@ import {
   getResultadoReport,
   getCostoBotellaReport,
   getInsumosMinimoReport,
+  getCierreReport,
   getValorizacionReport,
   getProduccionReport,
   getStockReport,
@@ -83,6 +84,9 @@ export async function GET(request: NextRequest) {
       break;
     case "resultado":
       data = { key, report: await getResultadoReport(period) };
+      break;
+    case "cierre-mes":
+      data = { key, report: await getCierreReport(period) };
       break;
     case "costo-botella":
       data = { key, report: await getCostoBotellaReport(period) };

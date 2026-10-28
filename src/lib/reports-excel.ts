@@ -24,6 +24,7 @@ import {
   type GastosReport,
   type InsumosMinimoReport,
   type ValorizacionReport,
+  type CierreReport,
   type ProduccionReport,
   type StockReport,
   type StockReportRow,
@@ -118,6 +119,79 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
 }
 
 // ---------------------------------------------------------------------------
+
+function cierreSheets(r: CierreReport): ExcelSheet<never>[] {
+  const ini = formatFecha(r.inicio);
+  const fin = formatFecha(r.cierre);
+  const subtitle = [
+    `Del ${formatFecha(r.period.from)} al ${fin}. En pesos, con el costo de cada insumo en cada fecha (el mismo del margen).`,
+  ];
+  const stockIni = r.insumos.inicio.plus(r.producto.inicio);
+  const stockFin = r.insumos.cierre.plus(r.producto.cierre);
+  type Renglon = { concepto: string; inicio: Prisma.Decimal | null; cierre: Prisma.Decimal | null; valor: Prisma.Decimal | null };
+  const resumen: Renglon[] = [
+    { concepto: "Ventas", inicio: null, cierre: null, valor: r.resultado.ventas },
+    { concepto: "Costo de lo vendido (por receta)", inicio: null, cierre: null, valor: r.resultado.costo.negated() },
+    { concepto: "Margen", inicio: null, cierre: null, valor: r.resultado.margen },
+    { concepto: "Gastos", inicio: null, cierre: null, valor: r.resultado.gastos.negated() },
+    { concepto: "Resultado", inicio: null, cierre: null, valor: r.resultado.resultado },
+    { concepto: "", inicio: null, cierre: null, valor: null },
+    { concepto: "Stock de insumos", inicio: r.insumos.inicio, cierre: r.insumos.cierre, valor: r.insumos.cierre.minus(r.insumos.inicio) },
+    { concepto: "   por cantidad", inicio: null, cierre: null, valor: r.insumos.porCantidad },
+    { concepto: "      de eso, mermas y recuento", inicio: null, cierre: null, valor: r.insumos.mermasYRecuento },
+    { concepto: "   por precio", inicio: null, cierre: null, valor: r.insumos.porPrecio },
+    { concepto: "Producto terminado", inicio: r.producto.inicio, cierre: r.producto.cierre, valor: r.producto.cierre.minus(r.producto.inicio) },
+    { concepto: "Stock total", inicio: stockIni, cierre: stockFin, valor: stockFin.minus(stockIni) },
+  ];
+  return [
+    sheet<Renglon>({
+      name: "Resumen",
+      title: "Cierre del mes",
+      subtitle,
+      columns: [
+        { header: "Concepto", value: (x) => x.concepto, width: 36 },
+        { header: `Al ${ini}`, value: (x) => x.inicio, format: "money", width: 18 },
+        { header: `Al ${fin}`, value: (x) => x.cierre, format: "money", width: 18 },
+        { header: "Importe / diferencia", value: (x) => x.valor, format: "money", width: 20 },
+      ],
+      rows: resumen,
+    }),
+    sheet<CierreReport["insumos"]["filas"][number]>({
+      name: "Insumos",
+      title: "Insumos: cómo cambió el stock",
+      subtitle,
+      columns: [
+        { header: "Insumo", value: (x) => x.nombre, width: 36 },
+        { header: "Categoría", value: (x) => SUPPLIER_CATEGORY_LABELS[x.categoria], width: 18 },
+        { header: "Unidad", value: (x) => x.unidad, width: 9 },
+        { header: `Al ${ini}`, value: (x) => x.inicio, format: "number", width: 13 },
+        { header: "Entró", value: (x) => x.entradas, format: "number", width: 12 },
+        { header: "Producción", value: (x) => x.produccion, format: "number", width: 12 },
+        { header: "Ventas", value: (x) => x.ventas, format: "number", width: 11 },
+        { header: "Mermas y recuento", value: (x) => x.mermasYRecuento, format: "number", width: 14 },
+        { header: `Al ${fin}`, value: (x) => x.cierre, format: "number", width: 13 },
+        { header: `Valor al ${ini}`, value: (x) => x.valorInicio, format: "money", width: 17 },
+        { header: `Valor al ${fin}`, value: (x) => x.valorCierre, format: "money", width: 17 },
+      ],
+      rows: r.insumos.filas,
+      totals: ["Total", null, null, null, null, null, null, null, null, r.insumos.inicio, r.insumos.cierre],
+    }),
+    sheet<CierreReport["producto"]["filas"][number]>({
+      name: "Producto terminado",
+      title: "Producto terminado",
+      subtitle,
+      columns: [
+        { header: "Producto", value: (x) => x.nombre, width: 40 },
+        { header: `Al ${ini}`, value: (x) => x.inicio, width: 20 },
+        { header: `Al ${fin}`, value: (x) => x.cierre, width: 20 },
+        { header: `Valor al ${ini}`, value: (x) => x.valorInicio, format: "money", width: 17 },
+        { header: `Valor al ${fin}`, value: (x) => x.valorCierre, format: "money", width: 17 },
+      ],
+      rows: r.producto.filas,
+      totals: ["Total", null, null, r.producto.inicio, r.producto.cierre],
+    }),
+  ];
+}
 
 function valorizacionSheets(report: ValorizacionReport): ExcelSheet<never>[] {
   const subtitle = [
@@ -793,6 +867,7 @@ export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
   | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
   | { key: "valorizacion-insumos"; report: ValorizacionReport }
+  | { key: "cierre-mes"; report: CierreReport }
   | { key: "ventas"; report: VentasReport }
   /** Los dos lados, igual que la pantalla: cobranzas a clientes y pagos a proveedores. */
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
@@ -811,6 +886,8 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return insumosMinimoSheets(data.report);
     case "valorizacion-insumos":
       return valorizacionSheets(data.report);
+    case "cierre-mes":
+      return cierreSheets(data.report);
     case "ventas":
       return ventasSheets(data.report, generatedAt);
     case "cobranzas":

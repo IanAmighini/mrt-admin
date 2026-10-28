@@ -16,7 +16,7 @@ import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
 import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
-import { hoyComoFecha, monthPeriod, periodLastDay, type Period } from "@/lib/period";
+import { addDays, hoyComoFecha, monthPeriod, periodLastDay, type Period } from "@/lib/period";
 import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
 
 export const REPORT_KEYS = [
@@ -28,6 +28,7 @@ export const REPORT_KEYS = [
   "compras",
   "gastos",
   "resultado",
+  "cierre-mes",
   "costo-botella",
   "produccion",
   "stock",
@@ -44,6 +45,7 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
   compras: "Compras de insumos",
   gastos: "Gastos",
   resultado: "Resultado del mes",
+  "cierre-mes": "Cierre del mes",
   "costo-botella": "Costo por botella",
   produccion: "Producción",
   stock: "Stock y recuentos",
@@ -405,6 +407,271 @@ export async function getValorizacionReport(options?: { asOf?: Date }): Promise<
     porCategoria,
     total: sumDecimals(filas.map((f) => f.valor ?? ZERO)),
     sinCosto: filas.filter((f) => !f.unitario).length,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// 2c. Cierre del mes: el resultado y cómo cambió el stock
+// ---------------------------------------------------------------------------
+
+export type CierreFilaInsumo = {
+  itemId: string;
+  slug: string;
+  nombre: string;
+  unidad: string;
+  categoria: SupplierCategory;
+  inicio: Prisma.Decimal;
+  /** Compras e ingresos. */
+  entradas: Prisma.Decimal;
+  /** Lo que se llevó la producción (y la madera de los armados). Positivo. */
+  produccion: Prisma.Decimal;
+  /** Lo que se vendió como insumo. Positivo. */
+  ventas: Prisma.Decimal;
+  /** Mermas anotadas y diferencias de recuento, con signo: lo que apareció suma, lo que faltó resta. */
+  mermasYRecuento: Prisma.Decimal;
+  cierre: Prisma.Decimal;
+  valorInicio: Prisma.Decimal | null;
+  valorCierre: Prisma.Decimal | null;
+};
+
+export type CierreFilaProducto = {
+  clave: string;
+  nombre: string;
+  /** "5 pallets", "37 cajas + 4 botellas". */
+  inicio: string;
+  cierre: string;
+  valorInicio: Prisma.Decimal | null;
+  valorCierre: Prisma.Decimal | null;
+};
+
+export type CierreReport = {
+  period: Period;
+  /** El último día antes del período: la foto con la que se empezó. */
+  inicio: Date;
+  /** El último día del período, o hoy si el período todavía no terminó. */
+  cierre: Date;
+  resultado: { ventas: Prisma.Decimal; costo: Prisma.Decimal; margen: Prisma.Decimal; gastos: Prisma.Decimal; resultado: Prisma.Decimal };
+  insumos: {
+    inicio: Prisma.Decimal;
+    cierre: Prisma.Decimal;
+    /** La diferencia que es de cantidad: cuánto más o menos hay, al costo del cierre. */
+    porCantidad: Prisma.Decimal;
+    /** La que es de precio: lo que había al empezar, por cuánto cambió su costo. */
+    porPrecio: Prisma.Decimal;
+    /** De la de cantidad, lo que no tiene comprobante: mermas y recuentos, al costo del cierre. */
+    mermasYRecuento: Prisma.Decimal;
+    /** Con stock y sin ningún costo: no suman. */
+    sinCosto: number;
+    categorias: { category: SupplierCategory; inicio: Prisma.Decimal; cierre: Prisma.Decimal }[];
+    filas: CierreFilaInsumo[];
+  };
+  producto: { inicio: Prisma.Decimal; cierre: Prisma.Decimal; sinCosto: number; filas: CierreFilaProducto[] };
+};
+
+/**
+ * El resumen de fin de mes: si se ganó o se perdió plata, y si el depósito quedó con más o menos de
+ * lo que tenía al empezar.
+ *
+ * El resultado es el de siempre (`getRentabilidad`): ventas menos lo que costó lo vendido, por
+ * receta, menos los gastos. Lo que se compró y no se vendió no es gasto: queda en el depósito, como
+ * insumo o ya envasado. Por eso el stock va **con el producto terminado**: si se envasó más de lo que
+ * se entregó, los insumos bajan y los pallets suben, y mirando sólo los insumos parecería que se
+ * perdió.
+ *
+ * Todo en pesos, con el mismo costo que el margen (`getCostosUnitarios`) en cada punta: el inicio a
+ * lo que costaba el último día antes del período, el cierre a lo que cuesta el último día. La
+ * diferencia de insumos se parte en cantidad y precio para que una suba de precios no se lea como
+ * más stock. El producto terminado vale su receta: el pallet entero, la caja suelta sin el pallet de
+ * madera ni el stretch, y la botella suelta sin la caja de cartón.
+ */
+export async function getCierreReport(period: Period): Promise<CierreReport> {
+  const ahora = new Date();
+  const hastaFin = period.to < ahora ? period.to : ahora;
+  // Un milisegundo antes de cada corte: el costo "de ese día" incluye las compras de ese día.
+  const tIni = new Date(period.from.getTime() - 1);
+  const tFin = new Date(hastaFin.getTime() - 1);
+
+  const cot = await getCotizador();
+  const [rentabilidad, costoDe, items, itemMovs, productos, productMovs, cajas, cajaMovs] = await Promise.all([
+    getRentabilidad(period, cot),
+    getCostosUnitarios(cot),
+    prisma.item.findMany({ where: { llevaStock: true } }),
+    prisma.itemMovement.findMany({ where: { date: { lt: period.to } }, select: { itemId: true, date: true, quantity: true, type: true } }),
+    prisma.product.findMany({ include: { recipe: { include: { item: { select: { category: true } } } } } }),
+    prisma.productMovement.groupBy({ by: ["productId"], where: { date: { lt: period.from } }, _sum: { quantity: true } }).then((ini) =>
+      prisma.productMovement
+        .groupBy({ by: ["productId"], where: { date: { lt: period.to } }, _sum: { quantity: true } })
+        .then((fin) => ({ ini, fin }))
+    ),
+    prisma.caja.findMany(),
+    prisma.cajaMovement.groupBy({ by: ["cajaId"], where: { date: { lt: period.from } }, _sum: { quantity: true, botellas: true } }).then((ini) =>
+      prisma.cajaMovement
+        .groupBy({ by: ["cajaId"], where: { date: { lt: period.to } }, _sum: { quantity: true, botellas: true } })
+        .then((fin) => ({ ini, fin }))
+    ),
+  ]);
+
+  // ---------- Insumos
+  const porItem = new Map<string, typeof itemMovs>();
+  for (const m of itemMovs) {
+    const lista = porItem.get(m.itemId) ?? [];
+    lista.push(m);
+    porItem.set(m.itemId, lista);
+  }
+  const filas: CierreFilaInsumo[] = [];
+  let porCantidad = ZERO;
+  let porPrecio = ZERO;
+  let mermasYRecuentoValor = ZERO;
+  let sinCosto = 0;
+  for (const item of items) {
+    const movs = porItem.get(item.id) ?? [];
+    const antes = movs.filter((m) => m.date < period.from);
+    const durante = movs.filter((m) => m.date >= period.from);
+    const suma = (lista: typeof movs, tipos?: string[]) =>
+      sumDecimals(lista.filter((m) => !tipos || tipos.includes(m.type)).map((m) => toDecimal(m.quantity)));
+    const inicio = suma(antes);
+    const cierre = inicio.plus(suma(durante));
+    if (inicio.isZero() && cierre.isZero() && durante.length === 0) continue;
+
+    const cIni = costoDe(item.id, tIni);
+    const cFin = costoDe(item.id, tFin);
+    const mermasYRecuento = suma(durante, ["MERMA", "AJUSTE"]);
+    if (!cFin && !cierre.isZero()) sinCosto++;
+    // Sin costo en una punta se usa el de la otra: para la diferencia de cantidad, mejor un costo
+    // conocido que dejar afuera el insumo entero.
+    const costoCierre = cFin ?? cIni;
+    const costoInicio = cIni ?? cFin;
+    if (costoCierre) {
+      porCantidad = porCantidad.plus(cierre.minus(inicio).times(costoCierre));
+      mermasYRecuentoValor = mermasYRecuentoValor.plus(mermasYRecuento.times(costoCierre));
+    }
+    if (costoCierre && costoInicio) porPrecio = porPrecio.plus(inicio.times(costoCierre.minus(costoInicio)));
+
+    filas.push({
+      itemId: item.id,
+      slug: item.slug,
+      nombre: item.name,
+      unidad: item.unit,
+      categoria: item.category,
+      inicio,
+      entradas: suma(durante, ["INGRESO"]),
+      produccion: suma(durante, ["CONSUMO_PRODUCCION", "CONSUMO_PALLET"]).negated(),
+      ventas: suma(durante, ["VENTA"]).negated(),
+      mermasYRecuento,
+      cierre,
+      valorInicio: costoInicio ? inicio.times(costoInicio) : null,
+      valorCierre: costoCierre ? cierre.times(costoCierre) : null,
+    });
+  }
+  const categoriasMap = new Map<SupplierCategory, { category: SupplierCategory; inicio: Prisma.Decimal; cierre: Prisma.Decimal }>();
+  for (const f of filas) {
+    const c = categoriasMap.get(f.categoria) ?? { category: f.categoria, inicio: ZERO, cierre: ZERO };
+    c.inicio = c.inicio.plus(f.valorInicio ?? ZERO);
+    c.cierre = c.cierre.plus(f.valorCierre ?? ZERO);
+    categoriasMap.set(f.categoria, c);
+  }
+  const categorias = Array.from(categoriasMap.values()).sort((a, b) => b.cierre.comparedTo(a.cierre));
+  const ordenCat = new Map(categorias.map((c, i) => [c.category, i]));
+  // Primero lo que más cambió de valor, dentro de cada categoría.
+  const cambio = (f: CierreFilaInsumo) => (f.valorCierre ?? ZERO).minus(f.valorInicio ?? ZERO).abs();
+  filas.sort((a, b) => ordenCat.get(a.categoria)! - ordenCat.get(b.categoria)! || cambio(b).comparedTo(cambio(a)));
+
+  // ---------- Producto terminado
+  const recetaCosto = (receta: (typeof productos)[number]["recipe"], t: Date, filtro: (cat: SupplierCategory) => boolean, dividir = 1) => {
+    let total = ZERO;
+    for (const r of receta) {
+      if (!filtro(r.item.category)) continue;
+      const c = costoDe(r.itemId, t);
+      if (!c) return null;
+      total = total.plus(new Prisma.Decimal(r.quantityPerUnit).times(c));
+    }
+    return receta.length ? total.dividedBy(dividir) : null;
+  };
+  const delPallet = (cat: SupplierCategory) => cat !== "PALLET_NORMALIZADO" && cat !== "STRETCH";
+  const filasPT: CierreFilaProducto[] = [];
+  let sinCostoPT = 0;
+  const palletsIni = new Map(productMovs.ini.map((m) => [m.productId, toDecimal(m._sum.quantity ?? ZERO)]));
+  const palletsFin = new Map(productMovs.fin.map((m) => [m.productId, toDecimal(m._sum.quantity ?? ZERO)]));
+  for (const p of productos) {
+    const ini = palletsIni.get(p.id) ?? ZERO;
+    const fin = palletsFin.get(p.id) ?? ZERO;
+    if (ini.isZero() && fin.isZero()) continue;
+    const cIni = recetaCosto(p.recipe, tIni, () => true);
+    const cFin = recetaCosto(p.recipe, tFin, () => true);
+    if (!cFin) sinCostoPT++;
+    const pallets = (n: Prisma.Decimal) => `${formatQuantity(n)} ${n.abs().equals(1) ? "pallet" : "pallets"}`;
+    filasPT.push({
+      clave: p.id,
+      nombre: `${p.name} ${p.oilType} ${p.presentation}`,
+      inicio: pallets(ini),
+      cierre: pallets(fin),
+      valorInicio: cIni ? ini.times(cIni) : null,
+      valorCierre: cFin ? fin.times(cFin) : null,
+    });
+  }
+  const sueltasIni = new Map(cajaMovs.ini.map((m) => [m.cajaId, m._sum]));
+  const sueltasFin = new Map(cajaMovs.fin.map((m) => [m.cajaId, m._sum]));
+  for (const caja of cajas) {
+    const ini = sueltasIni.get(caja.id);
+    const fin = sueltasFin.get(caja.id);
+    const [ci, bi, cf, bf] = [ini?.quantity ?? 0, ini?.botellas ?? 0, fin?.quantity ?? 0, fin?.botellas ?? 0];
+    if (!ci && !bi && !cf && !bf) continue;
+    // La caja suelta vale la receta de un pallet de esa caja, dividida por sus cajas y sin lo que es
+    // del pallet; la botella suelta, además, sin la caja de cartón.
+    const modelo = productos.find((p) => p.cajaId === caja.id && p.recipe.length > 0 && p.boxesPerPallet);
+    const valor = (cajasN: number, botellasN: number, t: Date) => {
+      if (!modelo) return null;
+      const porCaja = recetaCosto(modelo.recipe, t, delPallet, modelo.boxesPerPallet!);
+      const porBotella = recetaCosto(modelo.recipe, t, (c) => delPallet(c) && c !== "CAJAS", modelo.boxesPerPallet! * caja.unitsPerBox);
+      if (!porCaja || (botellasN && !porBotella)) return null;
+      return porCaja.times(cajasN).plus(porBotella ? porBotella.times(botellasN) : ZERO);
+    };
+    const texto = (c: number, b: number) =>
+      [c ? `${formatQuantity(c)} ${Math.abs(c) === 1 ? "caja" : "cajas"}` : "", b ? `${formatQuantity(b)} ${Math.abs(b) === 1 ? "botella" : "botellas"}` : ""]
+        .filter(Boolean)
+        .join(" + ") || "0";
+    const vFin = valor(cf, bf, tFin);
+    if (!vFin) sinCostoPT++;
+    filasPT.push({
+      clave: caja.id,
+      nombre: `Sueltas ${caja.name} ${caja.oilType} ${formatQuantity(caja.bottleCapacityMl)} ml`,
+      inicio: texto(ci, bi),
+      cierre: texto(cf, bf),
+      valorInicio: valor(ci, bi, tIni),
+      valorCierre: vFin,
+    });
+  }
+  filasPT.sort((a, b) => (b.valorCierre ?? ZERO).comparedTo(a.valorCierre ?? ZERO));
+
+  const margen = rentabilidad.ingresos.minus(rentabilidad.costoInsumos);
+  return {
+    period,
+    inicio: addDays(period.from, -1),
+    // Con el período en curso, la foto es de hoy: el último día del período todavía no llegó.
+    cierre: period.to < ahora ? periodLastDay(period) : hoyComoFecha(),
+    resultado: {
+      ventas: rentabilidad.ingresos,
+      costo: rentabilidad.costoInsumos,
+      margen,
+      gastos: rentabilidad.gastos,
+      resultado: rentabilidad.rentabilidad,
+    },
+    insumos: {
+      inicio: sumDecimals(filas.map((f) => f.valorInicio ?? ZERO)),
+      cierre: sumDecimals(filas.map((f) => f.valorCierre ?? ZERO)),
+      porCantidad,
+      porPrecio,
+      mermasYRecuento: mermasYRecuentoValor,
+      sinCosto,
+      categorias,
+      filas,
+    },
+    producto: {
+      inicio: sumDecimals(filasPT.map((f) => f.valorInicio ?? ZERO)),
+      cierre: sumDecimals(filasPT.map((f) => f.valorCierre ?? ZERO)),
+      sinCosto: sinCostoPT,
+      filas: filasPT,
+    },
   };
 }
 
