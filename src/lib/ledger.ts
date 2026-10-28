@@ -361,9 +361,9 @@ export async function getRecentGastos(
 }
 
 /**
- * Lo que sale de Bufano o del banco con «Pedro» en el motivo es su sueldo, y la secretaría no lo
- * tiene que ver (Ian, 28/10/2026). El resto de esas cajas sí: impuestos del banco, los sueldos de los
- * chicos, la tarjeta. Va por el motivo porque así se carga: «Sueldo Pedro».
+ * Lo que tiene «Pedro» en el motivo es su sueldo, y la secretaría no lo tiene que ver (Ian,
+ * 28/10/2026). Sale de Bufano, que ella ya no ve, pero si alguna vez sale de la caja chica tampoco.
+ * Va por el motivo porque así se carga: «Sueldo Pedro».
  */
 export const MOTIVO_PRIVADO = "pedro";
 
@@ -372,14 +372,15 @@ export const MOTIVO_PRIVADO = "pedro";
  * comisiones y los impuestos del banco—, para listarlo junto a las facturas de gasto en "Compras y
  * gastos". Es lo mismo que el reporte de gastos y el margen ya cuentan; la lista lo dejaba afuera.
  *
- * `ocultarPrivados`: quien no ve Tesorería ve todas las cajas menos el sueldo de Pedro.
+ * `soloCajaChica`: quien no ve Tesorería ve sólo la suya, y sin el sueldo de Pedro. Lo del banco y
+ * Caja Bufano no lo ve (Ian lo probó abierto el 28/10/2026 y lo volvió atrás).
  */
 export async function getRecentGastosDeCaja(
   limit = 30,
   search?: string,
   period?: { from: Date | null; to: Date | null },
-  /** Para quien no ve Tesorería: sin el sueldo de Pedro (ver `MOTIVO_PRIVADO`). */
-  ocultarPrivados = false
+  /** Para quien no ve Tesorería: sólo la caja chica, y sin el sueldo de Pedro (ver `MOTIVO_PRIVADO`). */
+  soloCajaChica = false
 ) {
   const trimmedSearch = search?.trim();
   const rubros = trimmedSearch
@@ -392,16 +393,8 @@ export async function getRecentGastosDeCaja(
       treasuryCategory: { in: ["GASTO", "IMPUESTO", "GASTO_BANCARIO"] },
       // El signo es la guarda, como en GASTOS_WHERE: uno cargado como "suma al saldo" no es gasto.
       totalAmount: { lt: 0 },
-      account: { entity: { type: "TESORERIA" } },
-      // Lo de la caja chica lo ve siempre: es suya. De Bufano y el banco, todo menos lo privado.
-      ...(ocultarPrivados
-        ? {
-            NOT: {
-              account: { entity: { slug: { not: "caja-chica" } } },
-              reason: { contains: MOTIVO_PRIVADO, mode: "insensitive" as const },
-            },
-          }
-        : {}),
+      account: { entity: soloCajaChica ? { slug: "caja-chica" } : { type: "TESORERIA" } },
+      ...(soloCajaChica ? { NOT: { reason: { contains: MOTIVO_PRIVADO, mode: "insensitive" as const } } } : {}),
       ...enElPeriodo(period),
       ...(trimmedSearch
         ? {

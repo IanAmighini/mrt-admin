@@ -62,7 +62,7 @@ export default async function ComprasPage({
     tipoFilter === "gastos" ? Promise.resolve([]) : getRecentCompras(500, undefined, q, period),
     tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastos(500, undefined, q, period),
     // Lo que sale de la caja —el agua, la garrafa, los sueldos— también es un gasto, y no aparecía
-    // acá. Quien no ve Tesorería ve los de todas las cajas menos el sueldo de Pedro.
+    // acá. Quien no ve Tesorería ve sólo los de la caja chica, y sin el sueldo de Pedro.
     tipoFilter === "insumos" ? Promise.resolve([]) : getRecentGastosDeCaja(500, q, period, !veTesoreria),
     // Los proveedores que dividen su cuenta (Goloeste: alquiler y gastos comunes), para que el gasto
     // se pueda asignar a una parte también desde acá.
