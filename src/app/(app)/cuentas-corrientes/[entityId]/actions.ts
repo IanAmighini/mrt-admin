@@ -15,6 +15,7 @@ import {
   type TreasuryMovementCategory,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { getCotizador } from "@/lib/cotizaciones";
 import { requireRole } from "@/lib/auth-helpers";
 import { exigirZonaDelFormulario } from "@/lib/zonas";
 import { exigirQueNoSeaDeSueldos } from "@/lib/sueldos";
@@ -1634,6 +1635,11 @@ async function createCompraCore(
   if (exchangeRate && !exchangeRate.greaterThan(0)) {
     throw new UserError("La cotización tiene que ser mayor a cero.");
   }
+  // Una compra en dólares sin cotización se guarda con la última que se cargó —de una compra, una
+  // venta o un pago— hasta ese día. Ian prefiere eso a escribirla del papel: el dólar cambia todos los
+  // días y nunca es exacta (28/10/2026). Va sólo al comprobante: en una cuenta en dólares, la
+  // cotización escrita hace que los precios se lean en pesos, y esta no se escribió.
+  const cotizacionGuardada = exchangeRate ?? (enCuentaEnDolares ? (await getCotizador()).del(date) : null);
 
   const itemIds = formData.getAll("lineItemId").map(String);
   const quantities = formData.getAll("lineQuantity").map(String);
@@ -1854,7 +1860,7 @@ async function createCompraCore(
           date,
           dueDate,
           currency,
-          exchangeRate,
+          exchangeRate: cotizacionGuardada,
           ...totals,
           createdById: user.id,
         },
@@ -1898,7 +1904,7 @@ async function createCompraCore(
             date: facturaDate ?? date,
             dueDate: dueDate ?? defaultDueDate(facturaDate ?? date, "BLANCO"),
             currency,
-            exchangeRate,
+            exchangeRate: cotizacionGuardada,
             ...totals,
             createdById: user.id,
           },
@@ -1968,7 +1974,7 @@ async function createCompraCore(
           number,
           date,
           currency,
-          exchangeRate,
+          exchangeRate: cotizacionGuardada,
           totalAmount: combinedTotal,
           reason: null,
           viaje: null,
