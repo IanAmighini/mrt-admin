@@ -6,7 +6,7 @@ import { FormModal } from "@/components/Modal";
 import { WeeklyReportFields } from "@/components/WeeklyReportFields";
 import { SendWeeklyReportButton } from "@/components/SendWeeklyReportButton";
 import { getLastRunInfo, getRecipients } from "@/lib/weekly-report";
-import { sendWeeklyReportNow, updateWeeklyReportRecipients } from "./actions";
+import { sendMonthlyReportNow, sendWeeklyReportNow, updateWeeklyReportRecipients } from "./actions";
 import { CIRCUIT_BY_SLUG, CIRCUIT_LABELS } from "@/lib/labels";
 import { formatFecha, formatPeriodLabel, hoyComoFecha, periodFromSearchParams, PERIOD_PRESETS, toDateInputValue } from "@/lib/period";
 import { isReportKey, REPORT_LABELS, type ReportKey } from "@/lib/reports";
@@ -215,7 +215,15 @@ export default async function ReportesPage({
           <div className="flex flex-wrap items-center gap-2">
             {isAdmin && (
               <>
-                <SendWeeklyReportButton action={sendWeeklyReportNow} />
+                {report === "cierre-mes" ? (
+                  <SendWeeklyReportButton
+                    action={sendMonthlyReportNow}
+                    label="Enviar este cierre por mail"
+                    campos={Object.fromEntries(exportParams)}
+                  />
+                ) : (
+                  <SendWeeklyReportButton action={sendWeeklyReportNow} />
+                )}
                 <FormModal
                   triggerLabel="Destinatarios"
                   iconName="edit"

@@ -465,7 +465,14 @@ export type CierreReport = {
     categorias: { category: SupplierCategory; inicio: Prisma.Decimal; cierre: Prisma.Decimal }[];
     filas: CierreFilaInsumo[];
   };
-  producto: { inicio: Prisma.Decimal; cierre: Prisma.Decimal; sinCosto: number; filas: CierreFilaProducto[] };
+  producto: {
+    inicio: Prisma.Decimal;
+    cierre: Prisma.Decimal;
+    /** Pallets armados al principio y al final, sin las cajas sueltas. */
+    pallets: { inicio: Prisma.Decimal; cierre: Prisma.Decimal };
+    sinCosto: number;
+    filas: CierreFilaProducto[];
+  };
 };
 
 /**
@@ -592,6 +599,7 @@ export async function getCierreReport(period: Period): Promise<CierreReport> {
   let sinCostoPT = 0;
   const palletsIni = new Map(productMovs.ini.map((m) => [m.productId, toDecimal(m._sum.quantity ?? ZERO)]));
   const palletsFin = new Map(productMovs.fin.map((m) => [m.productId, toDecimal(m._sum.quantity ?? ZERO)]));
+  const totalPallets = { inicio: sumDecimals([...palletsIni.values()]), cierre: sumDecimals([...palletsFin.values()]) };
   for (const p of productos) {
     const ini = palletsIni.get(p.id) ?? ZERO;
     const fin = palletsFin.get(p.id) ?? ZERO;
@@ -669,6 +677,7 @@ export async function getCierreReport(period: Period): Promise<CierreReport> {
     producto: {
       inicio: sumDecimals(filasPT.map((f) => f.valorInicio ?? ZERO)),
       cierre: sumDecimals(filasPT.map((f) => f.valorCierre ?? ZERO)),
+      pallets: totalPallets,
       sinCosto: sinCostoPT,
       filas: filasPT,
     },

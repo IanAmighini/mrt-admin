@@ -7,6 +7,8 @@ import { requireRole } from "@/lib/auth-helpers";
 import { logAudit } from "@/lib/audit";
 import { getSetting, setSetting } from "@/lib/settings";
 import { SETTING_RECIPIENTS, sendWeeklyReport } from "@/lib/weekly-report";
+import { sendMonthlyReport } from "@/lib/monthly-report";
+import { periodFromSearchParams } from "@/lib/period";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -73,5 +75,33 @@ export async function sendWeeklyReportNow(): Promise<SendNowResult> {
         ok: true,
         mensaje: `Enviado a ${resultado.destinatarios.length} destinatario(s): ${resultado.destinatarios.join(", ")}`,
       }
+    : { ok: false, mensaje: `No se envió: ${resultado.motivo ?? "motivo desconocido"}` };
+}
+
+/**
+ * Manda el cierre del mes que se está mirando en Reportes, en el momento: para probarlo sin esperar
+ * al 1°, o para mandarlo de nuevo después de una corrección.
+ */
+export async function sendMonthlyReportNow(formData: FormData): Promise<SendNowResult> {
+  const user = await requireRole(["ADMIN"]);
+  const { period } = periodFromSearchParams({
+    preset: String(formData.get("preset") || "") || undefined,
+    from: String(formData.get("from") || "") || undefined,
+    to: String(formData.get("to") || "") || undefined,
+  });
+
+  const resultado = await sendMonthlyReport({ period, force: true });
+
+  await logAudit(prisma, {
+    userId: user.id,
+    action: "UPDATE",
+    entityType: "Configuración",
+    summary: resultado.enviado
+      ? `Cierre de ${resultado.mes} enviado a mano — ${resultado.destinatarios.length} destinatario(s)`
+      : `Cierre de ${resultado.mes} no enviado: ${resultado.motivo ?? "motivo desconocido"}`,
+  });
+
+  return resultado.enviado
+    ? { ok: true, mensaje: `Cierre de ${resultado.mes} enviado a: ${resultado.destinatarios.join(", ")}` }
     : { ok: false, mensaje: `No se envió: ${resultado.motivo ?? "motivo desconocido"}` };
 }
