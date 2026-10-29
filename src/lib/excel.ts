@@ -1,6 +1,7 @@
 import "server-only";
 import ExcelJS from "exceljs";
 import { Prisma } from "@prisma/client";
+import { comoDia } from "@/lib/period";
 
 export type CellValue = string | number | Date | Prisma.Decimal | null | undefined;
 
@@ -52,11 +53,11 @@ const DEFAULT_WIDTHS: Record<CellFormat, number> = {
 };
 
 /**
- * exceljs serializa las fechas en UTC, así que un `Date` que es medianoche local se guardaría
- * corrido un día. Se reconstruye la fecha de calendario (la que ve el usuario) como medianoche UTC.
+ * exceljs serializa las fechas en UTC, y las fechas se guardan como medianoche UTC del día: van tal
+ * cual. Un instante (un `createdAt`) pasa al día que era en Argentina.
  */
 function toExcelDate(date: Date): Date {
-  return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  return comoDia(date);
 }
 
 function toCell(value: CellValue, format: CellFormat): string | number | Date | null {

@@ -39,13 +39,34 @@ export function formatDateTime(date: Date): string {
   });
 }
 
+/** El día argentino de un instante, como se guardan las fechas (medianoche UTC). Ver `comoDia`. */
 export function startOfDay(date: Date): Date {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return comoDia(date);
+}
+
+/**
+ * Un día del calendario, sea lo que sea lo que llegue: una fecha guardada (medianoche UTC) queda
+ * igual, y un instante —`new Date()`— pasa al día que es en Argentina.
+ *
+ * Los períodos se arman con esto y no con la hora de la máquina. Antes `new Date(año, mes, 1)`
+ * daba medianoche del servidor: en Vercel, que corre en UTC, coincidía con las fechas guardadas,
+ * pero de 21 a 24 «hoy» ya era mañana (el 31 a la noche, «este mes» era el siguiente); y en una
+ * computadora de acá todo se corría 3 horas y los reportes daban otros números.
+ */
+export function comoDia(fecha: Date): Date {
+  const esFechaGuardada =
+    fecha.getUTCHours() === 0 && fecha.getUTCMinutes() === 0 && fecha.getUTCSeconds() === 0 && fecha.getUTCMilliseconds() === 0;
+  return esFechaGuardada ? new Date(fecha) : hoyComoFecha(fecha);
+}
+
+/** El primero de un mes, como fecha guardada. El mes puede pasarse de rango: 12 es enero del siguiente. */
+function primeroDeMes(anio: number, mes: number): Date {
+  return new Date(Date.UTC(anio, mes, 1));
 }
 
 export function addDays(date: Date, days: number): Date {
   const copy = new Date(date);
-  copy.setDate(copy.getDate() + days);
+  copy.setUTCDate(copy.getUTCDate() + days);
   return copy;
 }
 
@@ -116,30 +137,33 @@ export function hoyComoFecha(referencia: Date = new Date()): Date {
 
 /** Semana corriente, de lunes a lunes (el domingo cuenta como último día de la semana). */
 export function weekPeriod(reference: Date = new Date()): Period {
-  const start = startOfDay(reference);
-  const weekday = (start.getDay() + 6) % 7; // lunes = 0
+  const start = comoDia(reference);
+  const weekday = (start.getUTCDay() + 6) % 7; // lunes = 0
   const from = addDays(start, -weekday);
   return { from, to: addDays(from, 7) };
 }
 
 export function monthPeriod(reference: Date = new Date()): Period {
+  const dia = comoDia(reference);
   return {
-    from: new Date(reference.getFullYear(), reference.getMonth(), 1),
-    to: new Date(reference.getFullYear(), reference.getMonth() + 1, 1),
+    from: primeroDeMes(dia.getUTCFullYear(), dia.getUTCMonth()),
+    to: primeroDeMes(dia.getUTCFullYear(), dia.getUTCMonth() + 1),
   };
 }
 
 export function lastMonthPeriod(reference: Date = new Date()): Period {
+  const dia = comoDia(reference);
   return {
-    from: new Date(reference.getFullYear(), reference.getMonth() - 1, 1),
-    to: new Date(reference.getFullYear(), reference.getMonth(), 1),
+    from: primeroDeMes(dia.getUTCFullYear(), dia.getUTCMonth() - 1),
+    to: primeroDeMes(dia.getUTCFullYear(), dia.getUTCMonth()),
   };
 }
 
 export function yearPeriod(reference: Date = new Date()): Period {
+  const dia = comoDia(reference);
   return {
-    from: new Date(reference.getFullYear(), 0, 1),
-    to: new Date(reference.getFullYear() + 1, 0, 1),
+    from: primeroDeMes(dia.getUTCFullYear(), 0),
+    to: primeroDeMes(dia.getUTCFullYear() + 1, 0),
   };
 }
 

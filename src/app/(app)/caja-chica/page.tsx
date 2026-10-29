@@ -7,7 +7,7 @@ import {
   EXPENSE_CATEGORY_LABELS,
   TREASURY_MOVEMENT_CATEGORY_LABELS,
 } from "@/lib/labels";
-import { formatFecha, formatPeriodLabel, hoyEnInput, periodFromSearchParams, periodLastDay, toDateInputValue } from "@/lib/period";
+import { formatFecha, formatPeriodLabel, hoyComoFecha, hoyEnInput, periodFromSearchParams, periodLastDay, toDateInputValue } from "@/lib/period";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { AjusteDeCajaFields, EditarMovimientoDeCajaFields, GastoDeCajaFields, PaseDeCajaFields } from "@/components/CajaFormFields";
@@ -39,7 +39,7 @@ export default async function CajaChicaPage({
   // con "Mes pasado" mentía. Es el número contra el que se cuenta el efectivo del cajón, así que
   // tiene que decir a qué día corresponde.
   const ultimoDia = periodLastDay(period);
-  const esHasta_hoy = ultimoDia >= new Date(new Date().setHours(0, 0, 0, 0));
+  const esHasta_hoy = ultimoDia >= hoyComoFecha();
   const etiquetaSaldo = esHasta_hoy ? "Saldo de hoy" : `Saldo al ${formatFecha(ultimoDia)}`;
 
   // Lo más nuevo arriba: lo que se busca es lo último que se cargó, y con el orden de la planilla

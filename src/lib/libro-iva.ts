@@ -117,9 +117,10 @@ const MESES = [
 function tituloDePeriodo(period: Period): string {
   const desde = period.from;
   const hasta = periodLastDay(period);
-  const mismoMes = desde.getFullYear() === hasta.getFullYear() && desde.getMonth() === hasta.getMonth();
-  const mesEntero = mismoMes && desde.getDate() === 1 && hasta.getDate() === new Date(desde.getFullYear(), desde.getMonth() + 1, 0).getDate();
-  return mesEntero ? `${MESES[desde.getMonth()]} ${desde.getFullYear()}` : formatPeriodLabel(period);
+  const mismoMes = desde.getUTCFullYear() === hasta.getUTCFullYear() && desde.getUTCMonth() === hasta.getUTCMonth();
+  const ultimoDelMes = new Date(Date.UTC(desde.getUTCFullYear(), desde.getUTCMonth() + 1, 0)).getUTCDate();
+  const mesEntero = mismoMes && desde.getUTCDate() === 1 && hasta.getUTCDate() === ultimoDelMes;
+  return mesEntero ? `${MESES[desde.getUTCMonth()]} ${desde.getUTCFullYear()}` : formatPeriodLabel(period);
 }
 
 function sumarTotales(renglones: RenglonIva[]): TotalesIva {

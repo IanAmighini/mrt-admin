@@ -11,6 +11,7 @@ import {
 import { prisma } from "@/lib/prisma";
 import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
+import { yearPeriod } from "@/lib/period";
 
 const DUE_DATE_DAYS: Record<Circuit, number> = {
   NEGRO: 7,
@@ -20,7 +21,7 @@ const DUE_DATE_DAYS: Record<Circuit, number> = {
 /** Vencimiento por defecto cuando no se carga uno manual: 7 días en Negro, 15 en Blanco. */
 export function defaultDueDate(date: Date, circuit: Circuit): Date {
   const result = new Date(date);
-  result.setDate(result.getDate() + DUE_DATE_DAYS[circuit]);
+  result.setUTCDate(result.getUTCDate() + DUE_DATE_DAYS[circuit]);
   return result;
 }
 
@@ -761,7 +762,7 @@ export function sumarSaldosEnPesos(
  * entregado 0" no dicen nada; esto sí.
  */
 export async function getResumenDeGastos(entityId: string) {
-  const desde = new Date(new Date().getFullYear(), 0, 1);
+  const desde = yearPeriod().from;
 
   const [gastos, ultimoDoc, ultimoPago] = await Promise.all([
     prisma.document.findMany({

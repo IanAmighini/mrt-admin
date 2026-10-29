@@ -1309,7 +1309,7 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
   const ultimo = periodLastDay(period);
   // Los seis meses a la vez: uno detrás del otro, la pantalla tardaba lo que suman los seis.
   const periodos = Array.from({ length: MESES_DEL_COMPARATIVO }, (_, k) =>
-    monthPeriod(new Date(ultimo.getFullYear(), ultimo.getMonth() - (MESES_DEL_COMPARATIVO - 1 - k), 1))
+    monthPeriod(new Date(Date.UTC(ultimo.getUTCFullYear(), ultimo.getUTCMonth() - (MESES_DEL_COMPARATIVO - 1 - k), 1)))
   );
   const meses: ResultadoMes[] = await Promise.all(
     periodos.map(async (mes) => {
