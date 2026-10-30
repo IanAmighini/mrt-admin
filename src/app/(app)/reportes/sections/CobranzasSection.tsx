@@ -39,7 +39,7 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
           <KpiCard
             label="Días promedio de cobro"
             value={dias.promedio === null ? "—" : `${dias.promedio} días`}
-            caption="desde la entrega (el remito) hasta el cobro; una factura sin remito, desde su fecha"
+            caption="desde la entrega (el remito) hasta que la plata se puede usar: un cheque, desde su fecha de cobro"
             icon={Hourglass}
             color="amber"
           />

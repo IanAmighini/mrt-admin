@@ -847,8 +847,10 @@ export type CobranzasReport = {
  * Cuánto tarda cada cliente en pagar: por cada peso cobrado en el período, los días entre la
  * entrega y el cobro, promediados por importe. Una factura cuenta desde sus remitos —desde que se
  * entregó, no desde que se facturó (Ian, 30/10/2026)—; si factura varios, desde el promedio de sus
- * fechas, pesado por lo facturado de cada uno. Una factura sin remito cuenta desde su fecha. El saldo
- * inicial queda afuera: su fecha es la de la carga, no la de la venta, y bajaría el promedio.
+ * fechas, pesado por lo facturado de cada uno. Una factura sin remito cuenta desde su fecha. Y un
+ * cobro con cheque o echeq cuenta hasta la fecha de cobro del cheque, que es cuando la plata se puede
+ * usar (Ian, 30/10/2026). El saldo inicial queda afuera: su fecha es la de la carga, no la de la
+ * venta, y bajaría el promedio.
  */
 export async function getDiasDeCobro(period: Period) {
   const imputaciones = await prisma.paymentAllocation.findMany({
@@ -864,7 +866,12 @@ export async function getDiasDeCobro(period: Period) {
     select: {
       amount: true,
       payment: {
-        select: { date: true, exchangeRate: true, account: { select: { entity: { select: { name: true, slug: true, moneda: true } } } } },
+        select: {
+          date: true,
+          exchangeRate: true,
+          chequeRecibido: { select: { fechaCobro: true } },
+          account: { select: { entity: { select: { name: true, slug: true, moneda: true } } } },
+        },
       },
       document: { select: { date: true, facturaLinks: { select: { amount: true, remito: { select: { date: true } } } } } },
     },
@@ -881,7 +888,8 @@ export async function getDiasDeCobro(period: Period) {
   let importe = 0;
   let ponderado = 0;
   for (const i of imputaciones) {
-    const dias = Math.max(0, Math.round((i.payment.date.getTime() - desde(i.document)) / MS_POR_DIA));
+    const cobrado = i.payment.chequeRecibido?.fechaCobro ?? i.payment.date;
+    const dias = Math.max(0, Math.round((cobrado.getTime() - desde(i.document)) / MS_POR_DIA));
     const { name, slug, moneda } = i.payment.account.entity;
     const monto = cot.aPesos(i.amount, moneda, i.payment.date, i.payment.exchangeRate).toNumber();
     const c = porCliente.get(slug) ?? { nombre: name, slug, importe: 0, ponderado: 0 };
