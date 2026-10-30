@@ -10,6 +10,7 @@ import {
   DIAS_SEMANA,
   diaDeLaSemana,
   fechasDe,
+  horasYMinutos,
   limpiarMarcas,
   resumenDeSemana,
   type DiaFichero,
@@ -52,7 +53,6 @@ const importe = `${celda} pt-3.5 text-right tabular-nums whitespace-nowrap`;
 const entrada = controlClass({ denso: true, extra: "text-right tabular-nums min-w-[4.5rem]" });
 const entradaPlata = controlClass({ denso: true, extra: "text-right tabular-nums min-w-[8.5rem]" });
 const entradaHora = controlClass({ denso: true, extra: "text-center tabular-nums w-full" });
-const horasTexto = (h: number) => h.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 
 /**
  * La planilla de la semana (o del mes) para cargar: horas y feriados, y la app hace la cuenta en
@@ -290,7 +290,7 @@ export function PlanillaDeSueldosGrid({
                 {semanal && resumen && (
                   <td className={`${celda} text-right`}>
                     <input type="hidden" name={`dias_${f.id}`} value={JSON.stringify(v.dias)} />
-                    <p className="pt-2 font-medium tabular-nums">{horasTexto(resumen.horas)}</p>
+                    <p className="pt-2 font-medium tabular-nums">{horasYMinutos(resumen.horas)}</p>
                     <button
                       type="button"
                       onClick={() => setAbiertos((a) => (a.includes(f.id) ? a.filter((x) => x !== f.id) : [...a, f.id]))}
@@ -306,7 +306,7 @@ export function PlanillaDeSueldosGrid({
                   </td>
                 )}
                 {semanal && resumen && (
-                  <td className={importe}>{resumen.horasFeriado ? horasTexto(resumen.horasFeriado) : ""}</td>
+                  <td className={importe}>{resumen.horasFeriado ? horasYMinutos(resumen.horasFeriado) : ""}</td>
                 )}
                 {semanal && !resumen && (
                   <td className={celda}>
@@ -464,7 +464,7 @@ export function PlanillaDeSueldosGrid({
                   <td colSpan={columnas} className="px-2 pb-3 pt-1">
                     {resumen.arrastre > 0 && (
                       <p className="mb-1 text-xs text-foreground/60">
-                        + {horasTexto(resumen.arrastre)} h del viernes anterior, después de las {reglas.corteViernes}.
+                        + {horasYMinutos(resumen.arrastre)} del viernes anterior, después de las {reglas.corteViernes}.
                       </p>
                     )}
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
@@ -512,7 +512,7 @@ export function PlanillaDeSueldosGrid({
                                     ? "falta la entrada"
                                     : c.estado === "error"
                                       ? "salida antes que entrada"
-                                      : `${horasTexto(c.horas ?? 0)} h${c.almuerzo ? " (−almuerzo)" : ""}${c.salidaPorCorte ? " · hasta el corte" : ""}`}
+                                      : `${horasYMinutos(c.horas ?? 0)}${c.almuerzo ? " (−almuerzo)" : ""}${c.salidaPorCorte ? " · hasta el corte" : ""}`}
                               {c.tarde && " · tarde"}
                             </p>
                             {c.editado && puedeEditar && (

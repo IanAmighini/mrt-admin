@@ -7,7 +7,7 @@ import { formatMoney, formatNumeroExacto, sumDecimals, ZERO } from "@/lib/money"
 import { formatFecha, toDateInputValue } from "@/lib/period";
 import { cuentaDelRenglon } from "@/lib/sueldos-calculo";
 import { bonosDelRenglon, fechaISO, getCajasDeSueldos, getCorreccionesDelMes, getEmpleados, getReglasFichero, mesDe, nombreDePlanilla, tarifaVigente } from "@/lib/sueldos";
-import { BONOS_DESDE, conCorrecciones, mesSiguiente, nombreDelMes, rangoDelMes, type DiaFichero } from "@/lib/fichero-calculo";
+import { BONOS_DESDE, conCorrecciones, horasYMinutos, mesSiguiente, nombreDelMes, rangoDelMes, type DiaFichero } from "@/lib/fichero-calculo";
 import { FormModal } from "@/components/Modal";
 import { DeleteButton } from "@/components/DeleteButton";
 import { PlanillaDeSueldosGrid } from "@/components/PlanillaDeSueldosGrid";
@@ -330,8 +330,8 @@ export default async function PlanillaPage({
                     </p>
                   )}
                 </td>
-                {semanal && <td className={`${celda} text-right`}>{formatNumeroExacto(r.horas)}</td>}
-                {semanal && <td className={`${celda} text-right`}>{r.horasFeriado.isZero() ? "" : formatNumeroExacto(r.horasFeriado)}</td>}
+                {semanal && <td className={`${celda} text-right`}>{horasYMinutos(r.horas.toNumber())}</td>}
+                {semanal && <td className={`${celda} text-right`}>{r.horasFeriado.isZero() ? "" : horasYMinutos(r.horasFeriado.toNumber())}</td>}
                 {semanal && nombreBonos && (
                   <td className={`${celda} text-right`}>
                     {[r.presentismo ? "presentismo" : null, r.puntualidad ? "puntualidad" : null].filter(Boolean).join(" + ")}

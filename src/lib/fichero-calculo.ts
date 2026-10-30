@@ -257,6 +257,18 @@ const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "
 
 export const esMes = (mes: string) => /^\d{4}-(0[1-9]|1[0-2])$/.test(mes);
 
+/**
+ * Las horas como se dicen: "10 h 35 min". Con decimales —10,58 h— no se sabe de un vistazo cuánto
+ * es el pedazo de hora (pedido de Ian, 30/10/2026). Se redondea al minuto.
+ */
+export function horasYMinutos(horas: number): string {
+  const total = Math.round(Math.abs(horas) * 60);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  const texto = h && m ? `${h} h ${m} min` : h ? `${h} h` : `${m} min`;
+  return horas < 0 ? `−${texto}` : texto;
+}
+
 /** "2026-09" → "septiembre"; con el año si no es el de `respectoDe` ("diciembre 2025"). */
 export function nombreDelMes(mes: string, respectoDe?: string) {
   const [anio, numero] = mes.split("-");
