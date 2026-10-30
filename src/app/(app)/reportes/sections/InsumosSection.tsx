@@ -21,7 +21,7 @@ export async function InsumosSection() {
         <KpiCard
           label="Costo de reposición"
           value={formatMoney(report.costoReposicionTotal)}
-          caption="solo insumos con costo cargado"
+          caption="a la última compra de cada uno"
           icon={Wallet}
           color="amber"
         />
@@ -73,7 +73,7 @@ export async function InsumosSection() {
                     {row.costoReposicion ? (
                       formatMoney(row.costoReposicion)
                     ) : (
-                      <span className="text-foreground/40">sin costo cargado</span>
+                      <span className="text-foreground/40">sin costo</span>
                     )}
                   </td>
                 </tr>

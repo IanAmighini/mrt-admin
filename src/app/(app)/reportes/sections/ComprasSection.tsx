@@ -6,6 +6,7 @@ import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getComprasReport } from "@/lib/reports";
+import { Barras, Panel } from "@/components/dashboard/Graficos";
 import type { Period } from "@/lib/period";
 
 function ars(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
@@ -24,6 +25,24 @@ export async function ComprasSection({ period }: { period: Period }) {
         <KpiCard label="IVA crédito fiscal" value={formatMoney(ars(report.iva))} icon={Percent} color="blue" />
         <KpiCard label="Total con impuestos" value={formatMoney(ars(report.totalesConIva))} icon={Wallet} color="amber" />
         <KpiCard label="Proveedores" value={String(report.porProveedor.length)} icon={Building2} color="green" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel titulo="Por proveedor" nota="Neto de IVA, en pesos">
+          <Barras
+            filas={report.porProveedor.slice(0, 10).map((p) => ({
+              clave: p.entitySlug,
+              nombre: p.entityName,
+              href: `/cuentas-corrientes/${p.entitySlug}`,
+              valor: ars(p.byCurrency),
+            }))}
+          />
+        </Panel>
+        <Panel titulo="Por tipo de insumo" nota="Neto de IVA, en pesos">
+          <Barras
+            filas={report.porCategoria.map((c) => ({ clave: c.category, nombre: SUPPLIER_CATEGORY_LABELS[c.category], valor: ars(c.byCurrency) }))}
+          />
+        </Panel>
       </div>
 
       <section>

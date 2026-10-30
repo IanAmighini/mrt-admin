@@ -34,7 +34,8 @@ export async function GET(request: NextRequest) {
   }
 
   const sp = request.nextUrl.searchParams;
-  const key = sp.get("report") ?? undefined;
+  // "Resultado del mes" se unió al Cierre del mes: un link viejo baja el cierre.
+  const key = sp.get("report") === "resultado" ? "cierre-mes" : (sp.get("report") ?? undefined);
   if (!isReportKey(key)) return new Response("Reporte inválido", { status: 400 });
 
   const { period } = periodFromSearchParams({
@@ -82,12 +83,11 @@ export async function GET(request: NextRequest) {
     case "gastos":
       data = { key, report: await getGastosReport(period) };
       break;
-    case "resultado":
-      data = { key, report: await getResultadoReport(period) };
+    case "cierre-mes": {
+      const [cierre, resultado] = await Promise.all([getCierreReport(period), getResultadoReport(period)]);
+      data = { key, report: cierre, resultado };
       break;
-    case "cierre-mes":
-      data = { key, report: await getCierreReport(period) };
-      break;
+    }
     case "costo-botella":
       data = { key, report: await getCostoBotellaReport(period) };
       break;

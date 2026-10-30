@@ -124,7 +124,7 @@ export default async function DashboardProveedoresPage({
         <Tarjeta
           titulo="Retiro societario"
           resumen="Lo que se llevaron los socios, acumulado: no es deuda de nadie"
-          href="/reportes?report=resultado"
+          href="/reportes?report=cierre-mes"
         >
           {d.retiros.map((r) => (
             <Renglon key={r.nombre} izquierda={r.nombre} derecha={formatMoney(r.monto, r.moneda)} />

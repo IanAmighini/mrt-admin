@@ -727,14 +727,28 @@ export async function getRetirosDelPeriodo(period: { from: Date; to: Date }) {
   return Promise.all(
     entities.map(async (entity) => {
       const ids = entity.accounts.map((a) => a.id);
-      const [inicio, cierre] = await Promise.all([
+      const [inicio, cierre, pagos] = await Promise.all([
         saldoAlCorte(ids, period.from),
         saldoAlCorte(ids, period.to),
+        prisma.payment.findMany({
+          where: { accountId: { in: ids }, date: { gte: period.from, lt: period.to } },
+          select: { amount: true, concepto: true },
+        }),
       ]);
+      // El cambio del saldo a favor, abierto: lo que se le dio, lo que puso y lo que se le descontó
+      // con comprobantes (el aceite que entregó Cristian, las facturas de honorarios de Ian). Sin
+      // esto, un mes en que Cristian entregó más aceite del que retiró aparecía como un «retiro»
+      // negativo que no se entendía.
+      const retirado = sumDecimals(pagos.filter((p) => !p.concepto && p.amount.greaterThan(0)).map((p) => p.amount));
+      const aportado = sumDecimals(pagos.filter((p) => p.concepto === "APORTE_CAPITAL").map((p) => p.amount)).negated();
+      const delPeriodo = aFavor(cierre).minus(aFavor(inicio));
       return {
         nombre: entity.name,
         moneda: entity.moneda,
-        delPeriodo: aFavor(cierre).minus(aFavor(inicio)),
+        retirado,
+        aportado,
+        descontado: retirado.minus(aportado).minus(delPeriodo),
+        delPeriodo,
         acumulado: aFavor(cierre),
       };
     })

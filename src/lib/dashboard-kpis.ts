@@ -5,7 +5,7 @@ import { sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getDocumentEffect } from "@/lib/ledger";
 import { getAllItemStocks } from "@/lib/stock";
 import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
-import { GASTOS_WHERE } from "@/lib/caja";
+import { costoDelGasto, GASTOS_WHERE } from "@/lib/caja";
 import { formatFecha, monthPeriod, type Period } from "@/lib/period";
 import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
 
@@ -306,12 +306,19 @@ async function getIngresosNetos(period: Period, cot: Cotizador): Promise<Prisma.
       ...SIN_SALDO_INICIAL,
       // Las ventas de insumos van aparte (getVentasDeInsumos), con su costo: acá se contarían dos veces.
       itemMovements: { none: { type: "VENTA" } },
+      // La factura de un remito no cuenta: la venta ya la contó el remito, el día que salió la
+      // mercadería, que es cuando se cuenta su costo (decidido por Ian el 30/10/2026). Cano se facturó
+      // el 30/08 y se entregó en octubre: contado por la factura, la venta caía en agosto y el costo
+      // en octubre. Una factura sin remito (Novis) sí cuenta, en su fecha.
+      NOT: { type: "FACTURA", facturaLinks: { some: {} } },
     },
     include: DOCUMENT_INCLUDE_EFECTO,
   });
 
   return documents.reduce((acc, doc) => {
-    const efecto = getDocumentEffect(doc);
+    // El remito, entero aunque esté facturado: su efecto en la cuenta pasa a la factura, pero la venta
+    // es suya.
+    const efecto = doc.type === "REMITO" ? toDecimal(doc.totalAmount) : getDocumentEffect(doc);
     const total = toDecimal(doc.totalAmount);
     // Sin IVA discriminado —todo Negro— el efecto ya es neto.
     const neto = total.isZero() ? efecto : efecto.times(toDecimal(doc.netAmount)).dividedBy(total);
@@ -367,9 +374,18 @@ export async function getVentasDeInsumos(period: Period, cotizador?: Cotizador) 
 async function getGastosNetos(period: Period, cot: Cotizador): Promise<Prisma.Decimal> {
   const documents = await prisma.document.findMany({
     where: { ...GASTOS_WHERE, date: { gte: period.from, lt: period.to } },
-    select: { netAmount: true, currency: true, date: true, exchangeRate: true },
+    select: {
+      type: true,
+      netAmount: true,
+      totalAmount: true,
+      ivaAmount: true,
+      taxes: { select: { kind: true, amount: true } },
+      currency: true,
+      date: true,
+      exchangeRate: true,
+    },
   });
-  return sumDecimals(documents.map((d) => cot.aPesos(toDecimal(d.netAmount), d.currency, d.date, d.exchangeRate)));
+  return sumDecimals(documents.map((d) => cot.aPesos(costoDelGasto(d), d.currency, d.date, d.exchangeRate)));
 }
 
 /**

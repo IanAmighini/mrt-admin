@@ -497,7 +497,8 @@ function produccionSheets(report: ProduccionReport, generatedAt: Date): ExcelShe
         { header: "Insumo", value: (r) => r.item.name, width: 36 },
         { header: "Cantidad", value: (r) => r.cantidad, format: "number" },
         { header: "Unidad", value: (r) => r.item.unit, width: 10 },
-        { header: "Costo unitario", value: (r) => r.item.unitCost, format: "money", width: 16 },
+        // El que se usó, la última compra: el de la ficha queda viejo apenas se vuelve a comprar.
+        { header: "Costo unitario", value: (r) => (r.costo && !r.cantidad.isZero() ? r.costo.dividedBy(r.cantidad) : null), format: "money", width: 16 },
         { header: "Costo", value: (r) => r.costo, format: "money" },
       ],
       rows: report.costoInsumos.porItem,
@@ -805,7 +806,10 @@ function resultadoSheets(report: ResultadoReport, generatedAt: Date): ExcelSheet
             columns: [
               { header: "Cuenta", value: (r) => r.nombre, width: 32 },
               { header: "Moneda", value: (r) => r.moneda, width: 10 },
-              { header: "Del período", value: (r) => r.delPeriodo, format: "money", width: 18 },
+              { header: "Retiró", value: (r) => r.retirado, format: "money", width: 16 },
+              { header: "Aportó", value: (r) => r.aportado, format: "money", width: 16 },
+              { header: "Se le descontó", value: (r) => r.descontado, format: "money", width: 18 },
+              { header: "Cambio del saldo", value: (r) => r.delPeriodo, format: "money", width: 18 },
               { header: "Acumulado", value: (r) => r.acumulado, format: "money", width: 18 },
             ],
             rows: report.retiros,
@@ -867,13 +871,12 @@ export type ReportData =
   | { key: "remitos-vencidos"; report: VencidosReport }
   | { key: "insumos-bajo-minimo"; report: InsumosMinimoReport }
   | { key: "valorizacion-insumos"; report: ValorizacionReport }
-  | { key: "cierre-mes"; report: CierreReport }
+  | { key: "cierre-mes"; report: CierreReport; resultado?: ResultadoReport }
   | { key: "ventas"; report: VentasReport }
   /** Los dos lados, igual que la pantalla: cobranzas a clientes y pagos a proveedores. */
   | { key: "cobranzas"; clientes: CobranzasReport; proveedores: CobranzasReport }
   | { key: "compras"; report: ComprasReport }
   | { key: "gastos"; report: GastosReport }
-  | { key: "resultado"; report: ResultadoReport }
   | { key: "costo-botella"; report: CostoBotellaReport }
   | { key: "produccion"; report: ProduccionReport }
   | { key: "stock"; report: StockReport };
@@ -887,7 +890,9 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
     case "valorizacion-insumos":
       return valorizacionSheets(data.report);
     case "cierre-mes":
-      return cierreSheets(data.report);
+      // Con lo que era el reporte de Resultado: gastos por rubro, retiros y mes a mes (sin su
+      // cascada, que ya está en el resumen del cierre).
+      return [...cierreSheets(data.report), ...(data.resultado ? resultadoSheets(data.resultado, generatedAt).slice(1) : [])];
     case "ventas":
       return ventasSheets(data.report, generatedAt);
     case "cobranzas":
@@ -899,8 +904,6 @@ export function buildReportSheets(data: ReportData, generatedAt = new Date()): E
       return comprasSheets(data.report, generatedAt);
     case "gastos":
       return gastosSheets(data.report, generatedAt);
-    case "resultado":
-      return resultadoSheets(data.report, generatedAt);
     case "costo-botella":
       return costoBotellaSheets(data.report, generatedAt);
     case "produccion":

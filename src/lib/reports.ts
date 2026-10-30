@@ -13,7 +13,7 @@ import { formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
 import { getRetirosDelPeriodo, getVencimientos, litrosDeLinea } from "@/lib/ledger";
 import { getCostoInsumos, getCostosUnitarios, getRentabilidad } from "@/lib/dashboard-kpis";
 import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
-import { GASTOS_WHERE, montoDelGasto, rubroDelGasto } from "@/lib/caja";
+import { costoDelGasto, GASTOS_WHERE, rubroDelGasto } from "@/lib/caja";
 import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
 import { addDays, hoyComoFecha, monthPeriod, periodLastDay, type Period } from "@/lib/period";
@@ -27,7 +27,6 @@ export const REPORT_KEYS = [
   "cobranzas",
   "compras",
   "gastos",
-  "resultado",
   "cierre-mes",
   "costo-botella",
   "produccion",
@@ -44,7 +43,6 @@ export const REPORT_LABELS: Record<ReportKey, string> = {
   cobranzas: "Cobranzas y pagos",
   compras: "Compras de insumos",
   gastos: "Gastos",
-  resultado: "Resultado del mes",
   "cierre-mes": "Cierre del mes",
   "costo-botella": "Costo por botella",
   produccion: "Producción",
@@ -253,9 +251,10 @@ export type InsumosMinimoReport = {
  */
 export async function getInsumosMinimoReport(options?: { asOf?: Date }): Promise<InsumosMinimoReport> {
   const asOf = options?.asOf ?? new Date();
-  const [items, stocks] = await Promise.all([
+  const [items, stocks, costoDe] = await Promise.all([
     prisma.item.findMany({ orderBy: { name: "asc" } }),
     getAllItemStocks(),
+    getCotizador().then(getCostosUnitarios),
   ]);
 
   const rows: InsumoBajoMinimo[] = [];
@@ -274,6 +273,9 @@ export async function getInsumosMinimoReport(options?: { asOf?: Date }): Promise
     if (!stock.lessThanOrEqualTo(minStock)) continue;
 
     const faltante = minStock.minus(stock);
+    // Lo que cuesta hoy, como en el margen y la valorización: la última compra, o la ficha si nunca
+    // se compró. Antes era sólo la ficha, que queda vieja apenas se vuelve a comprar.
+    const unitCost = costoDe(item.id, asOf);
     rows.push({
       itemId: item.id,
       itemSlug: item.slug,
@@ -284,8 +286,8 @@ export async function getInsumosMinimoReport(options?: { asOf?: Date }): Promise
       minStock,
       faltante,
       cobertura: stock.dividedBy(minStock),
-      unitCost: item.unitCost,
-      costoReposicion: item.unitCost ? faltante.times(item.unitCost) : null,
+      unitCost,
+      costoReposicion: unitCost ? faltante.times(unitCost) : null,
     });
   }
 
@@ -841,6 +843,54 @@ export type CobranzasReport = {
   totales: Map<Currency, Prisma.Decimal>;
 };
 
+/**
+ * Cuánto tarda cada cliente en pagar: por cada peso cobrado en el período, los días entre el
+ * comprobante que canceló (el remito, la factura) y el cobro, promediados por importe. El saldo
+ * inicial queda afuera: su fecha es la de la carga, no la de la venta, y bajaría el promedio.
+ */
+export async function getDiasDeCobro(period: Period) {
+  const imputaciones = await prisma.paymentAllocation.findMany({
+    where: {
+      amount: { gt: 0 },
+      payment: {
+        date: { gte: period.from, lt: period.to },
+        concepto: null,
+        account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
+      },
+      document: { number: { not: NUMERO_SALDO_INICIAL }, type: { in: ["REMITO", "FACTURA", "NOTA_DEBITO"] } },
+    },
+    select: {
+      amount: true,
+      payment: {
+        select: { date: true, exchangeRate: true, account: { select: { entity: { select: { name: true, slug: true, moneda: true } } } } },
+      },
+      document: { select: { date: true } },
+    },
+  });
+  // El peso de cada cobro, en pesos: lo de una cuenta en dólares (Víctor Dilver) pesaba como si fueran pesos.
+  const cot = await getCotizador();
+  const porCliente = new Map<string, { nombre: string; slug: string; importe: number; ponderado: number }>();
+  let importe = 0;
+  let ponderado = 0;
+  for (const i of imputaciones) {
+    const dias = Math.max(0, Math.round((i.payment.date.getTime() - i.document.date.getTime()) / MS_POR_DIA));
+    const { name, slug, moneda } = i.payment.account.entity;
+    const monto = cot.aPesos(i.amount, moneda, i.payment.date, i.payment.exchangeRate).toNumber();
+    const c = porCliente.get(slug) ?? { nombre: name, slug, importe: 0, ponderado: 0 };
+    c.importe += monto;
+    c.ponderado += monto * dias;
+    porCliente.set(slug, c);
+    importe += monto;
+    ponderado += monto * dias;
+  }
+  return {
+    promedio: importe ? Math.round(ponderado / importe) : null,
+    porCliente: Array.from(porCliente.values())
+      .map((c) => ({ nombre: c.nombre, slug: c.slug, dias: Math.round(c.ponderado / c.importe), importe: c.importe }))
+      .sort((a, b) => b.dias - a.dias),
+  };
+}
+
 export async function getCobranzasReport(period: Period, lado: CobranzasLado): Promise<CobranzasReport> {
   const payments = await prisma.payment.findMany({
     where: {
@@ -1089,7 +1139,7 @@ export async function getGastosReport(period: Period): Promise<GastosReport> {
 
   for (const doc of documents) {
     const { entity, circuit } = doc.account;
-    const total = toDecimal(montoDelGasto(doc));
+    const total = costoDelGasto(doc);
     const enPesos = [doc.currency, total, doc.date, doc.exchangeRate] as const;
 
     // Un impuesto o una comisión cargados como movimiento de tesorería no tienen rubro propio, pero
@@ -1273,6 +1323,13 @@ export type ResultadoReport = {
   retiros: {
     nombre: string;
     moneda: Currency;
+    /** Lo que se le dio en el período. */
+    retirado: Prisma.Decimal;
+    /** Lo que puso (aporte de capital). */
+    aportado: Prisma.Decimal;
+    /** Lo que se le descontó con comprobantes: el aceite que entregó, las facturas de honorarios. */
+    descontado: Prisma.Decimal;
+    /** Cuánto cambió el saldo a favor: retirado − aportado − descontado. */
     delPeriodo: Prisma.Decimal;
     acumulado: Prisma.Decimal;
   }[];
@@ -1298,19 +1355,30 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
     getRentabilidad(period, cot),
     prisma.document.findMany({
       where: { ...GASTOS_WHERE, date: { gte: period.from, lt: period.to } },
-      select: { netAmount: true, expenseCategory: true, treasuryCategory: true, currency: true, date: true, exchangeRate: true },
+      select: {
+        type: true,
+        netAmount: true,
+        totalAmount: true,
+        ivaAmount: true,
+        taxes: { select: { kind: true, amount: true } },
+        expenseCategory: true,
+        treasuryCategory: true,
+        currency: true,
+        date: true,
+        exchangeRate: true,
+      },
     }),
     getRetirosDelPeriodo(period),
   ]);
 
   // Sólo las cuentas donde efectivamente se retiró algo este mes: el acumulado se muestra al lado,
   // pero una fila en cero no dice nada.
-  const retiros = retirados.filter((r) => !r.delPeriodo.isZero());
+  const retiros = retirados.filter((r) => !r.retirado.isZero() || !r.aportado.isZero() || !r.descontado.isZero());
 
   const porRubro = new Map<ExpenseCategory | null, Prisma.Decimal>();
   for (const doc of gastos) {
     const rubro = rubroDelGasto(doc);
-    porRubro.set(rubro, (porRubro.get(rubro) ?? ZERO).plus(cot.aPesos(toDecimal(doc.netAmount), doc.currency, doc.date, doc.exchangeRate)));
+    porRubro.set(rubro, (porRubro.get(rubro) ?? ZERO).plus(cot.aPesos(costoDelGasto(doc), doc.currency, doc.date, doc.exchangeRate)));
   }
 
   // El mes del período es el del último día incluido: con "este mes" elegido, el `to` exclusivo cae
@@ -1356,8 +1424,13 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
 // 9. Stock — de dónde salió cada movimiento entre dos recuentos
 // ---------------------------------------------------------------------------
 
-/** Un movimiento cuyo motivo dice que salió de contar el depósito, no de una operación. */
-const ES_DE_RECUENTO = ["recuento", "stock inicial", "conteo"];
+/**
+ * Un movimiento cuyo motivo dice que salió de contar el depósito, no de una operación. «Stock
+ * inicial» a secas no: es el saldo con el que se da de alta un insumo nuevo (las planchas, el 8/10),
+ * y contado como recuento el reporte decía «Último recuento: 8/10, 1 insumo». El del arranque dice
+ * «Stock inicial — recuento del 30/09», así que entra por «recuento».
+ */
+const ES_DE_RECUENTO = ["recuento", "conteo"];
 
 function esDeRecuento(reason: string) {
   const texto = reason.toLowerCase();

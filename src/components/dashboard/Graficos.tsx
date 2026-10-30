@@ -27,6 +27,27 @@ export function millones(n: Prisma.Decimal) {
   return m.abs().greaterThanOrEqualTo(1) ? `$ ${formatQuantity(m.toDecimalPlaces(1))} M` : `$ ${formatQuantity(n.toDecimalPlaces(0))}`;
 }
 
+/** Un gráfico con su título, para poner arriba de las tablas de los reportes. */
+export function Panel({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
+  return (
+    <section className="min-w-0 rounded-xl border border-foreground/10 bg-background p-4 shadow-sm">
+      <h3 className="text-sm font-semibold">{titulo}</h3>
+      {nota && <p className="text-xs text-foreground/50">{nota}</p>}
+      <div className="mt-3">{children}</div>
+    </section>
+  );
+}
+
+/** Pallets con un decimal como mucho: las cajas sueltas hacían "418,038", que no se lee. */
+export function pallets(n: Prisma.Decimal) {
+  return `${formatQuantity(n.toDecimalPlaces(1))} ${n.toDecimalPlaces(1).abs().equals(1) ? "pallet" : "pallets"}`;
+}
+
+/** Litros enteros. */
+export function litros(n: Prisma.Decimal) {
+  return formatQuantity(n.toDecimalPlaces(0), "L");
+}
+
 export function Referencia({ items }: { items: { nombre: string; color: Color; valor?: string }[] }) {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-foreground/60">
@@ -83,6 +104,8 @@ export function Barras({
   }[];
   colorPorDefecto?: Color;
 }) {
+  // Un renglón en cero no tiene barra que mostrar: el pallet descartable, que se compra sin cargo.
+  filas = filas.filter((f) => !f.valor.isZero());
   const max = filas.reduce((acc, f) => (f.valor.greaterThan(acc) ? f.valor : acc), ZERO);
   if (filas.length === 0 || max.isZero()) return <p className="text-sm text-foreground/50">Nada en este período.</p>;
   return (

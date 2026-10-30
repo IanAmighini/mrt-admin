@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ArrowDownLeft, ArrowUpRight, Receipt } from "lucide-react";
+import { ArrowDownLeft, ArrowUpRight, Hourglass, Receipt } from "lucide-react";
 import { Prisma, type Currency } from "@prisma/client";
 import { formatMoney, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { ImporteEnPesos } from "./ImporteEnPesos";
-import { getCobranzasReport, type CobranzasLado } from "@/lib/reports";
+import { getCobranzasReport, getDiasDeCobro, type CobranzasLado } from "@/lib/reports";
+import { Barras, Panel } from "@/components/dashboard/Graficos";
 import type { Period } from "@/lib/period";
 import { formatFecha } from "@/lib/period";
 
@@ -14,13 +15,13 @@ function ars(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
 }
 
 async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado }) {
-  const report = await getCobranzasReport(period, lado);
   const esCobro = lado === "CLIENTES";
+  const [report, dias] = await Promise.all([getCobranzasReport(period, lado), esCobro ? getDiasDeCobro(period) : null]);
   const entidadLabel = esCobro ? "Cliente" : "Proveedor";
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={`grid gap-4 ${dias ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <KpiCard
           label={esCobro ? "Cobrado en el período" : "Pagado en el período"}
           value={formatMoney(ars(report.totales))}
@@ -34,6 +35,50 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
           icon={Receipt}
           color="blue"
         />
+        {dias && (
+          <KpiCard
+            label="Días promedio de cobro"
+            value={dias.promedio === null ? "—" : `${dias.promedio} días`}
+            caption="desde el remito o la factura hasta el cobro, por cada peso cobrado"
+            icon={Hourglass}
+            color="amber"
+          />
+        )}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel titulo="Por medio de pago" nota="En pesos">
+          <Barras
+            colorPorDefecto={esCobro ? "verde" : "naranja"}
+            filas={report.porMetodo.map((m) => ({ clave: m.method, nombre: PAYMENT_METHOD_LABELS[m.method], valor: ars(m.byCurrency) }))}
+          />
+        </Panel>
+        {dias ? (
+          <Panel titulo="Cuánto tarda cada cliente en pagar" nota="Días promedio, por cada peso cobrado en el período">
+            <Barras
+              colorPorDefecto="amarillo"
+              filas={dias.porCliente.slice(0, 10).map((c) => ({
+                clave: c.slug,
+                nombre: c.nombre,
+                href: `/cuentas-corrientes/${c.slug}`,
+                valor: new Prisma.Decimal(Math.max(c.dias, 0.5)),
+                texto: `${c.dias} ${c.dias === 1 ? "día" : "días"}`,
+              }))}
+            />
+          </Panel>
+        ) : (
+          <Panel titulo={`Por ${entidadLabel.toLowerCase()}`} nota="En pesos">
+            <Barras
+              colorPorDefecto="naranja"
+              filas={report.porEntidad.slice(0, 10).map((e) => ({
+                clave: e.entitySlug,
+                nombre: e.entityName,
+                href: `/cuentas-corrientes/${e.entitySlug}`,
+                valor: ars(e.byCurrency),
+              }))}
+            />
+          </Panel>
+        )}
       </div>
 
       <section>

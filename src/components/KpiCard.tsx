@@ -28,7 +28,8 @@ export function KpiCard({
           <Icon size={18} strokeWidth={2} />
         </span>
       </div>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
+      {/* Un importe de cientos de millones con centavos no entraba en una tarjeta de cuatro por fila. */}
+      <p className={`mt-1 font-semibold tabular-nums ${value.length > 15 ? "text-xl" : "text-2xl"}`}>{value}</p>
       {caption && <p className="mt-1 text-xs text-foreground/50">{caption}</p>}
     </div>
   );

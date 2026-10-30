@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlarmClock, CalendarCheck, Coins, Download, Factory, Milk, Package, Receipt, Send, ShoppingCart, TrendingUp, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
+import { AlarmClock, CalendarCheck, Coins, Download, Factory, Milk, Package, Receipt, Send, ShoppingCart, TriangleAlert, Wallet, type LucideIcon } from "lucide-react";
 import type { Circuit } from "@prisma/client";
 import { requireRole } from "@/lib/auth-helpers";
 import { FormModal } from "@/components/Modal";
@@ -16,7 +16,6 @@ import { VentasSection } from "./sections/VentasSection";
 import { CobranzasSection } from "./sections/CobranzasSection";
 import { ComprasSection } from "./sections/ComprasSection";
 import { GastosSection } from "./sections/GastosSection";
-import { ResultadoSection } from "./sections/ResultadoSection";
 import { CostoBotellaSection } from "./sections/CostoBotellaSection";
 import { ProduccionSection } from "./sections/ProduccionSection";
 import { StockSection } from "./sections/StockSection";
@@ -55,7 +54,6 @@ const GRUPOS: { titulo: string; reportes: { key: ReportKey; icono: LucideIcon; d
   {
     titulo: "Resultado",
     reportes: [
-      { key: "resultado", icono: TrendingUp, descripcion: "Ventas menos insumos y gastos" },
       { key: "cierre-mes", icono: CalendarCheck, descripcion: "Si se ganó y cómo quedó el stock" },
       { key: "costo-botella", icono: Milk, descripcion: "Lo que cuesta y deja cada presentación" },
     ],
@@ -80,7 +78,6 @@ const USA_PERIODO: Record<ReportKey, boolean> = {
   cobranzas: true,
   compras: true,
   gastos: true,
-  resultado: true,
   "cierre-mes": true,
   "costo-botella": true,
   produccion: true,
@@ -96,7 +93,6 @@ const USA_CIRCUITO: Record<ReportKey, boolean> = {
   cobranzas: false,
   compras: false,
   gastos: false,
-  resultado: false,
   "cierre-mes": false,
   "costo-botella": false,
   produccion: false,
@@ -122,7 +118,9 @@ export default async function ReportesPage({
     ? await Promise.all([getRecipients(), getLastRunInfo()])
     : [[], null];
 
-  const report: ReportKey = isReportKey(sp.report) ? sp.report : "remitos-vencidos";
+  // "Resultado del mes" se unió al Cierre del mes (30/10/2026): un link viejo lleva ahí.
+  const pedido = sp.report === "resultado" ? "cierre-mes" : sp.report;
+  const report: ReportKey = isReportKey(pedido) ? pedido : "remitos-vencidos";
   const { period, preset } = periodFromSearchParams(sp);
   const circuitSlug = CIRCUIT_FILTERS.some((f) => f.value === sp.circuit) ? (sp.circuit ?? "") : "";
   const circuit: Circuit | undefined = circuitSlug ? CIRCUIT_BY_SLUG[circuitSlug] : undefined;
@@ -341,7 +339,6 @@ export default async function ReportesPage({
       {report === "cobranzas" && <CobranzasSection period={period} />}
       {report === "compras" && <ComprasSection period={period} />}
       {report === "gastos" && <GastosSection period={period} />}
-      {report === "resultado" && <ResultadoSection period={period} />}
       {report === "cierre-mes" && <CierreSection period={period} />}
       {report === "costo-botella" && <CostoBotellaSection period={period} />}
       {report === "produccion" && <ProduccionSection period={period} />}

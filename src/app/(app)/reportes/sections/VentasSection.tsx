@@ -1,10 +1,11 @@
 import { Boxes, Droplets, DollarSign, Users } from "lucide-react";
 import { Prisma, type Circuit, type Currency } from "@prisma/client";
-import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
+import { formatMoney, ZERO } from "@/lib/money";
 import { CIRCUIT_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getVentasReport } from "@/lib/reports";
+import { Barras, litros, Panel, pallets } from "@/components/dashboard/Graficos";
 import type { Period } from "@/lib/period";
 
 function ars(byCurrency: Map<Currency, Prisma.Decimal>): Prisma.Decimal {
@@ -36,8 +37,8 @@ export async function VentasSection({ period, circuit }: { period: Period; circu
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard label="Facturado / entregado" value={formatMoney(ars(report.totales.byCurrency))} icon={DollarSign} color="green" />
-        <KpiCard label="Pallets entregados" value={formatQuantity(report.totales.pallets)} icon={Boxes} color="blue" />
-        <KpiCard label="Litros entregados" value={formatQuantity(report.totales.litros, "L")} icon={Droplets} color="blue" />
+        <KpiCard label="Pallets entregados" value={pallets(report.totales.pallets)} icon={Boxes} color="blue" />
+        <KpiCard label="Litros entregados" value={litros(report.totales.litros)} icon={Droplets} color="blue" />
         <KpiCard
           label="Clientes"
           value={String(report.porCliente.length)}
@@ -45,6 +46,25 @@ export async function VentasSection({ period, circuit }: { period: Period; circu
           icon={Users}
           color="amber"
         />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel titulo="Por cliente" nota="Neto de IVA, en pesos">
+          <Barras
+            filas={report.porCliente.slice(0, 10).map((c) => ({
+              clave: c.entitySlug,
+              nombre: c.entityName,
+              detalle: pallets(c.pallets),
+              href: `/cuentas-corrientes/${c.entitySlug}`,
+              valor: ars(c.byCurrency),
+            }))}
+          />
+        </Panel>
+        <Panel titulo="Por marca" nota="Neto de IVA, en pesos">
+          <Barras
+            filas={report.porMarca.map((m) => ({ clave: m.marca, nombre: m.marca, detalle: pallets(m.pallets), valor: ars(m.byCurrency) }))}
+          />
+        </Panel>
       </div>
 
       <section>
@@ -63,8 +83,8 @@ export async function VentasSection({ period, circuit }: { period: Period; circu
               {(["BLANCO", "NEGRO"] as Circuit[]).map((c) => (
                 <tr key={c} className="border-b border-foreground/5">
                   <td className="py-2 pr-4">{CIRCUIT_LABELS[c]}</td>
-                  <td className="py-2 pr-4">{formatQuantity(report.porCircuito[c].pallets)}</td>
-                  <td className="py-2 pr-4">{formatQuantity(report.porCircuito[c].litros, "L")}</td>
+                  <td className="py-2 pr-4 tabular-nums">{pallets(report.porCircuito[c].pallets)}</td>
+                  <td className="py-2 pr-4 tabular-nums">{litros(report.porCircuito[c].litros)}</td>
                   <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={report.porCircuito[c].byCurrency} /></td>
                 </tr>
               ))}
@@ -90,8 +110,8 @@ export async function VentasSection({ period, circuit }: { period: Period; circu
                 {grupo.rows.map((row) => (
                   <tr key={row.key} className="border-b border-foreground/5">
                     <td className="py-2 pr-4">{row.name}</td>
-                    <td className="py-2 pr-4">{formatQuantity(row.pallets)}</td>
-                    <td className="py-2 pr-4">{formatQuantity(row.litros, "L")}</td>
+                    <td className="py-2 pr-4 tabular-nums">{pallets(row.pallets)}</td>
+                    <td className="py-2 pr-4 tabular-nums">{litros(row.litros)}</td>
                     <td className="py-2 pr-4 font-medium"><ImporteEnPesos porMoneda={row.byCurrency} /></td>
                   </tr>
                 ))}

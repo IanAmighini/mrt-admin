@@ -3,7 +3,7 @@ import type { Currency, Prisma } from "@prisma/client";
 import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
 import { getSetting, setSetting } from "@/lib/settings";
 import { formatFecha, lastMonthPeriod, toDateInputValue, type Period } from "@/lib/period";
-import { getCierreReport, getCobranzasReport, getProduccionReport, getVentasReport } from "@/lib/reports";
+import { getCierreReport, getCobranzasReport, getProduccionReport, getResultadoReport, getVentasReport } from "@/lib/reports";
 import { getVentasDeInsumos } from "@/lib/dashboard-kpis";
 import { buildReportSheets, reportFilename } from "@/lib/reports-excel";
 import { buildWorkbook } from "@/lib/excel";
@@ -61,12 +61,13 @@ export async function sendMonthlyReport(options?: {
 /** Arma el mail sin mandarlo, para poder mirarlo y probarlo sin credenciales. */
 export async function buildMonthlyReportEmail(period: Period) {
   const mes = nombreDelMes(period);
-  const [cierre, ventas, cobranzas, produccion, ventasDeInsumos] = await Promise.all([
+  const [cierre, ventas, cobranzas, produccion, ventasDeInsumos, resultadoDelMes] = await Promise.all([
     getCierreReport(period),
     getVentasReport(period),
     getCobranzasReport(period, "CLIENTES"),
     getProduccionReport(period),
     getVentasDeInsumos(period),
+    getResultadoReport(period),
   ]);
 
   const { resultado, producto, insumos } = cierre;
@@ -153,7 +154,7 @@ export async function buildMonthlyReportEmail(period: Period) {
     "El detalle va en el Excel adjunto.",
   ].join("\n");
 
-  const bytes = await buildWorkbook(buildReportSheets({ key: "cierre-mes", report: cierre }, new Date()));
+  const bytes = await buildWorkbook(buildReportSheets({ key: "cierre-mes", report: cierre, resultado: resultadoDelMes }, new Date()));
   return {
     subject: `MRT · Cierre de ${mes} — ${gano ? "se ganaron" : "se perdieron"} ${formatMoney(resultado.resultado.abs())}`,
     html,

@@ -1,9 +1,10 @@
 import "server-only";
-import type {
-  DocumentType,
-  ExpenseCategory,
+import {
   Prisma,
-  TreasuryMovementCategory,
+  type DocumentType,
+  type ExpenseCategory,
+  type TaxKind,
+  type TreasuryMovementCategory,
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
@@ -56,16 +57,42 @@ export function rubroDelGasto(doc: {
 }
 
 /**
- * Cuánto gastó un comprobante. El de un proveedor gasta su total (con IVA y percepciones); el de
- * caja guarda el monto en `netAmount` y el total con signo negativo, porque en la caja el total es
- * lo que le hace al saldo.
+ * Lo que de una factura se recupera y por eso no es gasto: el IVA, que es crédito fiscal, y las
+ * percepciones de IVA y de Ingresos Brutos, que se descuentan en sus declaraciones (Ian, 30/10/2026:
+ * «se deberían recuperar, de eso se encarga el contador»). Lo no gravado, lo exento, las
+ * contribuciones municipales y provinciales y los impuestos internos sí son gasto.
  */
-export function montoDelGasto(doc: {
+const IMPUESTOS_RECUPERABLES: TaxKind[] = [
+  "IVA",
+  "PERCEPCION_IVA",
+  "RG_3337",
+  "PERCEPCION_IIBB",
+  "PERCEPCION_IIBB_BSAS",
+  "PERCEPCION_IIBB_CABA",
+  "PERCEPCION_IIBB_SANTA_FE",
+];
+
+/**
+ * Cuánto gastó de verdad un comprobante. Una factura de un proveedor, su total menos lo que se
+ * recupera. Antes el reporte de Gastos sumaba el total con IVA y el resultado sólo el neto gravado,
+ * que deja afuera lo no gravado del combustible y las contribuciones de Edenor: ninguno de los dos
+ * era lo gastado. Lo de caja guarda el monto en `netAmount` (el total va con signo, porque en la caja
+ * el total es lo que le hace al saldo).
+ */
+export function costoDelGasto(doc: {
   type: DocumentType;
   netAmount: Prisma.Decimal;
   totalAmount: Prisma.Decimal;
-}) {
-  return doc.type === "GASTO" ? doc.totalAmount : doc.netAmount;
+  ivaAmount: Prisma.Decimal | null;
+  taxes: { kind: TaxKind; amount: Prisma.Decimal }[];
+}): Prisma.Decimal {
+  if (doc.type !== "GASTO") return new Prisma.Decimal(doc.netAmount);
+  const recuperable = doc.taxes
+    .filter((t) => IMPUESTOS_RECUPERABLES.includes(t.kind))
+    .reduce((acc, t) => acc.plus(t.amount), new Prisma.Decimal(0));
+  // Uno viejo con el IVA en el comprobante y sin el desglose: se resta ese IVA.
+  const sinDesglose = doc.taxes.length === 0 && doc.ivaAmount ? new Prisma.Decimal(doc.ivaAmount) : null;
+  return new Prisma.Decimal(doc.totalAmount).minus(sinDesglose ?? recuperable);
 }
 
 export type CajaConCuenta = {

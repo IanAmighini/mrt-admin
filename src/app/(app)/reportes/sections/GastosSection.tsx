@@ -6,6 +6,7 @@ import { CIRCUIT_LABELS, EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getGastosReport } from "@/lib/reports";
+import { Barras, Panel } from "@/components/dashboard/Graficos";
 import type { Period } from "@/lib/period";
 import { formatFecha } from "@/lib/period";
 
@@ -23,6 +24,27 @@ export async function GastosSection({ period }: { period: Period }) {
         <KpiCard label="Gastos del período" value={formatMoney(ars(report.totales))} icon={Receipt} color="red" />
         <KpiCard label="IVA crédito fiscal" value={formatMoney(ivaTotal)} icon={Percent} color="blue" />
         <KpiCard label="Proveedores" value={String(report.porProveedor.length)} icon={Building2} color="amber" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel titulo="Por rubro" nota="Lo gastado: sin el IVA ni las percepciones, que se recuperan">
+          <Barras
+            colorPorDefecto="naranja"
+            filas={[
+              ...report.porRubro.slice(0, 8).map((r) => ({ clave: r.category as string, nombre: EXPENSE_CATEGORY_LABELS[r.category], valor: ars(r.byCurrency) })),
+              // Los rubros chicos juntos; la tabla de abajo los tiene uno por uno.
+              ...(report.porRubro.length > 8
+                ? [{ clave: "otros", nombre: `Otros ${report.porRubro.length - 8} rubros`, valor: report.porRubro.slice(8).reduce((a, r) => a.plus(ars(r.byCurrency)), ZERO) }]
+                : []),
+            ]}
+          />
+        </Panel>
+        <Panel titulo="Por proveedor o caja">
+          <Barras
+            colorPorDefecto="naranja"
+            filas={report.porProveedor.slice(0, 10).map((p) => ({ clave: p.entitySlug, nombre: p.entityName, valor: ars(p.byCurrency) }))}
+          />
+        </Panel>
       </div>
 
       <section>

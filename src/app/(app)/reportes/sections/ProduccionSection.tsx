@@ -3,6 +3,7 @@ import { Boxes, Droplets, Factory, Wallet } from "lucide-react";
 import { formatMoney, formatQuantity } from "@/lib/money";
 import { KpiCard } from "@/components/KpiCard";
 import { getProduccionReport } from "@/lib/reports";
+import { Barras, litros, Panel, pallets } from "@/components/dashboard/Graficos";
 import type { Period } from "@/lib/period";
 
 export async function ProduccionSection({ period }: { period: Period }) {
@@ -12,8 +13,8 @@ export async function ProduccionSection({ period }: { period: Period }) {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Pallets producidos" value={formatQuantity(report.totalPallets)} icon={Boxes} color="blue" />
-        <KpiCard label="Litros envasados" value={formatQuantity(report.litrosEnvasados, "L")} icon={Droplets} color="blue" />
+        <KpiCard label="Pallets producidos" value={pallets(report.totalPallets)} icon={Boxes} color="blue" />
+        <KpiCard label="Litros envasados" value={litros(report.litrosEnvasados)} icon={Droplets} color="blue" />
         <KpiCard label="Corridas" value={String(report.corridas.length)} icon={Factory} color="amber" />
         <KpiCard
           label="Costo de insumos"
@@ -23,6 +24,21 @@ export async function ProduccionSection({ period }: { period: Period }) {
           color="red"
         />
       </div>
+
+      <Panel titulo="Lo envasado, por producto" nota="En pallets; las cajas sueltas cuentan como fracción de pallet">
+        <Barras
+          colorPorDefecto="verde"
+          filas={report.porProducto.slice(0, 12).map((p) => ({
+            clave: p.productSlug,
+            // "La Campechana Girasol — 900ml": la medida abajo, que si no se corta.
+            nombre: p.label.split(" — ")[0],
+            detalle: p.label.split(" — ")[1],
+            href: `/produccion/${p.productSlug}`,
+            valor: p.pallets,
+            texto: pallets(p.pallets),
+          }))}
+        />
+      </Panel>
 
       <section>
         <h2 className="text-sm font-semibold mb-2">Por producto</h2>
@@ -43,7 +59,7 @@ export async function ProduccionSection({ period }: { period: Period }) {
                       {p.label}
                     </Link>
                   </td>
-                  <td className="py-2 pr-4">{formatQuantity(p.pallets)}</td>
+                  <td className="py-2 pr-4 tabular-nums">{pallets(p.pallets)}</td>
                   <td className="py-2 pr-4">{formatQuantity(p.botellas)}</td>
                 </tr>
               ))}

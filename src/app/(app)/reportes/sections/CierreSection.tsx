@@ -2,9 +2,10 @@ import Link from "next/link";
 import { Package, TrendingDown, TrendingUp } from "lucide-react";
 import type { Prisma } from "@prisma/client";
 import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
-import { SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
+import { EXPENSE_CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
-import { getCierreReport, type CierreFilaInsumo } from "@/lib/reports";
+import { getCierreReport, getResultadoReport, type CierreFilaInsumo } from "@/lib/reports";
+import { Barras } from "@/components/dashboard/Graficos";
 import { formatFecha, type Period } from "@/lib/period";
 
 const verde = "text-green-700 dark:text-green-400";
@@ -15,7 +16,9 @@ const conSigno = (n: Prisma.Decimal) => `${n.isNegative() ? "−" : n.isZero() ?
 const cantidad = (n: Prisma.Decimal, unidad: string) => (n.isZero() ? "—" : formatQuantity(n, unidad));
 
 export async function CierreSection({ period }: { period: Period }) {
-  const r = await getCierreReport(period);
+  // El cierre y lo que era el reporte de Resultado (unidos el 30/10/2026): mes a mes, gastos por
+  // rubro y retiros. Las mismas cotizaciones y costos, así que los números del mes coinciden.
+  const [r, res] = await Promise.all([getCierreReport(period), getResultadoReport(period)]);
   const { insumos, producto, resultado } = r;
   const difInsumos = insumos.cierre.minus(insumos.inicio);
   const difProducto = producto.cierre.minus(producto.inicio);
@@ -146,6 +149,110 @@ export async function CierreSection({ period }: { period: Period }) {
             </p>
           )}
         </section>
+      </div>
+
+      <section className="overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-sm">
+        <h3 className="border-b border-foreground/10 bg-foreground/[0.03] px-4 py-2.5 font-semibold">Mes a mes</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[36rem] text-sm">
+            <thead>
+              <tr className="text-left text-xs text-foreground/50">
+                <th className="px-4 py-2 font-medium">Mes</th>
+                <th className="px-3 py-2 text-right font-medium">Ventas</th>
+                <th className="px-3 py-2 text-right font-medium">Costo de lo vendido</th>
+                <th className="px-3 py-2 text-right font-medium">Gastos</th>
+                <th className="px-4 py-2 text-right font-medium">Resultado</th>
+              </tr>
+            </thead>
+            <tbody className="tabular-nums">
+              {/* Sin los meses de antes de la app: todo en cero no dice nada. */}
+              {res.meses
+                .filter((m) => !m.ventas.isZero() || !m.costoInsumos.isZero() || !m.gastos.isZero())
+                .map((m) => (
+                <tr key={m.from.toISOString()} className="border-t border-foreground/5">
+                  <td className="px-4 py-2 capitalize">{m.label}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">{m.ventas.isZero() ? "—" : formatMoney(m.ventas.toDecimalPlaces(0))}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-foreground/60">{m.costoInsumos.isZero() ? "—" : formatMoney(m.costoInsumos.toDecimalPlaces(0))}</td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right text-foreground/60">{m.gastos.isZero() ? "—" : formatMoney(m.gastos.toDecimalPlaces(0))}</td>
+                  <td className={`whitespace-nowrap px-4 py-2 text-right font-medium ${color(m.resultado)}`}>
+                    {m.resultado.isZero() ? "—" : conSigno(m.resultado.toDecimalPlaces(0))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="px-4 py-2 text-xs text-foreground/50">
+          Hasta seis meses. La app arrancó el 29/09/2026: lo de antes no está cargado.
+        </p>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section className="overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-sm">
+          <h3 className="border-b border-foreground/10 bg-foreground/[0.03] px-4 py-2.5 font-semibold">
+            En qué se fueron los gastos
+          </h3>
+          <div className="p-4">
+            <Barras
+              colorPorDefecto="naranja"
+              filas={[
+                ...res.porRubro.slice(0, 8).map((g) => ({
+                  clave: g.category ?? "sin-rubro",
+                  nombre: g.category ? EXPENSE_CATEGORY_LABELS[g.category] : "Sin rubro",
+                  total: g.total,
+                })),
+                // Los rubros chicos juntos: con 22 renglones la tarjeta era una lista más.
+                ...(res.porRubro.length > 8
+                  ? [{ clave: "otros", nombre: `Otros ${res.porRubro.length - 8} rubros`, total: res.porRubro.slice(8).reduce((a, g) => a.plus(g.total), ZERO) }]
+                  : []),
+              ].map((g) => ({
+                clave: g.clave,
+                nombre: g.nombre,
+                detalle: res.gastos.isZero() ? undefined : `${formatQuantity(g.total.dividedBy(res.gastos).times(100).toDecimalPlaces(1))}% del total`,
+                valor: g.total,
+              }))}
+            />
+          </div>
+          <p className="px-4 pb-3 text-xs text-foreground/50">
+            Lo que salió de verdad: el total de cada factura menos el IVA y las percepciones, que se
+            recuperan. Lo no gravado y las contribuciones sí son gasto.
+          </p>
+        </section>
+
+        {res.retiros.length > 0 && (
+          <section className="overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-sm">
+            <h3 className="border-b border-foreground/10 bg-foreground/[0.03] px-4 py-2.5 font-semibold">Retiros de los socios</h3>
+            <div className="divide-y divide-foreground/5">
+              {res.retiros.map((x) => (
+                <div key={x.nombre} className="space-y-1 px-4 py-3 text-sm">
+                  <p className="font-medium">{x.nombre}</p>
+                  <div className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-0.5 tabular-nums">
+                    <span className="text-foreground/60">Se le dio</span>
+                    <span className="text-right">{formatMoney(x.retirado, x.moneda)}</span>
+                    {!x.aportado.isZero() && (
+                      <>
+                        <span className="text-foreground/60">Aportó</span>
+                        <span className="text-right">− {formatMoney(x.aportado, x.moneda)}</span>
+                      </>
+                    )}
+                    {!x.descontado.isZero() && (
+                      <>
+                        <span className="text-foreground/60">Se le descontó (aceite entregado, facturas)</span>
+                        <span className="text-right">− {formatMoney(x.descontado, x.moneda)}</span>
+                      </>
+                    )}
+                    <span className="border-t border-foreground/10 pt-0.5 text-foreground/60">Saldo a favor nuestro, acumulado</span>
+                    <span className="border-t border-foreground/10 pt-0.5 text-right font-medium">{formatMoney(x.acumulado, x.moneda)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="px-4 pb-3 text-xs text-foreground/50">
+              No resta del resultado: lo que se llevan los socios es reparto de lo ganado. Cada uno va
+              en la moneda de su cuenta.
+            </p>
+          </section>
+        )}
       </div>
 
       <section>
