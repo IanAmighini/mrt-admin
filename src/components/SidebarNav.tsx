@@ -14,6 +14,7 @@ import {
   Factory,
   FileSpreadsheet,
   FileText,
+  HandCoins,
   History,
   Home,
   Landmark,
@@ -59,6 +60,7 @@ const ICONS_BY_HREF: Record<string, LucideIcon> = {
   "/produccion": Factory,
   "/usuarios": UserCog,
   "/actividad": History,
+  "/sueldos": HandCoins,
 };
 
 const filaClass = "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors";
