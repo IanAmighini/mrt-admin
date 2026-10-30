@@ -844,8 +844,10 @@ export type CobranzasReport = {
 };
 
 /**
- * Cuánto tarda cada cliente en pagar: por cada peso cobrado en el período, los días entre el
- * comprobante que canceló (el remito, la factura) y el cobro, promediados por importe. El saldo
+ * Cuánto tarda cada cliente en pagar: por cada peso cobrado en el período, los días entre la
+ * entrega y el cobro, promediados por importe. Una factura cuenta desde sus remitos —desde que se
+ * entregó, no desde que se facturó (Ian, 30/10/2026)—; si factura varios, desde el promedio de sus
+ * fechas, pesado por lo facturado de cada uno. Una factura sin remito cuenta desde su fecha. El saldo
  * inicial queda afuera: su fecha es la de la carga, no la de la venta, y bajaría el promedio.
  */
 export async function getDiasDeCobro(period: Period) {
@@ -864,16 +866,22 @@ export async function getDiasDeCobro(period: Period) {
       payment: {
         select: { date: true, exchangeRate: true, account: { select: { entity: { select: { name: true, slug: true, moneda: true } } } } },
       },
-      document: { select: { date: true } },
+      document: { select: { date: true, facturaLinks: { select: { amount: true, remito: { select: { date: true } } } } } },
     },
   });
+  /** Desde cuándo se debe: la fecha del remito, o la de la factura si no tiene. */
+  const desde = (doc: (typeof imputaciones)[number]["document"]) => {
+    const peso = doc.facturaLinks.reduce((a, l) => a + l.amount.toNumber(), 0);
+    if (doc.facturaLinks.length === 0 || peso <= 0) return doc.date.getTime();
+    return doc.facturaLinks.reduce((a, l) => a + l.remito.date.getTime() * l.amount.toNumber(), 0) / peso;
+  };
   // El peso de cada cobro, en pesos: lo de una cuenta en dólares (Víctor Dilver) pesaba como si fueran pesos.
   const cot = await getCotizador();
   const porCliente = new Map<string, { nombre: string; slug: string; importe: number; ponderado: number }>();
   let importe = 0;
   let ponderado = 0;
   for (const i of imputaciones) {
-    const dias = Math.max(0, Math.round((i.payment.date.getTime() - i.document.date.getTime()) / MS_POR_DIA));
+    const dias = Math.max(0, Math.round((i.payment.date.getTime() - desde(i.document)) / MS_POR_DIA));
     const { name, slug, moneda } = i.payment.account.entity;
     const monto = cot.aPesos(i.amount, moneda, i.payment.date, i.payment.exchangeRate).toNumber();
     const c = porCliente.get(slug) ?? { nombre: name, slug, importe: 0, ponderado: 0 };
