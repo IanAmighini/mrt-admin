@@ -10,27 +10,6 @@ import { formatFecha, monthPeriod, type Period } from "@/lib/period";
 import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
 
 /**
- * Litros de aceite consumidos en producción — proxy de "litros envasados": se toman los
- * insumos medidos en litros (unit === "L") consumidos por CONSUMO_PRODUCCION, ya que es lo
- * único que se mide en litros en este negocio y el consumo de aceite = lo que se envasó.
- */
-export async function getLitrosEnvasados(period: Period = monthPeriod()) {
-  const movements = await prisma.itemMovement.findMany({
-    where: { type: "CONSUMO_PRODUCCION", item: { unit: "L" } },
-  });
-
-  const total = sumDecimals(movements.map((m) => m.quantity)).negated().plus(ZERO);
-  const enPeriodo = sumDecimals(
-    movements.filter((m) => m.date >= period.from && m.date < period.to).map((m) => m.quantity)
-  )
-    .negated()
-    .plus(ZERO);
-
-  return { enPeriodo, total };
-}
-
-/** Efecto (por moneda) de los documentos del período de las entidades de los tipos dados. */
-/**
  * El saldo inicial es lo que se debía antes de que existiera el sistema, no actividad del mes.
  * Contarlo como ingreso o como compra hace que el primer mes muestre números enormes: la cuenta de
  * La Campechana arranca en 329 millones y eso no es una venta de septiembre.
@@ -43,48 +22,6 @@ const DOCUMENT_INCLUDE_EFECTO = {
   lines: { include: { product: true } },
   purchaseLines: { include: { item: true } },
 } satisfies Prisma.DocumentInclude;
-
-async function getEfectoDocumentos(period: Period, typeFilter: EntityType[]) {
-  const documents = await prisma.document.findMany({
-    where: {
-      date: { gte: period.from, lt: period.to },
-      account: { entity: { type: { in: typeFilter } } },
-      ...SIN_SALDO_INICIAL,
-    },
-    include: DOCUMENT_INCLUDE_EFECTO,
-  });
-
-  // En "ARS" va el total en pesos —lo de las cuentas en dólares, con la cotización del día—, y en
-  // "USD" cuántos de esos eran dólares. Antes "ARS" era sólo lo de pesos y lo de Cristian quedaba al
-  // costado, sin sumar.
-  const cot = await getCotizador();
-  const byCurrency = new Map<Currency, Prisma.Decimal>();
-  for (const doc of documents) {
-    const efecto = getDocumentEffect(doc);
-    byCurrency.set("ARS", (byCurrency.get("ARS") ?? ZERO).plus(cot.aPesos(efecto, doc.currency, doc.date, doc.exchangeRate)));
-    if (doc.currency === "USD") byCurrency.set("USD", (byCurrency.get("USD") ?? ZERO).plus(efecto));
-  }
-
-  return byCurrency;
-}
-
-/**
- * Ingresos del período (efecto de los documentos de clientes con fecha en el rango, por moneda) —
- * solo entidades CLIENTE/AMBOS, porque un documento de un PROVEEDOR es un compromiso de pago
- * nuestro, no un ingreso. No es "rentabilidad" (falta el costo de insumos), es la parte que sí se
- * puede calcular con los datos actuales.
- */
-export async function getIngresos(period: Period = monthPeriod()) {
-  return getEfectoDocumentos(period, ["CLIENTE", "AMBOS"]);
-}
-
-/**
- * Compras del período: mismo criterio que getIngresos pero del lado PROVEEDOR/AMBOS — cuánta deuda
- * nueva generaron los comprobantes cargados en el rango.
- */
-export async function getCompras(period: Period = monthPeriod()) {
-  return getEfectoDocumentos(period, ["PROVEEDOR", "AMBOS"]);
-}
 
 /** Pagos del período, por moneda — filtrado por tipo de entidad (clientes o proveedores). */
 export async function getPagos(typeFilter: EntityType[], period: Period = monthPeriod()) {
@@ -503,58 +440,4 @@ export async function getRentabilidad(period: Period = monthPeriod(), cotizador?
     productosSinReceta: costo.productosSinReceta,
     facturasSinCompra: sueltas,
   };
-}
-
-/**
- * Producto terminado entregado en el período, valorizado: remitos con producto+cantidad cargados,
- * agrupados por producto, sumando cantidad y el monto ya cargado en el remito (no se recalcula con
- * el historial de precios para no tener dos fuentes de verdad sobre lo efectivamente cobrado).
- */
-export async function getProductoEntregadoValorizado(period: Period = monthPeriod()) {
-  // Los remitos menos las devoluciones (notas de crédito con producto): lo devuelto se entregó pero
-  // no se vendió.
-  const documents = await prisma.document.findMany({
-    where: {
-      OR: [{ type: "REMITO" }, { type: "NOTA_CREDITO", lines: { some: {} } }],
-      date: { gte: period.from, lt: period.to },
-      account: { entity: { type: { in: ["CLIENTE", "AMBOS"] } } },
-    },
-    include: { product: true, lines: { include: { product: true } } },
-  });
-
-  const byProduct = new Map<
-    string,
-    { product: Prisma.ProductGetPayload<object>; quantity: Prisma.Decimal; byCurrency: Map<Currency, Prisma.Decimal> }
-  >();
-
-  function addLine(
-    productId: string,
-    product: Prisma.ProductGetPayload<object>,
-    quantity: Prisma.Decimal,
-    currency: Currency,
-    amount: Prisma.Decimal
-  ) {
-    const current = byProduct.get(productId) ?? {
-      product,
-      quantity: ZERO,
-      byCurrency: new Map<Currency, Prisma.Decimal>(),
-    };
-    current.quantity = current.quantity.plus(quantity);
-    const currentAmount = current.byCurrency.get(currency) ?? ZERO;
-    current.byCurrency.set(currency, currentAmount.plus(amount));
-    byProduct.set(productId, current);
-  }
-
-  for (const doc of documents) {
-    const signo = doc.type === "NOTA_CREDITO" ? -1 : 1;
-    if (doc.lines.length > 0) {
-      for (const line of doc.lines) {
-        addLine(line.productId, line.product, line.quantity.times(signo), doc.currency, line.subtotal.times(signo));
-      }
-    } else if (doc.product && doc.quantity) {
-      addLine(doc.productId!, doc.product, doc.quantity, doc.currency, doc.totalAmount);
-    }
-  }
-
-  return Array.from(byProduct.values());
 }
