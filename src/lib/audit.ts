@@ -6,6 +6,13 @@ import { formatFecha } from "./period";
 /** Una fila del detalle: qué campo cambió y de qué a qué. */
 export type CambioDeCampo = { campo: string; antes: string | null; despues: string | null };
 
+/**
+ * Desde cuándo todo lo que cambia datos guarda el antes y el después. Lo anterior sin detalle es de
+ * cuando algunas pantallas —Sueldos, la caja de un cobro, los cheques, la factura de una compra—
+ * no lo registraban.
+ */
+export const DETALLE_COMPLETO_DESDE = new Date("2026-10-31T03:00:00Z");
+
 export async function logAudit(
   tx: Prisma.TransactionClient | typeof prisma,
   params: {
@@ -22,7 +29,9 @@ export async function logAudit(
   await tx.auditLog.create({
     data: {
       ...resto,
-      cambios: cambios && cambios.length > 0 ? (cambios as unknown as Prisma.InputJsonValue) : undefined,
+      // Una lista vacía se guarda igual: dice que se guardó sin cambiar nada, que no es lo mismo
+      // que una operación que no lleva detalle (un envío de mail, un respaldo).
+      cambios: cambios ? (cambios as unknown as Prisma.InputJsonValue) : undefined,
     },
   });
 }

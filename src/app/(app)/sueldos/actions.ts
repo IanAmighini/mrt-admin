@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
 import { logAudit } from "@/lib/audit";
+import { diffDeFotos, fotoDeLaPlanilla } from "@/lib/fotos";
 import { generateUniqueSlug } from "@/lib/slug";
 import { slugDeEntidad } from "@/lib/slug-lookup";
 import { formatMoney, parseNumeroEscrito, ZERO } from "@/lib/money";
@@ -108,6 +109,12 @@ export async function crearEmpleado(formData: FormData) {
       entityType: "Empleado",
       entityId: entity.id,
       summary: `${entity.name} — ${forma === "SEMANAL" ? `jornal de ${formatMoney(monto)}` : `sueldo de ${formatMoney(monto)} por mes`} desde el ${formatFecha(desde)}`,
+      cambios: [
+        ...(existenteId ? [] : [{ campo: "Nombre", antes: null, despues: entity.name }]),
+        { campo: "Cobra", antes: null, despues: forma === "SEMANAL" ? "Por semana" : "Por mes" },
+        { campo: forma === "SEMANAL" ? "Jornal" : "Sueldo del mes", antes: null, despues: formatMoney(monto) },
+        { campo: "Desde", antes: null, despues: formatFecha(desde) },
+      ],
     });
     return entity;
   });
@@ -136,6 +143,11 @@ export async function cambiarTarifa(formData: FormData) {
         `La ${nombreDePlanilla(cerrada.planilla).toLowerCase()} ya está cerrada con el jornal anterior. Poné una fecha posterior, o reabrila primero.`
       );
     }
+    // Lo que cobraba desde esa fecha hasta ahora, para que el detalle diga de cuánto a cuánto.
+    const vigente = await tx.tarifaDeEmpleado.findFirst({
+      where: { entityId, desde: { lte: desde } },
+      orderBy: { desde: "desc" },
+    });
     // El mismo día pisa la que había: corregir un aumento mal tipeado no deja dos tarifas.
     await tx.tarifaDeEmpleado.deleteMany({ where: { entityId, desde } });
     await tx.tarifaDeEmpleado.create({ data: { entityId, desde, monto, createdById: user.id } });
@@ -145,6 +157,13 @@ export async function cambiarTarifa(formData: FormData) {
       entityType: "Empleado",
       entityId,
       summary: `${empleado.name} — ${empleado.formaDeSueldo === "SEMANAL" ? "jornal" : "sueldo del mes"} de ${formatMoney(monto)} desde el ${formatFecha(desde)}`,
+      cambios: [
+        {
+          campo: `${empleado.formaDeSueldo === "SEMANAL" ? "Jornal" : "Sueldo del mes"} desde el ${formatFecha(desde)}`,
+          antes: vigente ? `${formatMoney(vigente.monto)} (desde el ${formatFecha(vigente.desde)})` : null,
+          despues: formatMoney(monto),
+        },
+      ],
     });
   });
   revalidarSueldos();
@@ -154,6 +173,7 @@ export async function darDeBajaEmpleado(formData: FormData) {
   const user = await requireRole([...QUIENES]);
   const entityId = String(formData.get("empleadoId") || "");
   const baja = formData.get("reactivar") === "1" ? null : new Date();
+  const antes = await prisma.entity.findUnique({ where: { id: entityId }, select: { empleadoBaja: true } });
   const empleado = await prisma.entity.update({ where: { id: entityId }, data: { empleadoBaja: baja } });
   await logAudit(prisma, {
     userId: user.id,
@@ -161,6 +181,13 @@ export async function darDeBajaEmpleado(formData: FormData) {
     entityType: "Empleado",
     entityId,
     summary: `${empleado.name} — ${baja ? "dado de baja" : "vuelve a estar activo"}`,
+    cambios: [
+      {
+        campo: "Estado",
+        antes: antes?.empleadoBaja ? `De baja desde el ${formatFecha(antes.empleadoBaja)}` : "Activo",
+        despues: baja ? `De baja desde el ${formatFecha(baja)}` : "Activo",
+      },
+    ],
   });
   revalidarSueldos();
 }
@@ -206,6 +233,7 @@ export async function crearPlanilla(formData: FormData) {
       entityType: "Planilla de sueldos",
       entityId: planilla.id,
       summary: `${nombreDePlanilla(planilla)} — ${empleados.length} empleados`,
+      cambios: diffDeFotos(null, await fotoDeLaPlanilla(tx, planilla.id)),
     });
     return planilla;
   });
@@ -246,7 +274,7 @@ function leerDias(raw: FormDataEntryValue | null, quien: string): DiaFichero[] |
 }
 
 /** Lo que trae la grilla, renglón por renglón. Sólo se guarda en una planilla abierta. */
-async function guardarCampos(formData: FormData) {
+async function guardarCampos(formData: FormData, userId: string) {
   const planillaId = String(formData.get("planillaId") || "");
   const planilla = await prisma.planillaDeSueldos.findUnique({
     where: { id: planillaId },
@@ -306,18 +334,26 @@ async function guardarCampos(formData: FormData) {
     };
   });
 
+  const antes = await fotoDeLaPlanilla(prisma, planillaId);
   await prisma.$transaction([
     prisma.planillaDeSueldos.update({ where: { id: planillaId }, data: { fechaDePago, cajaId, notas, feriados, feriadosDelMes } }),
     ...cambios.map(({ id, ...data }) => prisma.renglonDeSueldo.update({ where: { id }, data })),
   ]);
+  await logAudit(prisma, {
+    userId,
+    action: "UPDATE",
+    entityType: "Planilla de sueldos",
+    entityId: planillaId,
+    summary: `${nombreDePlanilla(planilla)}: guardada`,
+    cambios: diffDeFotos(antes, await fotoDeLaPlanilla(prisma, planillaId)),
+  });
   return planillaId;
 }
 
 export async function guardarPlanilla(formData: FormData) {
-  await requireRole([...QUIENES]);
-  const planillaId = await guardarCampos(formData);
+  const user = await requireRole([...QUIENES]);
+  const planillaId = await guardarCampos(formData, user.id);
   if (formData.get("accion") === "cerrar") {
-    const user = await requireRole([...QUIENES]);
     const { cajaSlug } = await cerrarPlanillaCore(planillaId, user.id);
     revalidatePath(`/cuentas-corrientes/${cajaSlug}`);
     revalidatePath("/caja-chica");
@@ -343,6 +379,7 @@ export async function borrarPlanilla(formData: FormData) {
   const planilla = await prisma.planillaDeSueldos.findUnique({ where: { id: planillaId } });
   if (!planilla) throw new UserError("Esa planilla ya no existe.");
   if (planilla.estado !== "BORRADOR") throw new UserError("Una planilla cerrada no se borra: reabrila primero.");
+  const antes = await fotoDeLaPlanilla(prisma, planillaId);
   await prisma.$transaction(async (tx) => {
     await tx.planillaDeSueldos.delete({ where: { id: planillaId } });
     await logAudit(tx, {
@@ -351,6 +388,7 @@ export async function borrarPlanilla(formData: FormData) {
       entityType: "Planilla de sueldos",
       entityId: planillaId,
       summary: `${nombreDePlanilla(planilla)} (borrador)`,
+      cambios: diffDeFotos(antes, null),
     });
   });
   revalidarSueldos();
@@ -407,6 +445,7 @@ export async function guardarIdFichero(formData: FormData) {
   const entityId = String(formData.get("empleadoId") || "");
   const idFichero = String(formData.get("idFichero") || "").trim() || null;
   if (idFichero && !/^\d+$/.test(idFichero)) throw new UserError("El número del fichero son sólo dígitos, como 1004.");
+  const antes = await prisma.entity.findUnique({ where: { id: entityId }, select: { idFichero: true } });
   const empleado = await prisma.entity.update({ where: { id: entityId }, data: { idFichero } });
   await logAudit(prisma, {
     userId: user.id,
@@ -414,6 +453,7 @@ export async function guardarIdFichero(formData: FormData) {
     entityType: "Empleado",
     entityId,
     summary: `${empleado.name} — número en el fichero: ${idFichero ?? "(ninguno)"}`,
+    cambios: [{ campo: "N\u00famero en el fichero", antes: antes?.idFichero ?? null, despues: idFichero }],
   });
   revalidarSueldos();
 }

@@ -14,7 +14,9 @@ export type FilaDeActividad = {
   accionColor: string;
   tipo: string;
   resumen: string;
+  /** Vacío: se guardó sin cambiar nada. Null: la operación no lleva detalle, o es de antes de que lo llevara. */
   cambios: CambioDeCampo[] | null;
+  anteriorAlDetalle: boolean;
   destino?: string;
 };
 
@@ -143,8 +145,11 @@ export function TablaDeActividad({
               </div>
             ) : (
               <p className="rounded-lg border border-foreground/10 bg-foreground/[0.02] px-3 py-4 text-sm text-foreground/50">
-                De esta operación no quedó guardado el detalle campo por campo. Se guarda desde que
-                la app lo registra; lo cargado antes figura solamente con su resumen.
+                {elegida.cambios
+                  ? "Se guardó sin cambiar ningún dato."
+                  : elegida.anteriorAlDetalle
+                    ? "De esta operación no quedó guardado el detalle campo por campo: es de antes del 31/10/2026, cuando no todas las pantallas lo registraban."
+                    : "Esta operación no cambia datos: queda registrada con su resumen."}
               </p>
             )}
 

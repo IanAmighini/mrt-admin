@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { UserError } from "@/lib/user-error";
 import { logAudit } from "@/lib/audit";
+import { diffDeFotos, fotoDeLaPlanilla } from "@/lib/fotos";
 import { reimputarEntidades } from "@/lib/imputacion";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { circuitoDeTesoreria } from "@/lib/pagos";
@@ -54,6 +55,7 @@ export async function cerrarPlanillaCore(planillaId: string, userId: string) {
 
   await prisma.$transaction(
     async (tx) => {
+      const antes = await fotoDeLaPlanilla(tx, planilla.id);
       for (const { r, e, tarifa, cuenta } of cuentas) {
         const negro = e.accounts.find((a) => a.circuit === "NEGRO")!;
         let gastoId: string | null = null;
@@ -140,6 +142,7 @@ export async function cerrarPlanillaCore(planillaId: string, userId: string) {
         entityType: "Planilla de sueldos",
         entityId: planilla.id,
         summary: `${nombre} cerrada — ${conAlgo.length} empleados — sueldos ${formatMoney(sumDecimals(cuentas.map((c) => c.cuenta.sueldo)))} — ${formatMoney(efectivo)} en efectivo de ${caja.name}`,
+        cambios: diffDeFotos(antes, await fotoDeLaPlanilla(tx, planilla.id)),
       });
     },
     { timeout: 30000 }
@@ -159,6 +162,7 @@ export async function reabrirPlanillaCore(planillaId: string, userId: string) {
   const pagos = planilla.renglones.flatMap((r) => (r.pagoId ? [r.pagoId] : []));
 
   await prisma.$transaction(async (tx) => {
+    const antes = await fotoDeLaPlanilla(tx, planillaId);
     await tx.renglonDeSueldo.updateMany({
       where: { planillaId },
       data: { gastoId: null, pagoId: null, saldoAnterior: null, tarifa: null },
@@ -174,6 +178,7 @@ export async function reabrirPlanillaCore(planillaId: string, userId: string) {
       entityType: "Planilla de sueldos",
       entityId: planillaId,
       summary: `${nombreDePlanilla(planilla)} reabierta — se borraron ${gastos.length} gastos y ${pagos.length} pagos`,
+      cambios: diffDeFotos(antes, await fotoDeLaPlanilla(tx, planillaId)),
     });
   });
 

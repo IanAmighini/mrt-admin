@@ -10,8 +10,9 @@ import { Prisma, type DocumentType, type EntityType, type ItemMovementType } fro
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
 import { exigirZonaDelFormulario } from "@/lib/zonas";
-import { formatMoney, formatQuantity, parseNumeroEscrito } from "@/lib/money";
+import { formatMoney, formatNumeroExacto, formatQuantity, parseNumeroEscrito } from "@/lib/money";
 import { diffDeCampos, logAudit } from "@/lib/audit";
+import { CAMPOS_DEL_DOCUMENTO, fotoDelDocumentoGuardado } from "@/lib/fotos";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { DENSIDAD_ACEITE, litrosDeKilos } from "@/lib/aceite";
 import { CIRCUIT_LABELS, DOCUMENT_TYPE_LABELS, ITEM_MOVEMENT_TYPE_LABELS } from "@/lib/labels";
@@ -488,6 +489,7 @@ export async function borrarVentaDeInsumo(formData: FormData) {
   });
   if (!doc || doc.itemMovements.length === 0) throw new UserError("Esa venta ya no existe.");
   const mov = doc.itemMovements[0];
+  const antes = await fotoDelDocumentoGuardado(prisma, documentId);
 
   await prisma.$transaction(async (tx) => {
     await tx.paymentAllocation.deleteMany({ where: { documentId } });
@@ -499,6 +501,10 @@ export async function borrarVentaDeInsumo(formData: FormData) {
       entityType: "Venta de insumo",
       entityId: documentId,
       summary: `${doc.reason ?? "Venta de insumo"} — ${doc.account.entity.name} — ${formatMoney(doc.totalAmount, doc.currency)}`,
+      cambios: [
+        { campo: "Insumo", antes: `${mov.item.name} \u00d7 ${formatNumeroExacto(mov.quantity.negated())}`, despues: null },
+        ...diffDeCampos(antes, null, CAMPOS_DEL_DOCUMENTO),
+      ],
     });
   });
 

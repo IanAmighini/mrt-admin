@@ -5,7 +5,7 @@ import { formatDateTime, parseFecha } from "@/lib/period";
 import { FilterBar, FiltroBuscar, FiltroFechas, FiltroSelect } from "@/components/ui/FilterBar";
 import { resolverDestinos } from "@/lib/actividad-destino";
 import { TablaDeActividad } from "@/components/DetalleDeCambio";
-import type { CambioDeCampo } from "@/lib/audit";
+import { DETALLE_COMPLETO_DESDE, type CambioDeCampo } from "@/lib/audit";
 
 const ACTION_LABELS: Record<AuditAction, string> = {
   CREATE: "Alta",
@@ -121,6 +121,7 @@ export default async function ActividadPage({
           tipo: log.entityType,
           resumen: log.summary,
           cambios: (log.cambios as CambioDeCampo[] | null) ?? null,
+          anteriorAlDetalle: log.createdAt < DETALLE_COMPLETO_DESDE,
           destino: destinos.get(log.id),
         }))}
       />
