@@ -849,8 +849,14 @@ export type CobranzasReport = {
  * entregó, no desde que se facturó (Ian, 30/10/2026)—; si factura varios, desde el promedio de sus
  * fechas, pesado por lo facturado de cada uno. Una factura sin remito cuenta desde su fecha. Y un
  * cobro con cheque o echeq cuenta hasta la fecha de cobro del cheque, que es cuando la plata se puede
- * usar (Ian, 30/10/2026). El saldo inicial queda afuera: su fecha es la de la carga, no la de la
- * venta, y bajaría el promedio.
+ * usar (Ian, 30/10/2026). El saldo inicial cobrado queda afuera: su fecha es la de la carga, no la de
+ * la venta, y bajaría el promedio.
+ *
+ * **Lo que todavía no se pagó también cuenta**, si ya venció: con los días hasta hoy, por lo que falta
+ * pagar (Ian, 30/10/2026). Sin eso, el cliente que no paga no sumaba días y parecía el mejor. Lo que
+ * no venció no entra —es reciente y bajaría el promedio sin que nadie esté atrasado—. La deuda de
+ * antes de la app cuenta desde la fecha con que se cargó su saldo inicial: es un mínimo, pero el que
+ * no paga aparece. Como lo que se debe es de hoy, entra sólo cuando el período incluye el día de hoy.
  */
 export async function getDiasDeCobro(period: Period) {
   const imputaciones = await prisma.paymentAllocation.findMany({
@@ -884,25 +890,54 @@ export async function getDiasDeCobro(period: Period) {
   };
   // El peso de cada cobro, en pesos: lo de una cuenta en dólares (Víctor Dilver) pesaba como si fueran pesos.
   const cot = await getCotizador();
-  const porCliente = new Map<string, { nombre: string; slug: string; importe: number; ponderado: number }>();
+  const porCliente = new Map<string, { nombre: string; slug: string; importe: number; ponderado: number; vencido: number }>();
   let importe = 0;
   let ponderado = 0;
+  const sumar = (nombre: string, slug: string, monto: number, dias: number, vencido = 0) => {
+    const c = porCliente.get(slug) ?? { nombre, slug, importe: 0, ponderado: 0, vencido: 0 };
+    c.importe += monto;
+    c.ponderado += monto * dias;
+    c.vencido += vencido;
+    porCliente.set(slug, c);
+    importe += monto;
+    ponderado += monto * dias;
+  };
   for (const i of imputaciones) {
     const cobrado = i.payment.chequeRecibido?.fechaCobro ?? i.payment.date;
     const dias = Math.max(0, Math.round((cobrado.getTime() - desde(i.document)) / MS_POR_DIA));
     const { name, slug, moneda } = i.payment.account.entity;
     const monto = cot.aPesos(i.amount, moneda, i.payment.date, i.payment.exchangeRate).toNumber();
-    const c = porCliente.get(slug) ?? { nombre: name, slug, importe: 0, ponderado: 0 };
-    c.importe += monto;
-    c.ponderado += monto * dias;
-    porCliente.set(slug, c);
-    importe += monto;
-    ponderado += monto * dias;
+    sumar(name, slug, monto, dias);
   }
+
+  const hoy = hoyComoFecha();
+  const incluyeHoy = period.from <= hoy && hoy < period.to;
+  if (incluyeHoy) {
+    const vencidos = (await getVencimientos()).filter((d) => {
+      if (d.account.entity.type !== "CLIENTE" && d.account.entity.type !== "AMBOS") return false;
+      const saldoInicial = d.type === "AJUSTE" && d.number.startsWith(NUMERO_SALDO_INICIAL);
+      return saldoInicial || (d.dueDate !== null && d.dueDate < hoy);
+    });
+    // Las facturas, desde sus remitos, como lo cobrado.
+    const links = await prisma.documentLink.findMany({
+      where: { facturaId: { in: vencidos.filter((d) => d.type === "FACTURA").map((d) => d.id) } },
+      select: { facturaId: true, amount: true, remito: { select: { date: true } } },
+    });
+    for (const d of vencidos) {
+      const propios = links.filter((l) => l.facturaId === d.id);
+      const desdeDoc = desde({ date: d.date, facturaLinks: propios });
+      const dias = Math.max(0, Math.round((hoy.getTime() - desdeDoc) / MS_POR_DIA));
+      const monto = cot.aPesos(d.pending, d.currency, hoy, cot.del(hoy)).toNumber();
+      sumar(d.account.entity.name, d.account.entity.slug, monto, dias, monto);
+    }
+  }
+
   return {
     promedio: importe ? Math.round(ponderado / importe) : null,
+    /** Si lo que se debe y ya venció entró en la cuenta (sólo con un período que incluye hoy). */
+    conDeudaVencida: incluyeHoy,
     porCliente: Array.from(porCliente.values())
-      .map((c) => ({ nombre: c.nombre, slug: c.slug, dias: Math.round(c.ponderado / c.importe), importe: c.importe }))
+      .map((c) => ({ nombre: c.nombre, slug: c.slug, dias: Math.round(c.ponderado / c.importe), importe: c.importe, vencido: c.vencido }))
       .sort((a, b) => b.dias - a.dias),
   };
 }

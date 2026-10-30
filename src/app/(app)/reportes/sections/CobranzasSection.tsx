@@ -6,7 +6,7 @@ import { CIRCUIT_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { KpiCard } from "@/components/KpiCard";
 import { ImporteEnPesos } from "./ImporteEnPesos";
 import { getCobranzasReport, getDiasDeCobro, type CobranzasLado } from "@/lib/reports";
-import { Barras, Panel } from "@/components/dashboard/Graficos";
+import { Barras, millones, Panel } from "@/components/dashboard/Graficos";
 import type { Period } from "@/lib/period";
 import { formatFecha } from "@/lib/period";
 
@@ -39,7 +39,11 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
           <KpiCard
             label="Días promedio de cobro"
             value={dias.promedio === null ? "—" : `${dias.promedio} días`}
-            caption="desde la entrega (el remito) hasta que la plata se puede usar: un cheque, desde su fecha de cobro"
+            caption={
+              dias.conDeudaVencida
+                ? "desde la entrega hasta que la plata se puede usar, y lo vencido sin pagar, hasta hoy"
+                : "desde la entrega hasta que la plata se puede usar (un cheque, desde su fecha de cobro)"
+            }
             icon={Hourglass}
             color="amber"
           />
@@ -54,7 +58,14 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
           />
         </Panel>
         {dias ? (
-          <Panel titulo="Cuánto tarda cada cliente en pagar" nota="Días promedio, por cada peso cobrado en el período">
+          <Panel
+            titulo="Cuánto tarda cada cliente en pagar"
+            nota={
+              dias.conDeudaVencida
+                ? "Días promedio por cada peso: lo cobrado, y lo vencido que todavía debe, contado hasta hoy"
+                : "Días promedio, por cada peso cobrado en el período"
+            }
+          >
             <Barras
               colorPorDefecto="amarillo"
               filas={dias.porCliente.slice(0, 10).map((c) => ({
@@ -63,6 +74,7 @@ async function LadoBlock({ period, lado }: { period: Period; lado: CobranzasLado
                 href: `/cuentas-corrientes/${c.slug}`,
                 valor: new Prisma.Decimal(Math.max(c.dias, 0.5)),
                 texto: `${c.dias} ${c.dias === 1 ? "día" : "días"}`,
+                detalle: c.vencido > 0 ? `debe ${millones(new Prisma.Decimal(c.vencido))} vencido` : undefined,
               }))}
             />
           </Panel>
