@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useActionState, useRef, useState } from "react";
+import { Fragment, startTransition, useActionState, useRef, useState } from "react";
 import Link from "next/link";
 import { Prisma, type FormaDeSueldo } from "@prisma/client";
 import { esSenalDeNavegacion, userErrorMessage } from "@/lib/user-error";
@@ -110,6 +110,19 @@ export function PlanillaDeSueldosGrid({
     }
   }, null);
   const unaVez = useEnvioUnico(pending);
+  /**
+   * Se manda a mano y no con `<form action>`: con `action`, React reinicia el formulario después de
+   * guardar, y los tildes y las opciones vuelven a como estaban al abrir la página aunque en
+   * pantalla se vea lo elegido. El feriado, que es un casillero escondido, quedaba marcado debajo
+   * del botón apagado y el siguiente «Guardar» lo volvía a poner; lo mismo los bonos y la caja.
+   */
+  const enviar = (e: React.FormEvent<HTMLFormElement>) => {
+    unaVez(e);
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    const datos = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
+    startTransition(() => formAction(datos));
+  };
 
   const cambiar = (id: string, campo: Campo, valor: string) =>
     setValores((v) => ({ ...v, [id]: { ...v[id], [campo]: valor } }));
@@ -168,7 +181,7 @@ export function PlanillaDeSueldosGrid({
   const conDatos = cuentas.filter(({ cuenta }) => cuenta && (cuenta.gasto.greaterThan(0) || cuenta.pagado.greaterThan(0))).length;
 
   return (
-    <form action={formAction} onSubmit={unaVez} className="space-y-4">
+    <form onSubmit={enviar} className="space-y-4">
       <input type="hidden" name="planillaId" value={planillaId} />
 
       {semanal && (
