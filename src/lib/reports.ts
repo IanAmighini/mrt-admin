@@ -18,6 +18,7 @@ import { getAllItemStocks } from "@/lib/stock";
 import { formatProductBrandLabel, formatProductLabel } from "@/lib/product-label";
 import { addDays, hoyComoFecha, monthPeriod, periodLastDay, type Period } from "@/lib/period";
 import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
+import { getBalance, type Balance } from "@/lib/balance";
 
 export const REPORT_KEYS = [
   "remitos-vencidos",
@@ -475,6 +476,8 @@ export type CierreReport = {
     sinCosto: number;
     filas: CierreFilaProducto[];
   };
+  /** Activo, pasivo y patrimonio neto al empezar y al cerrar. Ver `getBalance`. */
+  balance: Balance;
 };
 
 /**
@@ -654,6 +657,12 @@ export async function getCierreReport(period: Period): Promise<CierreReport> {
   filasPT.sort((a, b) => (b.valorCierre ?? ZERO).comparedTo(a.valorCierre ?? ZERO));
 
   const margen = rentabilidad.ingresos.minus(rentabilidad.costoInsumos);
+  const stock = {
+    insumos: { inicio: sumDecimals(filas.map((f) => f.valorInicio ?? ZERO)), cierre: sumDecimals(filas.map((f) => f.valorCierre ?? ZERO)) },
+    producto: { inicio: sumDecimals(filasPT.map((f) => f.valorInicio ?? ZERO)), cierre: sumDecimals(filasPT.map((f) => f.valorCierre ?? ZERO)) },
+  };
+  // Los saldos, con lo cargado hasta el mismo corte que el stock.
+  const balance = await getBalance({ inicio: period.from, cierre: period.to, cot, costoDe, stock });
   return {
     period,
     inicio: addDays(period.from, -1),
@@ -667,8 +676,7 @@ export async function getCierreReport(period: Period): Promise<CierreReport> {
       resultado: rentabilidad.rentabilidad,
     },
     insumos: {
-      inicio: sumDecimals(filas.map((f) => f.valorInicio ?? ZERO)),
-      cierre: sumDecimals(filas.map((f) => f.valorCierre ?? ZERO)),
+      ...stock.insumos,
       porCantidad,
       porPrecio,
       mermasYRecuento: mermasYRecuentoValor,
@@ -677,12 +685,12 @@ export async function getCierreReport(period: Period): Promise<CierreReport> {
       filas,
     },
     producto: {
-      inicio: sumDecimals(filasPT.map((f) => f.valorInicio ?? ZERO)),
-      cierre: sumDecimals(filasPT.map((f) => f.valorCierre ?? ZERO)),
+      ...stock.producto,
       pallets: totalPallets,
       sinCosto: sinCostoPT,
       filas: filasPT,
     },
+    balance,
   };
 }
 

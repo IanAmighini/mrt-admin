@@ -7,6 +7,7 @@ import { KpiCard } from "@/components/KpiCard";
 import { getCierreReport, getResultadoReport, type CierreFilaInsumo } from "@/lib/reports";
 import { Barras } from "@/components/dashboard/Graficos";
 import { formatFecha, type Period } from "@/lib/period";
+import { BalanceTabla } from "./BalanceTabla";
 
 const verde = "text-green-700 dark:text-green-400";
 const rojo = "text-red-600 dark:text-red-400";
@@ -149,6 +150,8 @@ export async function CierreSection({ period }: { period: Period }) {
             </p>
           )}
         </section>
+
+        <BalanceTabla balance={r.balance} ini={ini} fin={fin} />
       </div>
 
       <section className="overflow-hidden rounded-xl border border-foreground/10 bg-background shadow-sm">

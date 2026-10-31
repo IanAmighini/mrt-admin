@@ -120,6 +120,47 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
 
 // ---------------------------------------------------------------------------
 
+/** El balance, renglón por renglón, con la gente de cada uno abajo y sangrada. */
+function balanceSheet(b: CierreReport["balance"], ini: string, fin: string, subtitle: string[]) {
+  type Renglon = { concepto: string; inicio: Prisma.Decimal | null; cierre: Prisma.Decimal | null; dif: Prisma.Decimal | null };
+  const vacio: Renglon = { concepto: "", inicio: null, cierre: null, dif: null };
+  const renglon = (concepto: string, x: { inicio: Prisma.Decimal; cierre: Prisma.Decimal }): Renglon => ({
+    concepto,
+    inicio: x.inicio,
+    cierre: x.cierre,
+    dif: x.cierre.minus(x.inicio),
+  });
+  const grupo = (titulo: string, lineas: CierreReport["balance"]["activo"], total: { inicio: Prisma.Decimal; cierre: Prisma.Decimal }) => [
+    { ...vacio, concepto: titulo.toUpperCase() },
+    ...lineas.flatMap((l) => [
+      renglon(l.detalle ? `${l.etiqueta} (${l.detalle})` : l.etiqueta, l),
+      ...(l.filas.length > 1 ? l.filas.map((f) => ({ ...renglon(`      ${f.nombre}`, f), dif: null })) : []),
+    ]),
+    renglon(`Total ${titulo.toLowerCase()}`, total),
+    vacio,
+  ];
+  const filas: Renglon[] = [
+    ...grupo("Activo", b.activo, b.totalActivo),
+    ...grupo("Pasivo", b.pasivo, b.totalPasivo),
+    renglon("Patrimonio neto (activo − pasivo)", b.patrimonio),
+    vacio,
+    { ...vacio, concepto: "Los cheques ya están dentro del saldo de su caja: van aparte, sin contarlos dos veces. No incluye el IVA." },
+    ...b.retiros.map((x) => ({ ...renglon(`Fuera del activo, lo retirado por ${x.nombre} (no se va a cobrar)`, x), dif: null })),
+  ];
+  return sheet<Renglon>({
+    name: "Balance",
+    title: "Balance: activo, pasivo y patrimonio neto",
+    subtitle,
+    columns: [
+      { header: "Concepto", value: (x) => x.concepto, width: 56 },
+      { header: `Al ${ini}`, value: (x) => x.inicio, format: "money", width: 18 },
+      { header: `Al ${fin}`, value: (x) => x.cierre, format: "money", width: 18 },
+      { header: "Diferencia", value: (x) => x.dif, format: "money", width: 18 },
+    ],
+    rows: filas,
+  });
+}
+
 function cierreSheets(r: CierreReport): ExcelSheet<never>[] {
   const ini = formatFecha(r.inicio);
   const fin = formatFecha(r.cierre);
@@ -156,6 +197,7 @@ function cierreSheets(r: CierreReport): ExcelSheet<never>[] {
       ],
       rows: resumen,
     }),
+    balanceSheet(r.balance, ini, fin, subtitle),
     sheet<CierreReport["insumos"]["filas"][number]>({
       name: "Insumos",
       title: "Insumos: cómo cambió el stock",
