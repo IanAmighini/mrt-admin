@@ -10,7 +10,7 @@ import {
 } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatQuantity, sumDecimals, toDecimal, ZERO } from "@/lib/money";
-import { getRetirosDelPeriodo, getVencimientos, litrosDeLinea } from "@/lib/ledger";
+import { getDocumentPending, getRetirosDelPeriodo, getVencimientos, litrosDeLinea } from "@/lib/ledger";
 import { getCostoInsumos, getCostosUnitarios, getRentabilidad } from "@/lib/dashboard-kpis";
 import { getCotizador, type Cotizador } from "@/lib/cotizaciones";
 import { costoDelGasto, GASTOS_WHERE, rubroDelGasto } from "@/lib/caja";
@@ -101,6 +101,8 @@ export type VencidoRow = {
   type: DocumentType;
   entityName: string;
   entitySlug: string;
+  /** Un proveedor al que le vendimos insumos y todavía no los pagó. */
+  proveedor: boolean;
   circuit: Circuit;
   number: string;
   date: Date;
@@ -118,13 +120,42 @@ export type VencidosReport = {
   asOf: Date;
   rows: VencidoRow[];
   totalPendiente: Map<Currency, Prisma.Decimal>;
-  porCliente: { entityName: string; entitySlug: string; count: number; pendiente: Prisma.Decimal }[];
+  porCliente: { entityName: string; entitySlug: string; proveedor: boolean; count: number; pendiente: Prisma.Decimal }[];
   porBucket: { bucket: VencidoBucket; count: number; pendiente: Prisma.Decimal }[];
   clientesAfectados: number;
   atrasoMaximo: number;
 };
 
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
+
+/**
+ * Las ventas de insumos a proveedores que todavía no se cobraron, con lo que falta como pendiente.
+ *
+ * La venta es una nota de crédito en su cuenta: baja lo que le debemos. Mientras le debamos más que
+ * eso, se cancela contra su deuda y no hay nada que cobrar. Lo que no alcanzó a cancelar —el
+ * crédito sin usar después de la imputación— es plata a favor nuestro: eso es lo que nos debe, y
+ * vence a los 7 días como cualquier entrega (pedido por Ian el 2/11/2026).
+ */
+async function getVentasAProveedoresSinCobrar() {
+  const ventas = await prisma.document.findMany({
+    where: {
+      type: "NOTA_CREDITO",
+      dueDate: { not: null },
+      itemMovements: { some: { type: "VENTA" } },
+      account: { entity: { type: "PROVEEDOR" } },
+    },
+    include: {
+      remitoLinks: { include: { factura: { select: { id: true, number: true, date: true } } } },
+      allocations: true,
+      creditosAplicados: true,
+      creditosRecibidos: true,
+      account: { include: { entity: true } },
+    },
+  });
+  return ventas
+    .map((doc) => ({ ...doc, pending: getDocumentPending(doc).negated() }))
+    .filter((doc) => doc.pending.greaterThan(0));
+}
 
 /**
  * Comprobantes vencidos con saldo pendiente. Incluye remitos y facturas a propósito: cuando un
@@ -136,16 +167,22 @@ export async function getVencidosReport(options?: {
   circuit?: Circuit;
 }): Promise<VencidosReport> {
   const asOf = options?.asOf ?? new Date();
-  const vencimientos = await getVencimientos();
+  const [vencimientos, ventasAProveedores] = await Promise.all([getVencimientos(), getVentasAProveedoresSinCobrar()]);
 
   const rows: VencidoRow[] = [];
-  for (const doc of vencimientos) {
+  const filas = [
+    ...vencimientos.map((doc) => ({ ...doc, ventaAProveedor: false })),
+    ...ventasAProveedores.map((doc) => ({ ...doc, ventaAProveedor: true })),
+  ];
+  for (const doc of filas) {
     // El saldo inicial es deuda vieja: está vencido desde que se cargó, sin esperar a nadie.
     const saldoInicial = doc.type === "AJUSTE" && doc.number.startsWith(NUMERO_SALDO_INICIAL);
     // El resto, vencido recién cuando el día del vencimiento pasó entero: el que vence hoy todavía no.
     if (!doc.dueDate || (!saldoInicial && doc.dueDate >= hoyComoFecha(asOf))) continue;
-    // Lo que nos deben: los comprobantes de proveedores vencidos son otra cosa (lo que debemos).
-    if (doc.account.entity.type !== "CLIENTE" && doc.account.entity.type !== "AMBOS") continue;
+    // Lo que nos deben: los comprobantes de proveedores vencidos son otra cosa (lo que debemos),
+    // salvo la venta de insumos a un proveedor, que viene aparte y ya con lo que falta cobrar.
+    const { ventaAProveedor } = doc;
+    if (!ventaAProveedor && doc.account.entity.type !== "CLIENTE" && doc.account.entity.type !== "AMBOS") continue;
     if (options?.circuit && doc.account.circuit !== options.circuit) continue;
 
     const diasAtraso = Math.round((hoyComoFecha(asOf).getTime() - doc.dueDate.getTime()) / MS_POR_DIA);
@@ -154,6 +191,7 @@ export async function getVencidosReport(options?: {
       type: doc.type,
       entityName: doc.account.entity.name,
       entitySlug: doc.account.entity.slug,
+      proveedor: ventaAProveedor,
       circuit: doc.account.circuit,
       number: doc.number,
       date: doc.date,
@@ -176,7 +214,7 @@ export async function getVencidosReport(options?: {
   const cotizacionHoy = cot.del(asOf);
   const enPesos = (row: VencidoRow) => cot.aPesos(row.pendiente, row.currency, asOf, cotizacionHoy);
   const totalPendiente = new Map<Currency, Prisma.Decimal>();
-  const porClienteMap = new Map<string, { entityName: string; entitySlug: string; count: number; pendiente: Prisma.Decimal }>();
+  const porClienteMap = new Map<string, { entityName: string; entitySlug: string; proveedor: boolean; count: number; pendiente: Prisma.Decimal }>();
   const porBucketMap = new Map<VencidoBucket, { bucket: VencidoBucket; count: number; pendiente: Prisma.Decimal }>();
 
   for (const row of rows) {
@@ -186,6 +224,7 @@ export async function getVencidosReport(options?: {
     const cliente = porClienteMap.get(row.entitySlug) ?? {
       entityName: row.entityName,
       entitySlug: row.entitySlug,
+      proveedor: row.proveedor,
       count: 0,
       pendiente: ZERO,
     };

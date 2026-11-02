@@ -376,8 +376,11 @@ async function guardarVenta(formData: FormData) {
       type: tipo,
       number,
       date,
-      // La factura vence como cualquier otra de la Cuenta 1; las notas no llevan vencimiento.
-      dueDate: tipo === "FACTURA" ? defaultDueDate(date, "BLANCO") : null,
+      // La factura vence como cualquier otra de la Cuenta 1 (15 días). Lo demás, a los 7 días, como
+      // una entrega: la nota de débito al cliente, y la de crédito al proveedor, que vence cuando
+      // queda plata a favor nuestro (pedido por Ian el 2/11/2026). Antes no llevaban vencimiento y
+      // nunca aparecían vencidas.
+      dueDate: defaultDueDate(date, tipo === "FACTURA" ? "BLANCO" : "NEGRO"),
       currency: moneda,
       exchangeRate,
       netAmount: total,

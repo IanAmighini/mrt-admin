@@ -216,7 +216,11 @@ async function buildEmailBody({
         ["Cliente", "Comprob.", "Pendiente"],
         vencidos.porCliente
           .slice(0, 5)
-          .map((c) => [escapeHtml(c.entityName), String(c.count), escapeHtml(formatMoney(c.pendiente))])
+          .map((c) => [
+            `${escapeHtml(c.entityName)}${c.proveedor ? subtle("proveedor · le vendimos insumos") : ""}`,
+            String(c.count),
+            escapeHtml(formatMoney(c.pendiente)),
+          ])
       )
     );
     if (vencidos.porCliente.length > 5) {

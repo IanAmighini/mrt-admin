@@ -58,7 +58,7 @@ function periodSubtitle(period: Period, generatedAt: Date): string[] {
 function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
   const subtitle = [
     `Al ${formatFecha(report.asOf)}`,
-    "Incluye remitos y facturas con vencimiento pasado y saldo pendiente.",
+    "Incluye remitos y facturas con vencimiento pasado y saldo pendiente, y las ventas de insumos a proveedores que no se cobraron.",
   ];
 
   return [
@@ -67,7 +67,7 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
       title: "Comprobantes vencidos impagos",
       subtitle,
       columns: [
-        { header: "Cliente", value: (r) => r.entityName, width: 32 },
+        { header: "Cliente", value: (r) => (r.proveedor ? `${r.entityName} (proveedor)` : r.entityName), width: 32 },
         { header: "Comprobante", value: (r) => `${DOCUMENT_TYPE_LABELS[r.type]} #${r.number}`, width: 22 },
         { header: "Cuenta", value: (r) => CIRCUIT_LABELS[r.circuit], width: 20 },
         { header: "Fecha", value: (r) => r.date, format: "date" },
@@ -97,7 +97,7 @@ function vencidosSheets(report: VencidosReport): ExcelSheet<never>[] {
       title: "Vencido por cliente",
       subtitle,
       columns: [
-        { header: "Cliente", value: (r) => r.entityName, width: 32 },
+        { header: "Cliente", value: (r) => (r.proveedor ? `${r.entityName} (proveedor)` : r.entityName), width: 32 },
         { header: "Comprobantes", value: (r) => r.count, format: "integer", width: 14 },
         { header: "Pendiente", value: (r) => r.pendiente, format: "money" },
       ],

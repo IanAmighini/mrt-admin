@@ -89,6 +89,7 @@ export async function VencidosSection({ circuit }: { circuit?: Circuit }) {
             <div className="flex items-baseline justify-between gap-3 px-4 py-3">
               <Link href={`/cuentas-corrientes/${c.entitySlug}`} className="font-medium hover:underline hover:underline-offset-2">
                 {c.entityName}
+                {c.proveedor && <span className="ml-2 text-xs font-normal text-foreground/50">proveedor · le vendimos insumos</span>}
               </Link>
               <span className="shrink-0 text-right">
                 <span className="font-semibold tabular-nums">{formatMoney(c.pendiente)}</span>
