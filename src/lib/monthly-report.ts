@@ -26,7 +26,7 @@ function nombreDelMes(period: Period) {
 }
 
 /**
- * El cierre del mes por mail, el 1° del mes siguiente: si se ganó o se perdió plata, cuánto se
+ * El cierre del mes por mail, el 5 del mes siguiente: si se ganó o se perdió plata, cuánto se
  * envasó, si quedó más o menos producto terminado, cuánto se cobró y cuánto se entregó (pedido por
  * Ian el 28/10/2026). Va a los mismos destinatarios que el semanal, con el Excel del Cierre del mes.
  *
@@ -34,7 +34,7 @@ function nombreDelMes(period: Period) {
  * mismo período: el mail no calcula nada propio, así lo que dice es lo que se ve en Reportes.
  */
 export async function sendMonthlyReport(options?: {
-  /** El mes a mandar. Por defecto, el anterior al de hoy: el job corre el 1°. */
+  /** El mes a mandar. Por defecto, el anterior al de hoy: el job corre el 5. */
   period?: Period;
   /** Saltea el guard de "ya enviado": lo usa el botón de enviar ahora. */
   force?: boolean;
