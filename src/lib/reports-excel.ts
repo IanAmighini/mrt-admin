@@ -1,6 +1,6 @@
 import "server-only";
 import { Prisma, type Currency } from "@prisma/client";
-import { formatMoney, formatQuantity, ZERO } from "@/lib/money";
+import { formatMoney, formatQuantity, sumDecimals, ZERO } from "@/lib/money";
 import {
   CIRCUIT_LABELS,
   DOCUMENT_TYPE_LABELS,
@@ -145,7 +145,18 @@ function balanceSheet(b: CierreReport["balance"], ini: string, fin: string, subt
     renglon("Patrimonio neto (activo − pasivo)", b.patrimonio),
     vacio,
     { ...vacio, concepto: "Los cheques ya están dentro del saldo de su caja: van aparte, sin contarlos dos veces. No incluye el IVA." },
-    ...b.retiros.map((x) => ({ ...renglon(`Fuera del activo, lo retirado por ${x.nombre} (no se va a cobrar)`, x), dif: null })),
+    ...(b.retiros.length > 0
+      ? [
+          vacio,
+          { ...vacio, concepto: "RETIRO SOCIETARIO (fuera del balance: lo que tienen retirado los socios)" },
+          ...b.retiros.map((x) => renglon(x.nombre, x)),
+          {
+            ...vacio,
+            concepto: "Variación del retiro societario (si es negativa, pusieron más de lo que se llevaron)",
+            dif: sumDecimals(b.retiros.map((x) => x.cierre)).minus(sumDecimals(b.retiros.map((x) => x.inicio))),
+          },
+        ]
+      : []),
   ];
   return sheet<Renglon>({
     name: "Balance",

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, sumDecimals } from "@/lib/money";
 import type { Balance, LineaDeBalance } from "@/lib/balance";
 
 const verde = "text-green-700 dark:text-green-400";
@@ -42,6 +42,7 @@ export function BalanceTabla({ balance, ini, fin }: { balance: Balance; ini: str
               <td className="whitespace-nowrap px-4 py-2.5 text-right">{formatMoney(patrimonio.cierre)}</td>
               <td className={`whitespace-nowrap px-4 py-2.5 text-right ${color(difPN)}`}>{conSigno(difPN)}</td>
             </tr>
+            {retiros.length > 0 && <Retiros retiros={retiros} />}
           </tbody>
         </table>
       </div>
@@ -53,19 +54,63 @@ export function BalanceTabla({ balance, ini, fin }: { balance: Balance; ini: str
         </p>
         {retiros.length > 0 && (
           <p>
-            No entra en el activo lo que se llevaron los socios por su cuenta, porque no se va a cobrar:{" "}
-            {retiros.map((r, i) => (
-              <span key={r.nombre}>
-                {i > 0 && (i === retiros.length - 1 ? " y " : ", ")}
-                {r.nombre} {formatMoney(r.cierre)}
-              </span>
-            ))}{" "}
-            al {fin}. Ya está descontado del patrimonio: esa plata salió de la caja.
+            El retiro societario no entra en el activo ni en el pasivo: lo que se llevaron los socios no se va a cobrar, y
+            lo que pusieron de más no es una deuda con terceros. Cuenta cuánto varió: si baja, pusieron más de lo que se
+            llevaron —aportes, aceite entregado— y eso es parte de lo que subió el patrimonio.
           </p>
         )}
       </div>
     </section>
   );
+}
+
+/** Fuera del balance: el saldo a favor nuestro de cada cuenta de retiro y cuánto varió en el mes. */
+function Retiros({ retiros }: { retiros: Balance["retiros"] }) {
+  const dif = sumDecimals(retiros.map((r) => r.cierre)).minus(sumDecimals(retiros.map((r) => r.inicio)));
+  return (
+    <>
+      <tr className="border-t border-foreground/10 bg-foreground/[0.02]">
+        <td colSpan={4} className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-foreground/60">
+          Retiro societario{" "}
+          <span className="font-normal normal-case tracking-normal text-foreground/40">· fuera del balance, lo que tienen retirado los socios</span>
+        </td>
+      </tr>
+      {retiros.map((r) => (
+        <tr key={r.nombre} className="border-t border-foreground/5">
+          <td className="px-4 py-2">
+            {r.slug ? (
+              <Link href={`/cuentas-corrientes/${r.slug}`} className="hover:underline hover:underline-offset-2">
+                {r.nombre}
+              </Link>
+            ) : (
+              r.nombre
+            )}
+            <span className="block text-xs text-foreground/50">{queHizo(r.cierre.minus(r.inicio))}</span>
+          </td>
+          <td className="whitespace-nowrap px-4 py-2 text-right">{importe(r.inicio)}</td>
+          <td className="whitespace-nowrap px-4 py-2 text-right">{importe(r.cierre)}</td>
+          <td className="whitespace-nowrap px-4 py-2 text-right text-foreground/70">{conSigno(r.cierre.minus(r.inicio))}</td>
+        </tr>
+      ))}
+      <tr className="border-t border-foreground/10 font-semibold">
+        <td className="px-4 py-2">
+          Variación del retiro societario
+          <span className="block text-xs font-normal text-foreground/50">{queHizo(dif, true)}</span>
+        </td>
+        <td />
+        <td />
+        <td className="whitespace-nowrap px-4 py-2 text-right">{conSigno(dif)}</td>
+      </tr>
+    </>
+  );
+}
+
+/** Si el saldo a favor subió, se llevaron más de lo que pusieron; si bajó, al revés. */
+function queHizo(dif: Prisma.Decimal, plural = false) {
+  if (dif.isZero()) return "sin cambios en el mes";
+  return dif.isPositive()
+    ? `${plural ? "se llevaron" : "se llevó"} ${formatMoney(dif)} más de lo que ${plural ? "pusieron" : "puso"}`
+    : `${plural ? "pusieron" : "puso"} ${formatMoney(dif.abs())} más de lo que se ${plural ? "llevaron" : "llevó"}`;
 }
 
 function Grupo({

@@ -24,10 +24,11 @@ export type Balance = {
   totalPasivo: { inicio: Prisma.Decimal; cierre: Prisma.Decimal };
   patrimonio: { inicio: Prisma.Decimal; cierre: Prisma.Decimal };
   /**
-   * Lo que se llevaron los socios por su cuenta corriente, acumulado: queda a favor nuestro, pero
-   * no se va a cobrar. No es activo; ya está descontado del patrimonio porque la plata salió.
+   * El saldo de las cuentas por las que retiran los socios, a favor nuestro (negativo si queda a
+   * favor de ellos). Fuera del activo y del pasivo: no se va a cobrar ni es deuda con terceros. Lo
+   * que importa es cuánto varió en el mes: si sube, se llevaron más de lo que pusieron.
    */
-  retiros: { nombre: string; inicio: Prisma.Decimal; cierre: Prisma.Decimal }[];
+  retiros: { nombre: string; slug?: string; inicio: Prisma.Decimal; cierre: Prisma.Decimal }[];
 };
 
 type Punta = "inicio" | "cierre";
@@ -43,7 +44,9 @@ type Corte = { punta: Punta; hasta: Date; t: Date };
  * - **La plata en la calle**: el saldo de cada cliente. Uno a favor del cliente (pagó de más, o por
  *   adelantado) es deuda nuestra y va al pasivo.
  * - **La deuda con proveedores**: el saldo de cada proveedor. Uno a favor nuestro es un anticipo y va
- *   al activo — salvo la cuenta por la que retiran los socios, que no se va a cobrar (`retiros`).
+ *   al activo.
+ * - **Los retiros de los socios** quedan afuera, para cualquier lado que esté el saldo (`retiros`):
+ *   lo que se llevaron no se va a cobrar, y lo que pusieron de más no es deuda con terceros.
  * - **Los empleados**: lo que se les debe de sueldo, o lo que se les adelantó.
  * - **Las preformas en el soplador**: las nuestras que tiene Teoplast, o las suyas que le debemos,
  *   al costo de la preforma. No pasan por el depósito, así que no están en el stock.
@@ -172,6 +175,11 @@ export async function getBalance(params: {
         anotar(linea("cheques", "Cheques y echeqs en cartera", "recibidos y todavía sin depositar ni entregar"), punta, cheques, caja);
         continue;
       }
+      if (e.retiroSocietario) {
+        // Fuera del balance, aunque quede a favor de ellos: va aparte, con lo que varió en el mes.
+        anotar(linea("retiros", ""), punta, saldo.negated(), quien);
+        continue;
+      }
       if (saldo.isZero()) continue;
       if (e.formaDeSueldo) {
         if (saldo.isNegative()) anotar(linea("adelantos", "Adelantos a empleados"), punta, saldo.negated(), quien);
@@ -181,9 +189,6 @@ export async function getBalance(params: {
         else anotar(linea("anticipos-clientes", "Anticipos de clientes", "pagaron de más o por adelantado"), punta, saldo.negated(), quien);
       } else if (saldo.isPositive()) {
         anotar(linea("proveedores", "Deuda con proveedores"), punta, saldo, quien);
-      } else if (e.retiroSocietario) {
-        // No es un crédito: es lo que se llevaron los socios. Va aparte, fuera del activo.
-        anotar(linea("retiros", ""), punta, saldo.negated(), quien);
       } else {
         anotar(linea("anticipos-proveedores", "Anticipos a proveedores", "les pagamos de más o por adelantado"), punta, saldo.negated(), quien);
       }
@@ -239,6 +244,6 @@ export async function getBalance(params: {
     totalActivo,
     totalPasivo,
     patrimonio: { inicio: totalActivo.inicio.minus(totalPasivo.inicio), cierre: totalActivo.cierre.minus(totalPasivo.cierre) },
-    retiros: lineas.get("retiros")?.filas.map(({ nombre, inicio, cierre }) => ({ nombre, inicio, cierre })) ?? [],
+    retiros: lineas.get("retiros")?.filas ?? [],
   };
 }
