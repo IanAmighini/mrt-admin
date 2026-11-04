@@ -14,6 +14,7 @@ import {
 import { formatProductBrandLabel } from "@/lib/product-label";
 import { getAccountDocuments, getDocumentEffect, getDocumentPending, getTreasuries, type DocumentWithRelations } from "@/lib/ledger";
 import { NUMERO_SALDO_INICIAL } from "@/lib/saldo-inicial";
+import { esMovimientoDeCheques } from "@/lib/pagos";
 
 export type StatementPayment = Prisma.PaymentGetPayload<{ include: { allocations: true } }>;
 export type StatementLinkedPayment = Prisma.PaymentGetPayload<{
@@ -115,8 +116,8 @@ export function tituloDeCaja(
   doc: Pick<DocumentWithRelations, "number" | "reason" | "treasuryCategory" | "sourcePaymentId">
 ): { title: string; subtitle: string | null } {
   const categoria = doc.treasuryCategory ? TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory] : null;
-  // Los que generó otra carga (un cobro, un pago, un cambio de cheques) llevan un código interno.
-  const generado = Boolean(doc.sourcePaymentId) || doc.number.startsWith("CAMBIO-");
+  // Los que generó otra carga (un cobro, un pago, cheques) llevan un código interno.
+  const generado = Boolean(doc.sourcePaymentId) || esMovimientoDeCheques(doc.number);
   const numero = generado ? null : `Nº ${doc.number.replace(/^CAJA-0*/, "")}`;
   return {
     title: doc.reason ?? categoria ?? "Movimiento de caja",

@@ -168,6 +168,7 @@ export const TREASURY_MOVEMENT_CATEGORY_LABELS: Record<TreasuryMovementCategory,
   PASE: "Pase entre cajas",
   AJUSTE_ARQUEO: "Ajuste por arqueo",
   APORTE_CAPITAL: "Aporte de capital",
+  INGRESO_FINANCIERO: "Ingreso financiero",
   OTRO: "Otro",
 };
 

@@ -101,6 +101,9 @@ export async function buildMonthlyReportEmail(period: Period) {
         ["Costo de lo vendido", escapeHtml(`− ${formatMoney(resultado.costo)}`)],
         ["Margen", escapeHtml(formatMoney(resultado.margen))],
         ["Gastos", escapeHtml(`− ${formatMoney(resultado.gastos)}`)],
+        ...(resultado.ingresosFinancieros.isZero()
+          ? []
+          : [["Ingresos financieros", escapeHtml(conSigno(resultado.ingresosFinancieros))]]),
         [`<strong>${gano ? "Ganancia" : "Pérdida"}</strong>`, `<strong>${escapeHtml(conSigno(resultado.resultado))}</strong>`],
       ]
     ),
@@ -146,7 +149,7 @@ export async function buildMonthlyReportEmail(period: Period) {
   const text = [
     `MRT — Cierre de ${mes}`,
     "",
-    `${gano ? "Se ganaron" : "Se perdieron"} ${formatMoney(resultado.resultado.abs())}: ventas ${formatMoney(resultado.ventas)}, costo de lo vendido ${formatMoney(resultado.costo)}, gastos ${formatMoney(resultado.gastos)}.`,
+    `${gano ? "Se ganaron" : "Se perdieron"} ${formatMoney(resultado.resultado.abs())}: ventas ${formatMoney(resultado.ventas)}, costo de lo vendido ${formatMoney(resultado.costo)}, gastos ${formatMoney(resultado.gastos)}${resultado.ingresosFinancieros.isZero() ? "" : `, ingresos financieros ${conSigno(resultado.ingresosFinancieros)}`}.`,
     `Envasado: ${pallets(produccion.totalPallets)} (${litros}).`,
     `Mercadería entregada: ${pallets(ventas.totales.pallets)} por ${formatMoney(entregado)}. Insumos vendidos: ${formatMoney(ventasDeInsumos.ventas)}. Cobrado a clientes: ${formatMoney(cobrado)}.`,
     `Producto terminado: de ${formatQuantity(producto.pallets.inicio)} a ${formatQuantity(producto.pallets.cierre)} pallets (${conSigno(difProducto)}). Insumos: ${conSigno(difInsumos)}.`,

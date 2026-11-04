@@ -10,7 +10,7 @@ import { diffDeCampos, logAudit } from "@/lib/audit";
 import { asegurarSinNegativos } from "@/lib/sin-negativos";
 import { formatMoney, parseNumeroEscrito } from "@/lib/money";
 import { EXPENSE_CATEGORY_LABELS } from "@/lib/labels";
-import { circuitoDeTesoreria } from "@/lib/pagos";
+import { circuitoDeTesoreria, esMovimientoDeCheques } from "@/lib/pagos";
 import { getCajaChica, getCajaPorId, proximoNumeroDeCaja, type CajaConCuenta } from "@/lib/caja";
 import { puedeVerRuta } from "@/lib/nav";
 
@@ -339,8 +339,8 @@ export async function editarMovimientoDeCaja(formData: FormData) {
   if (documento.sourcePaymentId) {
     throw new UserError("Este movimiento lo generó un cobro o un pago: se corrige editando ese pago.");
   }
-  if (documento.number.startsWith("CAMBIO-")) {
-    throw new UserError("Este movimiento es de un cambio de cheques: se corrige desde Cheques.");
+  if (esMovimientoDeCheques(documento.number)) {
+    throw new UserError("De este movimiento cuelgan cheques: no se edita. Borralo y cargalo de nuevo desde Cheques.");
   }
 
   const date = leerFecha(formData.get("date"));

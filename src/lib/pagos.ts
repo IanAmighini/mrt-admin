@@ -31,6 +31,15 @@ export function circuitoDeTesoreria(nombreTesoreria: string): Circuit {
   return esCaja(nombreTesoreria) ? "NEGRO" : "BLANCO";
 }
 
+/**
+ * Los movimientos de caja de los que cuelgan cheques: un cambio por efectivo y los cheques de una
+ * financiera. No se editan sueltos —el importe tiene que seguir cerrando con los cheques— y el
+ * número es un código interno que no se muestra.
+ */
+export function esMovimientoDeCheques(numero: string) {
+  return numero.startsWith("CAMBIO-") || numero.startsWith("FIN-");
+}
+
 const METODOS: PaymentMethod[] = [
   "EFECTIVO",
   "TRANSFERENCIA",

@@ -186,6 +186,9 @@ function cierreSheets(r: CierreReport): ExcelSheet<never>[] {
     { concepto: "Costo de lo vendido (por receta)", inicio: null, cierre: null, valor: r.resultado.costo.negated() },
     { concepto: "Margen", inicio: null, cierre: null, valor: r.resultado.margen },
     { concepto: "Gastos", inicio: null, cierre: null, valor: r.resultado.gastos.negated() },
+    ...(r.resultado.ingresosFinancieros.isZero()
+      ? []
+      : [{ concepto: "Ingresos financieros (cheques de financiera)", inicio: null, cierre: null, valor: r.resultado.ingresosFinancieros }]),
     { concepto: "Resultado", inicio: null, cierre: null, valor: r.resultado.resultado },
     { concepto: "", inicio: null, cierre: null, valor: null },
     { concepto: "Stock de insumos", inicio: r.insumos.inicio, cierre: r.insumos.cierre, valor: r.insumos.cierre.minus(r.insumos.inicio) },
@@ -821,6 +824,7 @@ function resultadoSheets(report: ResultadoReport, generatedAt: Date): ExcelSheet
     { concepto: "− Costo de insumos", importe: report.costoInsumos.negated() },
     { concepto: "Margen bruto", importe: report.margenBruto },
     { concepto: "− Gastos", importe: report.gastos.negated() },
+    ...(report.ingresosFinancieros.isZero() ? [] : [{ concepto: "+ Ingresos financieros", importe: report.ingresosFinancieros }]),
     { concepto: "Resultado", importe: report.resultado },
   ];
 
@@ -878,6 +882,9 @@ function resultadoSheets(report: ResultadoReport, generatedAt: Date): ExcelSheet
         { header: "Ventas", value: (r) => r.ventas, format: "money", width: 16 },
         { header: "Insumos", value: (r) => r.costoInsumos, format: "money", width: 16 },
         { header: "Gastos", value: (r) => r.gastos, format: "money", width: 16 },
+        ...(report.meses.some((m) => !m.ingresosFinancieros.isZero())
+          ? [{ header: "Ingresos financieros", value: (r: ResultadoMes) => r.ingresosFinancieros, format: "money" as const, width: 18 }]
+          : []),
         { header: "Resultado", value: (r) => r.resultado, format: "money", width: 16 },
       ],
       rows: report.meses,

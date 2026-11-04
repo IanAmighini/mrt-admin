@@ -38,6 +38,8 @@ import {
   devolverChequesALaCartera,
   entregarCheques,
   esMetodoCheque,
+  exigirChequesEnCartera,
+  exigirQueNoSeaDeFinanciera,
   exigirQueSalganDeSuCaja,
 } from "@/lib/cheques";
 import { diffDeCampos, logAudit } from "@/lib/audit";
@@ -354,6 +356,15 @@ export async function deleteDocument(formData: FormData) {
     throw new UserError("Es el movimiento de un pago: se corrige o se borra desde el pago.");
   }
   exigirAdminParaAjuste(user.role, document.type, document.account.entity.type);
+  await exigirChequesEnCartera(documentId);
+  // Los cheques de una financiera: el movimiento es la ganancia, y se lleva el cobro del cliente.
+  const cobroDeFinanciera = document.cobroDeFinancieraId
+    ? await prisma.payment.findUnique({
+        where: { id: document.cobroDeFinancieraId },
+        include: { account: { include: { entity: true } } },
+      })
+    : null;
+  const antesDelCobro = cobroDeFinanciera ? await fotoDelPagoGuardado(prisma, cobroDeFinanciera.id) : null;
   if (!NON_FACTURA_TYPES.includes(document.type)) {
     throw new UserError("Este comprobante no es una nota ni un ajuste.");
   }
@@ -373,6 +384,11 @@ export async function deleteDocument(formData: FormData) {
     const madera = await insumosDelComprobante(tx, documentId);
     await tx.document.delete({ where: { id: documentId } });
     if (madera.length > 0) await asegurarSinNegativos(tx, { insumos: madera });
+    // Después del movimiento: borrar el cobro primero se lo llevaba en cascada.
+    if (cobroDeFinanciera) {
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: cobroDeFinanciera.id } });
+      await tx.payment.delete({ where: { id: cobroDeFinanciera.id } });
+    }
 
     // Borrar una entrada de plata —o la pata que entraba de un pase— puede dejar una caja en rojo.
     const cuentaDeLaOtraPata = otraPata
@@ -388,10 +404,21 @@ export async function deleteDocument(formData: FormData) {
       summary: `#${document.number} — ${document.account.entity.name} — ${formatMoney(document.totalAmount, document.currency)}`,
       cambios: diffDeCampos(antesDelDoc, null, CAMPOS_DEL_DOCUMENTO),
     });
+    if (cobroDeFinanciera) {
+      await logAudit(tx, {
+        userId: user.id,
+        action: "DELETE",
+        entityType: "Pago",
+        entityId: cobroDeFinanciera.account.entityId,
+        summary: `${cobroDeFinanciera.account.entity.name} — ${formatMoney(cobroDeFinanciera.amount)} — con los cheques de financiera #${document.number}`,
+        cambios: diffDeCampos(antesDelCobro, null, CAMPOS_DEL_PAGO_GUARDADO),
+      });
+    }
   });
 
-  await reimputarEntidades(document.account.entityId);
+  await reimputarEntidades(document.account.entityId, cobroDeFinanciera?.account.entityId);
   revalidatePath(`/cuentas-corrientes/${document.account.entity.slug}`);
+  if (cobroDeFinanciera) revalidatePath(`/cuentas-corrientes/${cobroDeFinanciera.account.entity.slug}`);
 }
 
 /**
@@ -2513,6 +2540,7 @@ export async function deletePayment(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
   await exigirQueNoSeaDeSueldos({ paymentId: String(formData.get("paymentId") || "") });
+  await exigirQueNoSeaDeFinanciera(String(formData.get("paymentId") || ""));
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({
@@ -2590,6 +2618,7 @@ export async function updatePayment(formData: FormData) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
   await exigirQueNoSeaDeSueldos({ paymentId: String(formData.get("paymentId") || "") });
+  await exigirQueNoSeaDeFinanciera(String(formData.get("paymentId") || ""));
 
   const paymentId = String(formData.get("paymentId") || "");
   const payment = await prisma.payment.findUnique({

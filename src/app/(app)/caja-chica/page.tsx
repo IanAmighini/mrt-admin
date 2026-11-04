@@ -2,6 +2,7 @@ import { Wallet } from "lucide-react";
 import { requireUser } from "@/lib/auth-helpers";
 import { getAccountStatement } from "@/lib/account-statement";
 import { getCajaChica, getOtrasCajas } from "@/lib/caja";
+import { esMovimientoDeCheques } from "@/lib/pagos";
 import { formatMoney, formatNumeroExacto, ZERO } from "@/lib/money";
 import {
   EXPENSE_CATEGORY_LABELS,
@@ -58,7 +59,7 @@ export default async function CajaChicaPage({
         ? TREASURY_MOVEMENT_CATEGORY_LABELS[doc.treasuryCategory]
         : null;
     // Lo que escribió un cobro o un pago se borra desde ese pago, no desde acá.
-    const editable = Boolean(doc && !doc.sourcePaymentId && !doc.number.startsWith("CAMBIO-"));
+    const editable = Boolean(doc && !doc.sourcePaymentId && !esMovimientoDeCheques(doc.number));
     const editar =
       isAdmin && doc && editable ? (
         <FormModal triggerLabel="Editar" soloIcono iconName="edit" title="Editar movimiento de caja" action={editarMovimientoDeCaja}>

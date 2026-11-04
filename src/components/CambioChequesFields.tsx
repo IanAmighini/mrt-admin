@@ -9,19 +9,16 @@ const inputClass = "w-full rounded-lg border border-foreground/20 bg-background 
 const submitClass =
   "w-fit rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover";
 
-type Fila = { key: number; numero: string; banco: string; monto: string; fecha: string };
-const filaVacia = (key: number): Fila => ({ key, numero: "", banco: "", monto: "", fecha: "" });
+export type FilaDeCheque = { key: number; numero: string; banco: string; monto: string; fecha: string };
+const filaVacia = (key: number): FilaDeCheque => ({ key, numero: "", banco: "", monto: "", fecha: "" });
+export const filasIniciales = (): FilaDeCheque[] => [filaVacia(0)];
 
 /**
  * Le damos efectivo a otra empresa y nos da cheques. Es a la par: lo que sale de la caja es el
  * total de los cheques, así que no hay un campo de efectivo — se calcula y se muestra.
  */
 export function CambioChequesFields({ treasuries }: { treasuries: Entity[] }) {
-  const [filas, setFilas] = useState<Fila[]>([filaVacia(0)]);
-  const [nextKey, setNextKey] = useState(1);
-
-  const set = (key: number, campo: keyof Fila, valor: string) =>
-    setFilas((prev) => prev.map((f) => (f.key === key ? { ...f, [campo]: valor } : f)));
+  const [filas, setFilas] = useState<FilaDeCheque[]>(filasIniciales);
 
   const total = filas.reduce((acc, f) => acc.plus(parseNumeroSuave(f.monto) ?? ZERO), ZERO);
 
@@ -61,73 +58,7 @@ export function CambioChequesFields({ treasuries }: { treasuries: Entity[] }) {
         </select>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-sm">Cheques que entran</p>
-        {filas.map((f) => (
-          <div key={f.key} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] items-end gap-2">
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/60">Número</label>
-              <input
-                name="chequeNumero"
-                value={f.numero}
-                onChange={(e) => set(f.key, "numero", e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/60">Banco</label>
-              <input
-                name="chequeBanco"
-                value={f.banco}
-                onChange={(e) => set(f.key, "banco", e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/60">Monto</label>
-              <input
-                name="chequeMonto"
-                inputMode="decimal"
-                value={f.monto}
-                onChange={(e) => set(f.key, "monto", e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-foreground/60">Cobrable desde</label>
-              <input
-                name="chequeFecha"
-                type="date"
-                value={f.fecha}
-                onChange={(e) => set(f.key, "fecha", e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div className="pb-1">
-              {filas.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setFilas((prev) => prev.filter((x) => x.key !== f.key))}
-                  className="px-2 text-foreground/40 hover:text-foreground"
-                  aria-label="Quitar cheque"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            setFilas((prev) => [...prev, filaVacia(nextKey)]);
-            setNextKey((k) => k + 1);
-          }}
-          className="rounded-lg border border-foreground/20 bg-background px-3 py-1.5 text-sm hover:bg-foreground/5"
-        >
-          + Agregar cheque
-        </button>
-      </div>
+      <FilasDeCheques filas={filas} setFilas={setFilas} />
 
       <div className="flex items-baseline justify-between border-t border-foreground/10 pt-3">
         <span className="text-sm">Efectivo que sale de la caja</span>
@@ -138,5 +69,86 @@ export function CambioChequesFields({ treasuries }: { treasuries: Entity[] }) {
         Registrar cambio
       </button>
     </>
+  );
+}
+
+/** Los cheques que entran, uno por renglón: número, banco, monto y desde cuándo se cobra. */
+export function FilasDeCheques({
+  filas,
+  setFilas,
+}: {
+  filas: FilaDeCheque[];
+  setFilas: React.Dispatch<React.SetStateAction<FilaDeCheque[]>>;
+}) {
+  const set = (key: number, campo: keyof FilaDeCheque, valor: string) =>
+    setFilas((prev) => prev.map((f) => (f.key === key ? { ...f, [campo]: valor } : f)));
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm">Cheques que entran</p>
+      {filas.map((f) => (
+        <div key={f.key} className="grid grid-cols-[1fr_1fr_1fr_1fr_auto] items-end gap-2">
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60">Número</label>
+            <input
+              name="chequeNumero"
+              value={f.numero}
+              onChange={(e) => set(f.key, "numero", e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60">Banco</label>
+            <input
+              name="chequeBanco"
+              value={f.banco}
+              onChange={(e) => set(f.key, "banco", e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60">Monto</label>
+            <input
+              name="chequeMonto"
+              inputMode="decimal"
+              value={f.monto}
+              onChange={(e) => set(f.key, "monto", e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-foreground/60">Cobrable desde</label>
+            <input
+              name="chequeFecha"
+              type="date"
+              value={f.fecha}
+              onChange={(e) => set(f.key, "fecha", e.target.value)}
+              className={inputClass}
+            />
+          </div>
+          <div className="pb-1">
+            {filas.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setFilas((prev) => prev.filter((x) => x.key !== f.key))}
+                className="px-2 text-foreground/40 hover:text-foreground"
+                aria-label="Quitar cheque"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          setFilas((prev) => [...prev, filaVacia(Math.max(...prev.map((x) => x.key)) + 1)]);
+        }}
+        className="rounded-lg border border-foreground/20 bg-background px-3 py-1.5 text-sm hover:bg-foreground/5"
+      >
+        + Agregar cheque
+      </button>
+    </div>
   );
 }

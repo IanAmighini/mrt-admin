@@ -114,6 +114,9 @@ enum TreasuryMovementCategory {
   AJUSTE_ARQUEO
   /// Plata que pone un socio. No es ingreso de la empresa: es capital.
   APORTE_CAPITAL
+  /// Lo que se ganó con plata, no vendiendo: los cheques a plazo de una financiera valen más que
+  /// lo que se le transfirió. Suma al resultado del mes como ingreso financiero.
+  INGRESO_FINANCIERO
   OTRO
 }
 
@@ -346,34 +349,41 @@ model Document {
    * de la cuenta; esto es sólo quién figura en el comprobante — y es lo que el libro de IVA
    * declara, porque la factura lleva SU CUIT, no el del titular.
    */
-  destinatarioId   String?
-  destinatario     Destinatario?             @relation(fields: [destinatarioId], references: [id])
+  destinatarioId      String?
+  destinatario        Destinatario?             @relation(fields: [destinatarioId], references: [id])
   /// El viaje al que pertenece este comprobante, si va agrupado en uno.
-  entregaId        String?
-  entrega          Entrega?                  @relation(fields: [entregaId], references: [id])
+  entregaId           String?
+  entrega             Entrega?                  @relation(fields: [entregaId], references: [id])
   /**
    * Solo para AJUSTE en la cuenta de una Entity TESORERIA: qué tipo de movimiento es.
    */
-  treasuryCategory TreasuryMovementCategory?
+  treasuryCategory    TreasuryMovementCategory?
   /**
    * Solo para GASTO: de qué es el gasto. El detalle en palabras va en `reason`.
    */
-  expenseCategory  ExpenseCategory?
+  expenseCategory     ExpenseCategory?
   /**
    * Si este AJUSTE se generó solo a partir de un cobro/pago (no cargado a mano), el Payment que
    * lo originó — con cascade, al borrar ese Payment este Document se borra solo.
    */
-  sourcePaymentId  String?                   @unique
-  sourcePayment    Payment?                  @relation("PaymentTreasuryDocument", fields: [sourcePaymentId], references: [id], onDelete: Cascade)
+  sourcePaymentId     String?                   @unique
+  sourcePayment       Payment?                  @relation("PaymentTreasuryDocument", fields: [sourcePaymentId], references: [id], onDelete: Cascade)
   /**
    * La otra pata de un pase entre cajas. Un pase es un solo hecho —la plata sale de una caja y
    * entra en otra— pero se escribe como dos movimientos, uno en cada libro, porque cada caja
    * lleva su propio saldo. Esto los ata para que se borren juntos y para poder decir de dónde
    * vino la plata sin repetir el dato en el texto.
    */
-  contraparteId    String?                   @unique
-  contraparte      Document?                 @relation("PaseEntreCajas", fields: [contraparteId], references: [id], onDelete: Cascade)
-  contraparteDe    Document?                 @relation("PaseEntreCajas")
+  contraparteId       String?                   @unique
+  contraparte         Document?                 @relation("PaseEntreCajas", fields: [contraparteId], references: [id], onDelete: Cascade)
+  contraparteDe       Document?                 @relation("PaseEntreCajas")
+  /**
+   * Cheques de una financiera: el cobro del cliente que le transfirió a la financiera. Este
+   * movimiento es la ganancia —lo que los cheques valen de más— y los cheques cuelgan de él. Se
+   * borran juntos: borrar el cobro se lleva el movimiento y los cheques.
+   */
+  cobroDeFinancieraId String?                   @unique
+  cobroDeFinanciera   Payment?                  @relation("CobroDeFinanciera", fields: [cobroDeFinancieraId], references: [id], onDelete: Cascade)
 
   remitoLinks       DocumentLink[]      @relation("RemitoLinks")
   facturaLinks      DocumentLink[]      @relation("FacturaLinks")
@@ -543,30 +553,32 @@ model Payment {
   /**
    * A qué tesorería fue (cobro) o de dónde salió (pago a proveedor) la plata de este pago.
    */
-  treasuryId        String?
-  treasury          Entity?          @relation(fields: [treasuryId], references: [id])
+  treasuryId             String?
+  treasury               Entity?          @relation(fields: [treasuryId], references: [id])
   /// El cheque que entró con este cobro.
-  chequeRecibido    Cheque?          @relation("ChequeRecibido")
+  chequeRecibido         Cheque?          @relation("ChequeRecibido")
+  /// Cuando el cliente le transfirió a una financiera que nos dio cheques: ese movimiento.
+  movimientoDeFinanciera Document?        @relation("CobroDeFinanciera")
   /// Los cheques que salieron con este pago. Pueden ser varios: a un proveedor se le pagan $2.000.000
   /// con tres echeqs de la cartera, y se carga como un solo pago.
-  chequesEntregados Cheque[]         @relation("ChequeEntregado")
+  chequesEntregados      Cheque[]         @relation("ChequeEntregado")
   /// La orden de pago que documenta este pago, si se generó.
-  ordenPagoId       String?
-  ordenPago         OrdenPago?       @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
-  renglonDeSueldo   RenglonDeSueldo? @relation("PagoDeSueldo")
+  ordenPagoId            String?
+  ordenPago              OrdenPago?       @relation(fields: [ordenPagoId], references: [id], onDelete: SetNull)
+  renglonDeSueldo        RenglonDeSueldo? @relation("PagoDeSueldo")
   /**
    * Cuando un cobro se asignó "directo a un proveedor", conecta el Payment del cobro con el
    * Payment del pago generado en la cuenta del proveedor (y viceversa). Sin relation formal a
    * propósito — el borrado en cascada de la pareja se maneja a mano en la acción.
    */
-  linkedPaymentId   String?
+  linkedPaymentId        String?
   /**
    * El viaje contra el que se imputa este pago. Un pago con viaje sólo cancela comprobantes de
    * ESE viaje, y uno sin viaje sólo cancela los que tampoco lo tienen: es lo que evita que el
    * pago del camión 4 se coma lo que quedaba del camión 3.
    */
-  entregaId         String?
-  entrega           Entrega?         @relation(fields: [entregaId], references: [id])
+  entregaId              String?
+  entrega                Entrega?         @relation(fields: [entregaId], references: [id])
 
   allocations      PaymentAllocation[]
   treasuryDocument Document?           @relation("PaymentTreasuryDocument")

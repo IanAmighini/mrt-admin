@@ -27,6 +27,9 @@ export async function CierreSection({ period }: { period: Period }) {
   const stockCierre = insumos.cierre.plus(producto.cierre);
   const difStock = stockCierre.minus(stockInicio);
   const gano = !resultado.resultado.isNegative();
+  const hayFinancieros = !resultado.ingresosFinancieros.isZero();
+  // La columna del mes a mes, sólo si algún mes tuvo: en cero en todos no dice nada.
+  const columnaFinancieros = res.meses.some((m) => !m.ingresosFinancieros.isZero());
   const ini = formatFecha(r.inicio);
   const fin = formatFecha(r.cierre);
 
@@ -43,7 +46,7 @@ export async function CierreSection({ period }: { period: Period }) {
         <KpiCard
           label={gano ? "Se ganó" : "Se perdió"}
           value={formatMoney(resultado.resultado.abs())}
-          caption="ventas menos lo que costó lo vendido, menos los gastos"
+          caption={`ventas menos lo que costó lo vendido, menos los gastos${hayFinancieros ? ", más los ingresos financieros" : ""}`}
           icon={gano ? TrendingUp : TrendingDown}
           color={gano ? "green" : "red"}
         />
@@ -77,6 +80,13 @@ export async function CierreSection({ period }: { period: Period }) {
               <Fila etiqueta="Costo de lo vendido" detalle="por receta, a lo que costaba cada insumo" valor={`− ${formatMoney(resultado.costo)}`} />
               <Fila etiqueta="Margen" valor={formatMoney(resultado.margen)} fuerte />
               <Fila etiqueta="Gastos" valor={`− ${formatMoney(resultado.gastos)}`} />
+              {hayFinancieros && (
+                <Fila
+                  etiqueta="Ingresos financieros"
+                  detalle="lo que los cheques de financiera valen más que lo transferido"
+                  valor={conSigno(resultado.ingresosFinancieros)}
+                />
+              )}
               <Fila
                 etiqueta="Resultado"
                 valor={<span className={color(resultado.resultado)}>{conSigno(resultado.resultado)}</span>}
@@ -164,19 +174,25 @@ export async function CierreSection({ period }: { period: Period }) {
                 <th className="px-3 py-2 text-right font-medium">Ventas</th>
                 <th className="px-3 py-2 text-right font-medium">Costo de lo vendido</th>
                 <th className="px-3 py-2 text-right font-medium">Gastos</th>
+                {columnaFinancieros && <th className="px-3 py-2 text-right font-medium">Ingresos financieros</th>}
                 <th className="px-4 py-2 text-right font-medium">Resultado</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
               {/* Sin los meses de antes de la app: todo en cero no dice nada. */}
               {res.meses
-                .filter((m) => !m.ventas.isZero() || !m.costoInsumos.isZero() || !m.gastos.isZero())
+                .filter((m) => !m.ventas.isZero() || !m.costoInsumos.isZero() || !m.gastos.isZero() || !m.ingresosFinancieros.isZero())
                 .map((m) => (
                 <tr key={m.from.toISOString()} className="border-t border-foreground/5">
                   <td className="px-4 py-2 capitalize">{m.label}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right">{m.ventas.isZero() ? "—" : formatMoney(m.ventas.toDecimalPlaces(0))}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right text-foreground/60">{m.costoInsumos.isZero() ? "—" : formatMoney(m.costoInsumos.toDecimalPlaces(0))}</td>
                   <td className="whitespace-nowrap px-3 py-2 text-right text-foreground/60">{m.gastos.isZero() ? "—" : formatMoney(m.gastos.toDecimalPlaces(0))}</td>
+                  {columnaFinancieros && (
+                    <td className="whitespace-nowrap px-3 py-2 text-right text-foreground/60">
+                      {m.ingresosFinancieros.isZero() ? "—" : conSigno(m.ingresosFinancieros.toDecimalPlaces(0))}
+                    </td>
+                  )}
                   <td className={`whitespace-nowrap px-4 py-2 text-right font-medium ${color(m.resultado)}`}>
                     {m.resultado.isZero() ? "—" : conSigno(m.resultado.toDecimalPlaces(0))}
                   </td>

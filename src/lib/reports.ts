@@ -492,7 +492,15 @@ export type CierreReport = {
   inicio: Date;
   /** El último día del período, o hoy si el período todavía no terminó. */
   cierre: Date;
-  resultado: { ventas: Prisma.Decimal; costo: Prisma.Decimal; margen: Prisma.Decimal; gastos: Prisma.Decimal; resultado: Prisma.Decimal };
+  resultado: {
+    ventas: Prisma.Decimal;
+    costo: Prisma.Decimal;
+    margen: Prisma.Decimal;
+    gastos: Prisma.Decimal;
+    /** Los cheques de una financiera que valen más que lo transferido. Suma al resultado. */
+    ingresosFinancieros: Prisma.Decimal;
+    resultado: Prisma.Decimal;
+  };
   insumos: {
     inicio: Prisma.Decimal;
     cierre: Prisma.Decimal;
@@ -524,7 +532,7 @@ export type CierreReport = {
  * lo que tenía al empezar.
  *
  * El resultado es el de siempre (`getRentabilidad`): ventas menos lo que costó lo vendido, por
- * receta, menos los gastos. Lo que se compró y no se vendió no es gasto: queda en el depósito, como
+ * receta, menos los gastos, más los ingresos financieros. Lo que se compró y no se vendió no es gasto: queda en el depósito, como
  * insumo o ya envasado. Por eso el stock va **con el producto terminado**: si se envasó más de lo que
  * se entregó, los insumos bajan y los pallets suben, y mirando sólo los insumos parecería que se
  * perdió.
@@ -712,6 +720,7 @@ export async function getCierreReport(period: Period): Promise<CierreReport> {
       costo: rentabilidad.costoInsumos,
       margen,
       gastos: rentabilidad.gastos,
+      ingresosFinancieros: rentabilidad.ingresosFinancieros,
       resultado: rentabilidad.rentabilidad,
     },
     insumos: {
@@ -1398,16 +1407,18 @@ export type ResultadoMes = {
   ventas: Prisma.Decimal;
   costoInsumos: Prisma.Decimal;
   gastos: Prisma.Decimal;
+  ingresosFinancieros: Prisma.Decimal;
   resultado: Prisma.Decimal;
 };
 
 export type ResultadoReport = {
   period: Period;
-  /** La cascada del período elegido: ventas − insumos = margen bruto − gastos = resultado. */
+  /** La cascada del período elegido: ventas − insumos = margen bruto − gastos + ingresos financieros = resultado. */
   ventas: Prisma.Decimal;
   costoInsumos: Prisma.Decimal;
   margenBruto: Prisma.Decimal;
   gastos: Prisma.Decimal;
+  ingresosFinancieros: Prisma.Decimal;
   resultado: Prisma.Decimal;
   /** En qué se fueron los gastos del período. Sin rubro van juntos al final. */
   porRubro: { category: ExpenseCategory | null; total: Prisma.Decimal }[];
@@ -1495,6 +1506,7 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
         ventas: r.ingresos,
         costoInsumos: r.costoInsumos,
         gastos: r.gastos,
+        ingresosFinancieros: r.ingresosFinancieros,
         resultado: r.rentabilidad,
       };
     })
@@ -1506,6 +1518,7 @@ export async function getResultadoReport(period: Period): Promise<ResultadoRepor
     costoInsumos: actual.costoInsumos,
     margenBruto: actual.ingresos.minus(actual.costoInsumos),
     gastos: actual.gastos,
+    ingresosFinancieros: actual.ingresosFinancieros,
     resultado: actual.rentabilidad,
     porRubro: Array.from(porRubro.entries())
       .map(([category, total]) => ({ category, total }))

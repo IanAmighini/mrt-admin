@@ -185,3 +185,35 @@ export async function getCarteraParaFormulario() {
     fechaCobro: c.fechaCobro ? formatFecha(c.fechaCobro) : null,
   }));
 }
+
+/**
+ * El cobro de unos cheques de financiera no se edita ni se borra suelto: el movimiento de la
+ * ganancia y los cheques cuelgan de él, y la ganancia es la diferencia con lo que transfirió.
+ * Se borra todo junto desde el movimiento de Caja Bufano, y se vuelve a cargar.
+ */
+export async function exigirQueNoSeaDeFinanciera(paymentId: string | null | undefined) {
+  if (!paymentId) return;
+  const movimiento = await prisma.document.findUnique({ where: { cobroDeFinancieraId: paymentId }, select: { id: true } });
+  if (movimiento) {
+    throw new UserError(
+      "Este cobro es de unos cheques de financiera: para corregirlo, borrá el «Ingreso financiero» en Caja Bufano (se lleva el cobro y los cheques) y cargalo de nuevo desde Cheques."
+    );
+  }
+}
+
+/**
+ * Antes de borrar un movimiento del que cuelgan cheques —un cambio, los de una financiera—: si
+ * alguno ya salió, borrarlo se llevaba un cheque que está en un pago, y el pago quedaba sin él.
+ */
+export async function exigirChequesEnCartera(documentId: string) {
+  const fuera = await prisma.cheque.findMany({
+    where: { cambioEnId: documentId, estado: { not: "EN_CARTERA" } },
+    select: { numero: true, estado: true },
+  });
+  if (fuera.length > 0) {
+    const numeros = fuera.map((c) => `#${c.numero}`).join(", ");
+    throw new UserError(
+      `${fuera.length === 1 ? "El cheque" : "Los cheques"} ${numeros} ya no ${fuera.length === 1 ? "está" : "están"} en cartera: primero borrá el pago con que ${fuera.length === 1 ? "salió" : "salieron"} o volvelos a la cartera.`
+    );
+  }
+}

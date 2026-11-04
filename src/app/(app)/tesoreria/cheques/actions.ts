@@ -10,8 +10,9 @@ import { diffDeCampos, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { marcarCheque } from "@/lib/cheques";
 import { circuitoDeTesoreria } from "@/lib/pagos";
-import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
-import { formatMoney, parseNumeroEscrito, parseNumeroOpcional, sumDecimals, ZERO } from "@/lib/money";
+import { CHEQUE_ESTADO_LABELS, CIRCUIT_LABELS } from "@/lib/labels";
+import { formatMoney, formatNumeroEditable, parseNumeroEscrito, parseNumeroOpcional, sumDecimals, ZERO } from "@/lib/money";
+import { rendimientoDeFinanciera } from "@/lib/financiera";
 
 function parseFormDate(value: FormDataEntryValue | null): Date {
   const str = String(value || "");
@@ -173,6 +174,183 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
 
   revalidatePath("/tesoreria/cheques");
   revalidatePath("/tesoreria");
+}
+
+/** Los cheques que da una financiera son de papel y quedan siempre en Caja Bufano. */
+const CAJA_DE_LA_FINANCIERA = "Caja Bufano";
+
+/**
+ * Cheques de una financiera: un cliente le transfiere a la financiera lo que nos debe, y ella nos
+ * da cheques a plazo por más. Son tres cosas a la vez, y se cargan juntas:
+ *  - **El cobro del cliente, por lo que transfirió.** Es lo que pagó; lo que los cheques valen de
+ *    más no es suyo.
+ *  - **Los cheques, en cartera en Caja Bufano**, por lo que dice el papel.
+ *  - **La diferencia, como ingreso financiero**: suma al resultado del mes. Antes se cargaba como
+ *    aporte de Cristian para que el efectivo cerrara, y la ganancia no aparecía en ningún lado.
+ *
+ * En la caja entran el cobro y la ganancia, que juntos son lo que valen los cheques. Los cheques
+ * cuelgan del movimiento de la ganancia, y éste del cobro: borrando el movimiento se va todo.
+ */
+export async function registrarChequesDeFinanciera(formData: FormData) {
+  const user = await requireRole(["ADMIN"]);
+
+  const caja = await prisma.entity.findFirst({ where: { type: "TESORERIA", name: CAJA_DE_LA_FINANCIERA } });
+  const cajaAccount = caja
+    ? await prisma.account.findUnique({
+        where: { entityId_circuit: { entityId: caja.id, circuit: circuitoDeTesoreria(caja.name) } },
+      })
+    : null;
+  if (!caja || !cajaAccount) throw new UserError(`No se encontró ${CAJA_DE_LA_FINANCIERA}.`);
+
+  const financiera = String(formData.get("financiera") || "").trim();
+  if (!financiera) throw new UserError("Escribí el nombre de la financiera.");
+  const date = parseFormDate(formData.get("date"));
+
+  const entityId = String(formData.get("entityId") || "");
+  const circuit = String(formData.get("circuit") || "");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Elegí la cuenta del cliente.");
+  const cuenta = entityId
+    ? await prisma.account.findUnique({
+        where: { entityId_circuit: { entityId, circuit } },
+        include: { entity: true },
+      })
+    : null;
+  if (!cuenta || !["CLIENTE", "AMBOS"].includes(cuenta.entity.type)) throw new UserError("Elegí qué cliente transfirió.");
+  // Los cheques son en pesos: un cliente en dólares pediría una cotización que este formulario no tiene.
+  if (cuenta.entity.moneda !== "ARS") {
+    throw new UserError(`La cuenta de ${cuenta.entity.name} va en dólares: cargá el cobro desde su ficha.`);
+  }
+
+  const transferencia = parseNumeroEscrito(String(formData.get("transferencia") || ""), "lo que transfirió el cliente");
+  if (!transferencia.greaterThan(0)) throw new UserError("Lo que transfirió el cliente tiene que ser mayor a cero.");
+
+  const numeros = formData.getAll("chequeNumero").map(String);
+  const bancos = formData.getAll("chequeBanco").map(String);
+  const montos = formData.getAll("chequeMonto").map(String);
+  const fechas = formData.getAll("chequeFecha").map(String);
+  const cheques = numeros
+    .map((numero, i) => ({
+      numero: numero.trim(),
+      banco: (bancos[i] ?? "").trim() || null,
+      montoRaw: (montos[i] ?? "").trim(),
+      fechaRaw: (fechas[i] ?? "").trim(),
+    }))
+    .filter((c) => c.numero || c.montoRaw)
+    .map((c) => {
+      if (!c.numero) throw new UserError("Falta el número de uno de los cheques.");
+      return {
+        numero: c.numero,
+        banco: c.banco,
+        amount: parseNumeroEscrito(c.montoRaw, `monto del cheque ${c.numero}`),
+        fechaCobro: c.fechaRaw ? parseFecha(c.fechaRaw) : null,
+      };
+    });
+  if (cheques.length === 0) throw new UserError("Cargá al menos un cheque.");
+
+  const { total, ganancia, pct, dias } = rendimientoDeFinanciera({
+    fecha: date,
+    transferencia,
+    cheques: cheques.map((c) => ({ monto: c.amount, fechaCobro: c.fechaCobro })),
+  });
+  if (ganancia.isNegative()) {
+    throw new UserError(
+      `Los cheques suman ${formatMoney(total)}, menos que lo que transfirió el cliente (${formatMoney(transferencia)}). Revisá los montos.`
+    );
+  }
+  const rinde = pct ? ` · ${formatNumeroEditable(pct)}% a ${dias} ${dias === 1 ? "día" : "días"}` : "";
+
+  await prisma.$transaction(async (tx) => {
+    const cobro = await tx.payment.create({
+      data: {
+        accountId: cuenta.id,
+        date,
+        amount: transferencia,
+        currency: "ARS",
+        method: "TRANSFERENCIA",
+        reference: `Transferencia a ${financiera}`,
+        treasuryId: caja.id,
+        createdById: user.id,
+      },
+    });
+    // El cobro entra a la caja como cualquier otro: es lo que trae, y se va con él.
+    await tx.document.create({
+      data: {
+        accountId: cajaAccount.id,
+        type: "AJUSTE",
+        number: `P-${cobro.id.slice(-8)}`,
+        date,
+        currency: "ARS",
+        netAmount: transferencia,
+        totalAmount: transferencia,
+        reason: `Cobro de ${cuenta.entity.name} — Transferencia a ${financiera}`,
+        treasuryCategory: "COBRO",
+        sourcePaymentId: cobro.id,
+        createdById: user.id,
+      },
+    });
+    const movimiento = await tx.document.create({
+      data: {
+        accountId: cajaAccount.id,
+        type: "AJUSTE",
+        number: `FIN-${Date.now().toString(36).toUpperCase()}`,
+        date,
+        currency: "ARS",
+        netAmount: ganancia,
+        totalAmount: ganancia,
+        reason: `Cheques de ${financiera} por ${formatMoney(total)}, por la transferencia de ${cuenta.entity.name}${rinde}`,
+        treasuryCategory: "INGRESO_FINANCIERO",
+        cobroDeFinancieraId: cobro.id,
+        createdById: user.id,
+      },
+    });
+    await tx.cheque.createMany({
+      data: cheques.map((c) => ({
+        ...c,
+        estado: "EN_CARTERA" as const,
+        cambiadoA: financiera,
+        cambioEnId: movimiento.id,
+        createdById: user.id,
+      })),
+    });
+
+    await logAudit(tx, {
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Cheques de financiera",
+      entityId: movimiento.id,
+      summary: `${financiera} — ${cheques.length} cheque(s) por ${formatMoney(total)}, transferencia de ${cuenta.entity.name} por ${formatMoney(transferencia)}`,
+      cambios: diffDeCampos(
+        null,
+        {
+          date,
+          financiera,
+          cliente: `${cuenta.entity.name} · ${CIRCUIT_LABELS[cuenta.circuit]}`,
+          transferencia: formatMoney(transferencia),
+          total: formatMoney(total),
+          ganancia: `${formatMoney(ganancia)}${rinde}`,
+          cheques: cheques
+            .map((c) => `#${c.numero}${c.banco ? ` (${c.banco})` : ""} — ${formatMoney(c.amount)}${c.fechaCobro ? ` — ${formatFecha(c.fechaCobro)}` : ""}`)
+            .join("\n"),
+        },
+        {
+          date: "Fecha",
+          financiera: "Financiera",
+          cliente: "Transfirió",
+          transferencia: "Transferencia",
+          total: "Cheques",
+          ganancia: "Ingreso financiero",
+          cheques: "Detalle",
+        }
+      ),
+    });
+  });
+
+  await reimputarEntidades(cuenta.entityId);
+  revalidatePath("/tesoreria/cheques");
+  revalidatePath("/tesoreria");
+  revalidatePath(`/cuentas-corrientes/${cuenta.entity.slug}`);
+  revalidatePath(`/cuentas-corrientes/${caja.slug}`);
+  revalidatePath("/pagos-clientes");
 }
 
 /**

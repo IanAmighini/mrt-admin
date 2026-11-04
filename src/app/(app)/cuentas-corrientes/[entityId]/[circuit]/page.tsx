@@ -6,7 +6,7 @@ import { getSopladores } from "@/lib/preformas";
 import { requireUser } from "@/lib/auth-helpers";
 import { findBySlugOrId, slugDeEntidad } from "@/lib/slug-lookup";
 import { getTreasuries } from "@/lib/ledger";
-import { circuitoDeTesoreria } from "@/lib/pagos";
+import { circuitoDeTesoreria, esMovimientoDeCheques } from "@/lib/pagos";
 import { puedeVerRuta } from "@/lib/nav";
 import { CAJA_CHICA_SLUG } from "@/lib/caja";
 import { getAccountStatement, type StatementEntry } from "@/lib/account-statement";
@@ -440,7 +440,7 @@ export default async function AccountLedgerPage({
     // En una caja, un movimiento cargado a mano se corrige con su propio formulario —fecha, monto,
     // concepto y rubro—, y sólo el administrador. Lo que escribió un pago se corrige en el pago.
     if (isTreasuryEntity) {
-      const editable = !doc.sourcePaymentId && !doc.number.startsWith("CAMBIO-");
+      const editable = !doc.sourcePaymentId && !esMovimientoDeCheques(doc.number);
       return (
         <div className="flex items-center gap-2">
           {user.role === "ADMIN" && editable && (

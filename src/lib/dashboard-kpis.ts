@@ -389,6 +389,18 @@ async function getGastosNetos(period: Period, cot: Cotizador): Promise<Prisma.De
 }
 
 /**
+ * Lo que se ganó con plata y no vendiendo: hoy, lo que los cheques de una financiera valen de más
+ * sobre lo que le transfirió el cliente. Va con su signo, en pesos (las cajas llevan pesos).
+ */
+async function getIngresosFinancieros(period: Period): Promise<Prisma.Decimal> {
+  const documents = await prisma.document.findMany({
+    where: { treasuryCategory: "INGRESO_FINANCIERO", date: { gte: period.from, lt: period.to } },
+    select: { totalAmount: true },
+  });
+  return sumDecimals(documents.map((d) => d.totalAmount));
+}
+
+/**
  * Los insumos que no llevan stock —pegamento, stretch, jabón, aditivo— se consumen sin pasar por el
  * depósito, así que no generan un CONSUMO_PRODUCCION que valorizar. Su costo es el de la compra.
  */
@@ -427,20 +439,22 @@ async function getFacturasDeProveedorSinCompra(period: Period, cot: Cotizador) {
 }
 
 /**
- * Margen del período: lo facturado menos lo que costó producirlo menos los gastos. Todo neto de
+ * Margen del período: lo facturado menos lo que costó producirlo menos los gastos, más los ingresos
+ * financieros (los cheques de una financiera, que valen más que lo transferido). Todo neto de
  * IVA y en pesos: lo que está en dólares —el aceite y las preformas de Cristian, las cuentas en
  * dólares de clientes y proveedores— se pasa con la cotización del día (`lib/cotizaciones`). Antes
  * quedaba afuera, y el margen salía sin el costo del aceite.
  */
 export async function getRentabilidad(period: Period = monthPeriod(), cotizador?: Cotizador) {
   const cot = cotizador ?? (await getCotizador());
-  const [ventasDeProducto, costo, sinStock, gastos, sueltas, ventasDeInsumos] = await Promise.all([
+  const [ventasDeProducto, costo, sinStock, gastos, sueltas, ventasDeInsumos, ingresosFinancieros] = await Promise.all([
     getIngresosNetos(period, cot),
     getCostoDeLoVendido(period, cot),
     getCostoInsumosSinStock(period, cot),
     getGastosNetos(period, cot),
     getFacturasDeProveedorSinCompra(period, cot),
     getVentasDeInsumos(period, cot),
+    getIngresosFinancieros(period),
   ]);
 
   // Lo vendido de insumos suma a las ventas, y lo que costó, al costo de lo vendido.
@@ -450,8 +464,9 @@ export async function getRentabilidad(period: Period = monthPeriod(), cotizador?
     ingresos,
     costoInsumos,
     gastos,
+    ingresosFinancieros,
     ventasDeInsumos,
-    rentabilidad: ingresos.minus(costoInsumos).minus(gastos),
+    rentabilidad: ingresos.minus(costoInsumos).minus(gastos).plus(ingresosFinancieros),
     itemsSinCosto: costo.itemsSinCosto,
     productosSinReceta: costo.productosSinReceta,
     facturasSinCompra: sueltas,

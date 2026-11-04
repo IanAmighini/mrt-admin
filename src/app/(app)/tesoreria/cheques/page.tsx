@@ -6,11 +6,12 @@ import { requireRole } from "@/lib/auth-helpers";
 import { formatMoney, formatNumeroEditable, sumDecimals } from "@/lib/money";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
 import { ETIQUETA, ETIQUETA_DESTACADA } from "@/components/Etiquetas";
-import { actualizarEstadoCheque, cambiarChequesPorEfectivo, rechazarCheque } from "./actions";
+import { actualizarEstadoCheque, cambiarChequesPorEfectivo, rechazarCheque, registrarChequesDeFinanciera } from "./actions";
 import { RechazoChequeFields } from "@/components/RechazoChequeFields";
 import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
 import { FormModal } from "@/components/Modal";
 import { CambioChequesFields } from "@/components/CambioChequesFields";
+import { ChequesDeFinancieraFields } from "@/components/ChequesDeFinancieraFields";
 import type { ChequeEstado } from "@prisma/client";
 
 const ESTADO_COLORS: Record<ChequeEstado, string> = {
@@ -66,9 +67,17 @@ export default async function ChequesPage({
   // pantalla se puede acotar a uno de los dos.
   const tipoFiltro = tipo === "echeq" ? true : tipo === "fisico" ? false : null;
 
-  const treasuries = canEdit
-    ? await prisma.entity.findMany({ where: { type: "TESORERIA" }, orderBy: { name: "asc" } })
-    : [];
+  const [treasuries, clientes] = canEdit
+    ? await Promise.all([
+        prisma.entity.findMany({ where: { type: "TESORERIA" }, orderBy: { name: "asc" } }),
+        // Los de la financiera son en pesos: un cliente en dólares se carga desde su ficha.
+        prisma.entity.findMany({
+          where: { type: { in: ["CLIENTE", "AMBOS"] }, moneda: "ARS" },
+          select: { id: true, name: true },
+          orderBy: { name: "asc" },
+        }),
+      ])
+    : [[], []];
 
   // Son unas decenas: se traen todos los del filtro y se reparten en pestañas acá, así cada
   // pestaña dice cuántos tiene sin otra consulta.
@@ -91,6 +100,7 @@ export default async function ChequesPage({
     include: {
       recibidoEn: { include: { account: { include: { entity: true } } } },
       entregadoEn: { include: { account: { include: { entity: true } } } },
+      cambioEn: { select: { treasuryCategory: true } },
     },
     orderBy: [{ fechaCobro: "asc" }, { numero: "asc" }],
   });
@@ -174,14 +184,24 @@ export default async function ChequesPage({
             </p>
           </div>
           {canEdit && (
-            <FormModal
-              triggerLabel="Cambiar cheques por efectivo"
-              title="Cambio de cheques por efectivo"
-              action={cambiarChequesPorEfectivo}
-              maxWidthClass="max-w-3xl"
-            >
-              <CambioChequesFields treasuries={treasuries} />
-            </FormModal>
+            <div className="flex flex-wrap gap-2">
+              <FormModal
+                triggerLabel="Cheques de financiera"
+                title="Cheques de una financiera"
+                action={registrarChequesDeFinanciera}
+                maxWidthClass="max-w-3xl"
+              >
+                <ChequesDeFinancieraFields clientes={clientes} />
+              </FormModal>
+              <FormModal
+                triggerLabel="Cambiar cheques por efectivo"
+                title="Cambio de cheques por efectivo"
+                action={cambiarChequesPorEfectivo}
+                maxWidthClass="max-w-3xl"
+              >
+                <CambioChequesFields treasuries={treasuries} />
+              </FormModal>
+            </div>
           )}
         </div>
       </div>
@@ -262,7 +282,11 @@ export default async function ChequesPage({
                       <span className={ETIQUETA}>{c.esEcheq ? "Echeq" : "Papel"}</span>
                       <span className={ETIQUETA}>{c.fechaCobro ? `Se cobra desde el ${formatFecha(c.fechaCobro)}` : "Al día"}</span>
                       {plazo(c)}
-                      {c.cambiadoA && deQuien === undefined && <span className={ETIQUETA}>Cambiado por efectivo</span>}
+                      {c.cambiadoA && deQuien === undefined && (
+                        <span className={ETIQUETA}>
+                          {c.cambioEn?.treasuryCategory === "INGRESO_FINANCIERO" ? "De financiera" : "Cambiado por efectivo"}
+                        </span>
+                      )}
                       {aQuien && (
                         <Link href={`/cuentas-corrientes/${aQuien.slug}`} className={`${ETIQUETA_DESTACADA} hover:underline`}>
                           → {aQuien.name}
