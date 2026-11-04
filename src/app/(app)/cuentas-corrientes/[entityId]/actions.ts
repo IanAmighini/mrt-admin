@@ -3104,6 +3104,7 @@ type Concepto = (typeof CONCEPTOS)[number];
 async function guardarEntrada(formData: FormData, editarId: string | null) {
   const user = await requireRole(["ADMIN", "SECRETARIA"]);
   await exigirZonaDelFormulario(user.role, formData);
+  await exigirQueNoSeaDeFinanciera(editarId);
 
   const anterior = editarId
     ? await prisma.payment.findUnique({

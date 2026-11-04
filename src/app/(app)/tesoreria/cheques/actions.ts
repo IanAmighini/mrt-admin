@@ -8,6 +8,7 @@ import { requireRole } from "@/lib/auth-helpers";
 import { UserError } from "@/lib/user-error";
 import { diffDeCampos, logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
+import { getAccountBalance } from "@/lib/ledger";
 import { marcarCheque } from "@/lib/cheques";
 import { circuitoDeTesoreria } from "@/lib/pagos";
 import { CHEQUE_ESTADO_LABELS, CIRCUIT_LABELS } from "@/lib/labels";
@@ -180,16 +181,17 @@ export async function cambiarChequesPorEfectivo(formData: FormData) {
 const CAJA_DE_LA_FINANCIERA = "Caja Bufano";
 
 /**
- * Cheques de una financiera: un cliente le transfiere a la financiera lo que nos debe, y ella nos
- * da cheques a plazo por más. Son tres cosas a la vez, y se cargan juntas:
- *  - **El cobro del cliente, por lo que transfirió.** Es lo que pagó; lo que los cheques valen de
- *    más no es suyo.
- *  - **Los cheques, en cartera en Caja Bufano**, por lo que dice el papel.
- *  - **La diferencia, como ingreso financiero**: suma al resultado del mes. Antes se cargaba como
- *    aporte de Cristian para que el efectivo cerrara, y la ganancia no aparecía en ningún lado.
+ * Retirar los cheques de una financiera. El cliente le transfirió antes, con un cobro directo a la
+ * financiera (lo carga Adriana desde Cobros, como cualquier cobro directo): eso deja la cuenta de la
+ * financiera a favor nuestro. Al retirar los cheques —siempre después, nunca en el momento—:
+ *  - **Se cancela ese saldo a favor**, con un cobro a la financiera por lo que cubren los cheques.
+ *    Entra a Caja Bufano.
+ *  - **Los cheques quedan en cartera en Caja Bufano**, por lo que dice el papel.
+ *  - **Lo que valen de más es ingreso financiero**: suma al resultado del mes, también en Caja
+ *    Bufano. Antes se cargaba como aporte de Cristian para que el efectivo cerrara.
  *
- * En la caja entran el cobro y la ganancia, que juntos son lo que valen los cheques. Los cheques
- * cuelgan del movimiento de la ganancia, y éste del cobro: borrando el movimiento se va todo.
+ * Los cheques cuelgan del movimiento de la ganancia, y éste del cobro: borrando el movimiento se va
+ * todo junto.
  */
 export async function registrarChequesDeFinanciera(formData: FormData) {
   const user = await requireRole(["ADMIN"]);
@@ -202,27 +204,30 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
     : null;
   if (!caja || !cajaAccount) throw new UserError(`No se encontró ${CAJA_DE_LA_FINANCIERA}.`);
 
-  const financiera = String(formData.get("financiera") || "").trim();
-  if (!financiera) throw new UserError("Escribí el nombre de la financiera.");
   const date = parseFormDate(formData.get("date"));
-
   const entityId = String(formData.get("entityId") || "");
   const circuit = String(formData.get("circuit") || "");
-  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Elegí la cuenta del cliente.");
+  if (circuit !== "BLANCO" && circuit !== "NEGRO") throw new UserError("Elegí la cuenta de la financiera.");
   const cuenta = entityId
     ? await prisma.account.findUnique({
         where: { entityId_circuit: { entityId, circuit } },
         include: { entity: true },
       })
     : null;
-  if (!cuenta || !["CLIENTE", "AMBOS"].includes(cuenta.entity.type)) throw new UserError("Elegí qué cliente transfirió.");
-  // Los cheques son en pesos: un cliente en dólares pediría una cotización que este formulario no tiene.
-  if (cuenta.entity.moneda !== "ARS") {
-    throw new UserError(`La cuenta de ${cuenta.entity.name} va en dólares: cargá el cobro desde su ficha.`);
-  }
+  if (!cuenta || !cuenta.entity.financiera) throw new UserError("Elegí de qué financiera son los cheques.");
+  const financiera = cuenta.entity;
 
-  const transferencia = parseNumeroEscrito(String(formData.get("transferencia") || ""), "lo que transfirió el cliente");
-  if (!transferencia.greaterThan(0)) throw new UserError("Lo que transfirió el cliente tiene que ser mayor a cero.");
+  const cancela = parseNumeroEscrito(String(formData.get("cancela") || ""), "lo que cancelan del saldo");
+  if (!cancela.greaterThan(0)) throw new UserError("Lo que cancelan los cheques tiene que ser mayor a cero.");
+  // Lo que nos debe: lo que le transfirieron los clientes y todavía no nos dio en cheques.
+  const aFavor = (await getAccountBalance(cuenta.id)).negated();
+  if (cancela.greaterThan(aFavor)) {
+    throw new UserError(
+      aFavor.greaterThan(0)
+        ? `${financiera.name} nos debe ${formatMoney(aFavor)} en la ${CIRCUIT_LABELS[circuit]}: los cheques no pueden cancelar más que eso. Si falta un cobro directo de un cliente, cargalo primero.`
+        : `${financiera.name} no nos debe nada en la ${CIRCUIT_LABELS[circuit]}. Primero se carga el cobro directo del cliente que le transfirió.`
+    );
+  }
 
   const numeros = formData.getAll("chequeNumero").map(String);
   const bancos = formData.getAll("chequeBanco").map(String);
@@ -247,32 +252,33 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
     });
   if (cheques.length === 0) throw new UserError("Cargá al menos un cheque.");
 
-  const { total, ganancia, pct, dias } = rendimientoDeFinanciera({
+  const { total, ganancia, pct } = rendimientoDeFinanciera({
     fecha: date,
-    transferencia,
+    transferencia: cancela,
     cheques: cheques.map((c) => ({ monto: c.amount, fechaCobro: c.fechaCobro })),
   });
   if (ganancia.isNegative()) {
     throw new UserError(
-      `Los cheques suman ${formatMoney(total)}, menos que lo que transfirió el cliente (${formatMoney(transferencia)}). Revisá los montos.`
+      `Los cheques suman ${formatMoney(total)}, menos que lo que cancelan (${formatMoney(cancela)}). Revisá los montos.`
     );
   }
-  const rinde = pct ? ` · ${formatNumeroEditable(pct)}% a ${dias} ${dias === 1 ? "día" : "días"}` : "";
+  const rinde = pct ? ` · ${formatNumeroEditable(pct)}% sobre lo transferido` : "";
 
   await prisma.$transaction(async (tx) => {
+    // Como un cobro a un proveedor: en negativo, que es lo que cancela el saldo a favor.
     const cobro = await tx.payment.create({
       data: {
         accountId: cuenta.id,
         date,
-        amount: transferencia,
+        amount: cancela.negated(),
         currency: "ARS",
-        method: "TRANSFERENCIA",
-        reference: `Transferencia a ${financiera}`,
+        method: "CHEQUE",
+        concepto: "COBRO_PROVEEDOR",
+        reference: `Cheques retirados (${cheques.length})`,
         treasuryId: caja.id,
         createdById: user.id,
       },
     });
-    // El cobro entra a la caja como cualquier otro: es lo que trae, y se va con él.
     await tx.document.create({
       data: {
         accountId: cajaAccount.id,
@@ -280,9 +286,9 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
         number: `P-${cobro.id.slice(-8)}`,
         date,
         currency: "ARS",
-        netAmount: transferencia,
-        totalAmount: transferencia,
-        reason: `Cobro de ${cuenta.entity.name} — Transferencia a ${financiera}`,
+        netAmount: cancela,
+        totalAmount: cancela,
+        reason: `Cheques de ${financiera.name} — lo que le transfirieron los clientes`,
         treasuryCategory: "COBRO",
         sourcePaymentId: cobro.id,
         createdById: user.id,
@@ -297,7 +303,7 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
         currency: "ARS",
         netAmount: ganancia,
         totalAmount: ganancia,
-        reason: `Cheques de ${financiera} por ${formatMoney(total)}, por la transferencia de ${cuenta.entity.name}${rinde}`,
+        reason: `Cheques de ${financiera.name} por ${formatMoney(total)}: lo que valen de más${rinde}`,
         treasuryCategory: "INGRESO_FINANCIERO",
         cobroDeFinancieraId: cobro.id,
         createdById: user.id,
@@ -307,7 +313,7 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
       data: cheques.map((c) => ({
         ...c,
         estado: "EN_CARTERA" as const,
-        cambiadoA: financiera,
+        cambiadoA: financiera.name,
         cambioEnId: movimiento.id,
         createdById: user.id,
       })),
@@ -318,14 +324,13 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
       action: "CREATE",
       entityType: "Cheques de financiera",
       entityId: movimiento.id,
-      summary: `${financiera} — ${cheques.length} cheque(s) por ${formatMoney(total)}, transferencia de ${cuenta.entity.name} por ${formatMoney(transferencia)}`,
+      summary: `${financiera.name} — ${cheques.length} cheque(s) por ${formatMoney(total)}, cancelan ${formatMoney(cancela)}`,
       cambios: diffDeCampos(
         null,
         {
           date,
-          financiera,
-          cliente: `${cuenta.entity.name} · ${CIRCUIT_LABELS[cuenta.circuit]}`,
-          transferencia: formatMoney(transferencia),
+          financiera: `${financiera.name} · ${CIRCUIT_LABELS[circuit]}`,
+          cancela: formatMoney(cancela),
           total: formatMoney(total),
           ganancia: `${formatMoney(ganancia)}${rinde}`,
           cheques: cheques
@@ -335,8 +340,7 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
         {
           date: "Fecha",
           financiera: "Financiera",
-          cliente: "Transfirió",
-          transferencia: "Transferencia",
+          cancela: "Cancelan del saldo",
           total: "Cheques",
           ganancia: "Ingreso financiero",
           cheques: "Detalle",
@@ -345,12 +349,11 @@ export async function registrarChequesDeFinanciera(formData: FormData) {
     });
   });
 
-  await reimputarEntidades(cuenta.entityId);
+  await reimputarEntidades(financiera.id);
   revalidatePath("/tesoreria/cheques");
   revalidatePath("/tesoreria");
-  revalidatePath(`/cuentas-corrientes/${cuenta.entity.slug}`);
+  revalidatePath(`/cuentas-corrientes/${financiera.slug}`);
   revalidatePath(`/cuentas-corrientes/${caja.slug}`);
-  revalidatePath("/pagos-clientes");
 }
 
 /**

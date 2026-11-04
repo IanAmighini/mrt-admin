@@ -155,7 +155,7 @@ export function PaymentDestinoField({
                 value: p.id,
                 label: p.name,
                 // "Cristian", el empleado, al lado de "Cristian Amighini": sin esto se confunden.
-                detalle: p.formaDeSueldo ? "empleado" : undefined,
+                detalle: p.formaDeSueldo ? "empleado" : p.financiera ? "financiera" : undefined,
               }))}
             />
           </div>

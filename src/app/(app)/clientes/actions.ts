@@ -41,6 +41,7 @@ const CAMPOS_DE_LA_ENTIDAD = {
   rotuloSubcuenta: "R\u00f3tulo de subcuenta",
   moneda: "Moneda",
   retiroSocietario: "Retiro societario",
+  financiera: "Financiera",
 } as const;
 
 /** La entidad en la forma que compara `diffDeCampos`. */
@@ -60,6 +61,7 @@ function fotoDeLaEntidad(e: {
   rotuloSubcuenta: string | null;
   moneda: string;
   retiroSocietario: boolean;
+  financiera: boolean;
 }) {
   return {
     name: e.name,
@@ -76,6 +78,7 @@ function fotoDeLaEntidad(e: {
     rotuloSubcuenta: e.rotuloSubcuenta,
     moneda: e.moneda,
     retiroSocietario: e.retiroSocietario,
+    financiera: e.financiera,
   };
 }
 
@@ -96,6 +99,7 @@ export async function createEntity(formData: FormData) {
   const llevaViajes = formData.get("llevaViajes") !== null;
   const rotuloSubcuenta = String(formData.get("rotuloSubcuenta") || "").trim() || null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
+  const financiera = type !== "CLIENTE" && formData.get("financiera") !== null;
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
   const { supplierCategory, expenseCategory } = parseRubro(String(formData.get("rubro") || "").trim());
@@ -119,7 +123,7 @@ export async function createEntity(formData: FormData) {
         // `retiroSocietario` no está: un proveedor nuevo nunca nace siendo por donde se retira
         // para los socios. Se prende editándolo, y sólo lo ve Admin.
         name, slug, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, llevaViajes, rotuloSubcuenta, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, llevaViajes, rotuloSubcuenta, moneda, financiera,
       },
     });
     const [blanco, negro] = await Promise.all([
@@ -173,6 +177,7 @@ export async function updateEntity(formData: FormData) {
       ? undefined
       : formData.get("retiroSocietario") !== null;
   const moneda = formData.get("cuentaEnDolares") !== null ? "USD" : "ARS";
+  const financiera = type !== "CLIENTE" && formData.get("financiera") !== null;
   const { supplierCategory, expenseCategory } = parseRubro(String(formData.get("rubro") || "").trim());
   const saldoInicialBlancoRaw = String(formData.get("saldoInicialBlanco") || "").trim();
   const saldoInicialNegroRaw = String(formData.get("saldoInicialNegro") || "").trim();
@@ -208,7 +213,7 @@ export async function updateEntity(formData: FormData) {
           ? { slug: slugNuevo, slugsAnteriores: [...previa.slugsAnteriores.filter((s) => s !== slugNuevo), previa.slug] }
           : {}),
         name, type, taxId, email, phone, address, notes, supplierCategory, expenseCategory,
-        isWithholdingAgent, llevaCuentaPreformas, llevaViajes, rotuloSubcuenta, moneda,
+        isWithholdingAgent, llevaCuentaPreformas, llevaViajes, rotuloSubcuenta, moneda, financiera,
         ...(retiroSocietario !== undefined ? { retiroSocietario } : {}),
       },
       include: { accounts: true },

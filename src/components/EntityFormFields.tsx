@@ -172,6 +172,11 @@ export function EntityFormFields({
               Para el que fía la preforma y cobra el soplado: una segunda cuenta, en unidades.
             </Opcion>
           )}
+          {esProveedor && (
+            <Opcion name="financiera" defaultChecked={entity?.financiera ?? false} titulo="Es una financiera">
+              Los clientes le transfieren con un cobro directo y después nos da cheques a plazo: lo que valen de más es ingreso financiero.
+            </Opcion>
+          )}
           {/* La marca de por dónde se retira para los socios no se ofrece al crear —un proveedor
               nuevo nunca nace siendo eso— ni a quien no maneja la plata de los dueños. Se prende
               editando, y sólo Admin lo ve. */}

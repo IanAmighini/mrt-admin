@@ -187,16 +187,16 @@ export async function getCarteraParaFormulario() {
 }
 
 /**
- * El cobro de unos cheques de financiera no se edita ni se borra suelto: el movimiento de la
- * ganancia y los cheques cuelgan de él, y la ganancia es la diferencia con lo que transfirió.
- * Se borra todo junto desde el movimiento de Caja Bufano, y se vuelve a cargar.
+ * El cobro con que se retiraron los cheques de una financiera no se edita ni se borra suelto: el
+ * movimiento de la ganancia y los cheques cuelgan de él, y la ganancia es la diferencia con lo que
+ * cancela. Se borra todo junto desde el movimiento de Caja Bufano, y se vuelve a cargar.
  */
 export async function exigirQueNoSeaDeFinanciera(paymentId: string | null | undefined) {
   if (!paymentId) return;
   const movimiento = await prisma.document.findUnique({ where: { cobroDeFinancieraId: paymentId }, select: { id: true } });
   if (movimiento) {
     throw new UserError(
-      "Este cobro es de unos cheques de financiera: para corregirlo, borrá el «Ingreso financiero» en Caja Bufano (se lleva el cobro y los cheques) y cargalo de nuevo desde Cheques."
+      "Esto es el retiro de unos cheques de financiera: para corregirlo, borrá el «Ingreso financiero» en Caja Bufano (se lleva esto y los cheques) y cargalo de nuevo desde Cheques."
     );
   }
 }

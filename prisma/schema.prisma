@@ -174,6 +174,10 @@ model Entity {
   /// proveedor: es plata que se llevaron los socios. Se saca de la deuda con proveedores y se
   /// muestra aparte como retiro societario.
   retiroSocietario     Boolean                @default(false)
+  /// Si es true, es una financiera (la Mutual Junín): un cliente le transfiere en un cobro directo,
+  /// y lo que queda a favor nuestro son cheques por retirar. Al retirarlos, lo que valen de más es
+  /// ingreso financiero.
+  financiera           Boolean                @default(false)
   /// Moneda en la que se lleva la cuenta corriente. En USD, los montos de sus comprobantes y pagos
   /// **son dólares**: el saldo sale en dólares sin convertir nada, y lo que se guarda de cada pago
   /// es la cotización con la que se hizo.

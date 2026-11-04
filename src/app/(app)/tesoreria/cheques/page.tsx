@@ -3,7 +3,7 @@ import { BotonConError } from "@/components/BotonConError";
 import { formatFecha, hoyComoFecha } from "@/lib/period";
 import { prisma } from "@/lib/prisma";
 import { requireRole } from "@/lib/auth-helpers";
-import { formatMoney, formatNumeroEditable, sumDecimals } from "@/lib/money";
+import { formatMoney, formatNumeroEditable, sumDecimals, ZERO } from "@/lib/money";
 import { CHEQUE_ESTADO_LABELS } from "@/lib/labels";
 import { ETIQUETA, ETIQUETA_DESTACADA } from "@/components/Etiquetas";
 import { actualizarEstadoCheque, cambiarChequesPorEfectivo, rechazarCheque, registrarChequesDeFinanciera } from "./actions";
@@ -11,7 +11,8 @@ import { RechazoChequeFields } from "@/components/RechazoChequeFields";
 import { FilterBar, FiltroBuscar, FiltroSelect } from "@/components/ui/FilterBar";
 import { FormModal } from "@/components/Modal";
 import { CambioChequesFields } from "@/components/CambioChequesFields";
-import { ChequesDeFinancieraFields } from "@/components/ChequesDeFinancieraFields";
+import { ChequesDeFinancieraFields, type FinancieraParaRetirar } from "@/components/ChequesDeFinancieraFields";
+import { getAccountBalances } from "@/lib/ledger";
 import type { ChequeEstado } from "@prisma/client";
 
 const ESTADO_COLORS: Record<ChequeEstado, string> = {
@@ -67,15 +68,10 @@ export default async function ChequesPage({
   // pantalla se puede acotar a uno de los dos.
   const tipoFiltro = tipo === "echeq" ? true : tipo === "fisico" ? false : null;
 
-  const [treasuries, clientes] = canEdit
+  const [treasuries, financieras] = canEdit
     ? await Promise.all([
         prisma.entity.findMany({ where: { type: "TESORERIA" }, orderBy: { name: "asc" } }),
-        // Los de la financiera son en pesos: un cliente en dólares se carga desde su ficha.
-        prisma.entity.findMany({
-          where: { type: { in: ["CLIENTE", "AMBOS"] }, moneda: "ARS" },
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
-        }),
+        getFinancierasParaRetirar(),
       ])
     : [[], []];
 
@@ -186,12 +182,12 @@ export default async function ChequesPage({
           {canEdit && (
             <div className="flex flex-wrap gap-2">
               <FormModal
-                triggerLabel="Cheques de financiera"
+                triggerLabel="Retirar cheques de financiera"
                 title="Cheques de una financiera"
                 action={registrarChequesDeFinanciera}
                 maxWidthClass="max-w-3xl"
               >
-                <ChequesDeFinancieraFields clientes={clientes} />
+                <ChequesDeFinancieraFields financieras={financieras} />
               </FormModal>
               <FormModal
                 triggerLabel="Cambiar cheques por efectivo"
@@ -361,4 +357,21 @@ function EstadoButton({
       {label}
     </BotonConError>
   );
+}
+
+/** Las financieras, con lo que nos debe cada una en cada cuenta: lo transferido y no retirado. */
+async function getFinancierasParaRetirar(): Promise<FinancieraParaRetirar[]> {
+  const financieras = await prisma.entity.findMany({
+    where: { financiera: true },
+    include: { accounts: { select: { id: true, circuit: true } } },
+    orderBy: { name: "asc" },
+  });
+  const saldos = await getAccountBalances(financieras.flatMap((f) => f.accounts.map((a) => a.id)));
+  return financieras.map((f) => {
+    const aFavor = (circuit: "BLANCO" | "NEGRO") => {
+      const cuenta = f.accounts.find((a) => a.circuit === circuit);
+      return formatNumeroEditable(cuenta ? (saldos.get(cuenta.id) ?? ZERO).negated() : ZERO);
+    };
+    return { id: f.id, name: f.name, aFavor: { BLANCO: aFavor("BLANCO"), NEGRO: aFavor("NEGRO") } };
+  });
 }
