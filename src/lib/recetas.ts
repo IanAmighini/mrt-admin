@@ -114,6 +114,7 @@ export const ORDEN_DE_RECETA: SupplierCategory[] = [
   "TAPAS",
   "ETIQUETAS",
   "CAJAS",
+  "CINTA",
   "PALLET_NORMALIZADO",
 ];
 

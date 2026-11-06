@@ -131,7 +131,7 @@ async function consumirInsumos(
 /**
  * Cajas armadas con botellas sueltas: las sanas que volvieron de una devolución con roturas, que se
  * juntan hasta completar cajas. Las botellas ya estaban envasadas y etiquetadas, así que lo único
- * que se gasta es la caja de cartón —la de la receta—.
+ * que se gasta es la caja de cartón —la de la receta— y la cinta que la cierra.
  */
 async function armarCajasConBotellas(
   tx: Prisma.TransactionClient,
@@ -152,6 +152,8 @@ async function armarCajasConBotellas(
     throw new UserError(`${nombre} no tiene cargadas las cajas por pallet y las botellas por caja.`);
   }
   const carton = product.recipe.filter((r) => r.item.category === "CAJAS");
+  // La caja nueva se cierra con cinta: la parte de una caja, como en las cajas sueltas.
+  const cinta = recetaPorCaja(product.recipe, product.boxesPerPallet).filter((r) => r.item.category === "CINTA");
   if (carton.length !== 1) {
     throw new UserError(`${nombre} tiene que tener una sola caja en la receta para saber qué caja de cartón descontar.`);
   }
@@ -173,7 +175,10 @@ async function armarCajasConBotellas(
     },
   });
   await consumirInsumos(tx, {
-    filas: [{ itemId: carton[0].itemId, item: carton[0].item, cantidad: new Prisma.Decimal(a.cajas) }],
+    filas: [
+      { itemId: carton[0].itemId, item: carton[0].item, cantidad: new Prisma.Decimal(a.cajas) },
+      ...cinta.map((r) => ({ itemId: r.itemId, item: r.item, cantidad: r.porCaja.times(a.cajas) })),
+    ],
     reemplazoPorCategoria: {},
     productionLineId: productionLine.id,
     date: a.date,

@@ -677,12 +677,12 @@ export async function getCierreReport(period: Period): Promise<CierreReport> {
     const [ci, bi, cf, bf] = [ini?.quantity ?? 0, ini?.botellas ?? 0, fin?.quantity ?? 0, fin?.botellas ?? 0];
     if (!ci && !bi && !cf && !bf) continue;
     // La caja suelta vale la receta de un pallet de esa caja, dividida por sus cajas y sin lo que es
-    // del pallet; la botella suelta, además, sin la caja de cartón.
+    // del pallet; la botella suelta, además, sin la caja de cartón ni su cinta.
     const modelo = productos.find((p) => p.cajaId === caja.id && p.recipe.length > 0 && p.boxesPerPallet);
     const valor = (cajasN: number, botellasN: number, t: Date) => {
       if (!modelo) return null;
       const porCaja = recetaCosto(modelo.recipe, t, delPallet, modelo.boxesPerPallet!);
-      const porBotella = recetaCosto(modelo.recipe, t, (c) => delPallet(c) && c !== "CAJAS", modelo.boxesPerPallet! * caja.unitsPerBox);
+      const porBotella = recetaCosto(modelo.recipe, t, (c) => delPallet(c) && c !== "CAJAS" && c !== "CINTA", modelo.boxesPerPallet! * caja.unitsPerBox);
       if (!porCaja || (botellasN && !porBotella)) return null;
       return porCaja.times(cajasN).plus(porBotella ? porBotella.times(botellasN) : ZERO);
     };

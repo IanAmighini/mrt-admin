@@ -42,6 +42,20 @@ function tramoDeCaja(ml: number): number {
 }
 
 /**
+ * Centímetros de cinta que lleva una caja al cerrarla, por tramo de caja (Ian, 6/11/2026). La de 900
+ * es la misma para 850 y 800, así que lleva lo mismo.
+ */
+const CINTA_CM_POR_CAJA: Record<number, number> = { 900: 92, 1500: 103, 4000: 94, 5000: 92 };
+/** Lo que trae un rollo de cinta: la cinta se compra y se cuenta por rollo. */
+const METROS_POR_ROLLO = 1000;
+
+/** Rollos de cinta que se gastan en un pallet: los centímetros de cada caja por las cajas del pallet. */
+export function rollosDeCintaPorPallet(boxesPerPallet: number, bottleCapacityMl: Prisma.Decimal | number): Prisma.Decimal {
+  const cm = CINTA_CM_POR_CAJA[tramoDeCaja(ml(bottleCapacityMl))];
+  return new Prisma.Decimal(boxesPerPallet).times(cm).dividedBy(100).dividedBy(METROS_POR_ROLLO);
+}
+
+/**
  * Tapa que corresponde por boca de envase. Las de 29mm (850, 900 y 1500) son tres y se usan
  * indistintamente; se elige una por defecto y al cargar la producción se puede indicar que se usó
  * otra. De 3600 para arriba hay una sola.
@@ -81,6 +95,7 @@ export function nombresDeLaPlantilla(marca: MarcaInfo, formato: FormatoInfo): st
     `Caja ${marca.name} ${formato.unitsPerBox}x${tramo}`,
     `Caja Lisa ${formato.unitsPerBox}x${tramo}`,
     `Aceite ${marca.oilType}`,
+    "Cinta",
     ...(marca.usaEtiqueta
       ? [
           `Etiqueta ${marca.name} ${marca.oilType} ${capacidad}ml`,
@@ -151,6 +166,11 @@ export function plantillaDeReceta(
     {
       itemId: exigir(`Aceite ${marca.oilType}`, "ACEITE"),
       quantityPerUnit: litrosPorPallet(unitsPerPallet, formato.bottleCapacityMl, oilFillEfficiencyPercent),
+    },
+    // La que cierra cada caja. Va por pallet como el resto; una caja suelta se lleva su parte.
+    {
+      itemId: exigir("Cinta", "CINTA"),
+      quantityPerUnit: rollosDeCintaPorPallet(formato.boxesPerPallet, formato.bottleCapacityMl),
     },
   ];
 
