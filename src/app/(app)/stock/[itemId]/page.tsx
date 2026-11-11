@@ -6,6 +6,7 @@ import { findBySlugOrId } from "@/lib/slug-lookup";
 import { getItemMovements, getItemStock } from "@/lib/stock";
 import { formatMoney, formatNumeroEditable, formatNumeroExacto, formatQuantity } from "@/lib/money";
 import { DENSIDAD_ACEITE } from "@/lib/aceite";
+import { nombreDelAceiteDelCliente } from "@/lib/recipe-template";
 import { getPreformasOrdenadas, precioDeReventaDeEnvase } from "@/lib/preformas";
 import { getCotizador } from "@/lib/cotizaciones";
 import { getCostosUnitarios } from "@/lib/dashboard-kpis";
@@ -43,6 +44,12 @@ export default async function ItemDetailPage({
   );
   if (!item) notFound();
   if (itemId !== item.slug) redirect(`/stock/${item.slug}`);
+
+  // El aceite que trae un cliente de fasón («Aceite Girasol de Solterra»): no es nuestro.
+  const marcaDelAceite =
+    item.category === "ACEITE"
+      ? (await prisma.marca.findMany()).find((m) => nombreDelAceiteDelCliente(m) === item.name) ?? null
+      : null;
 
   const [stock, movements, preformas, entidades, cotizador, ultimaCompra] = await Promise.all([
     getItemStock(item.id),
@@ -126,7 +133,7 @@ export default async function ItemDetailPage({
           <h1 className="text-xl font-semibold">{item.name}</h1>
           <div className="flex items-center gap-4">
             <p className="text-lg font-semibold">{formatQuantity(stock, item.unit)}</p>
-            {canEdit && item.llevaStock && (
+            {canEdit && item.llevaStock && !marcaDelAceite && (
               <FormModal triggerLabel="Vender" title={`Vender ${item.name}`} action={venderInsumo} maxWidthClass="max-w-xl">
                 <VentaInsumoFields
                   itemId={item.id}
@@ -154,6 +161,15 @@ export default async function ItemDetailPage({
           )}{" "}
           · Stock mínimo: {item.minStock ? formatQuantity(item.minStock, item.unit) : "sin definir"}
         </p>
+        {marcaDelAceite && (
+          <p className="mt-2 max-w-2xl rounded-lg bg-foreground/5 px-3 py-2 text-sm text-foreground/70">
+            Es el aceite que trae <strong className="font-medium text-foreground">{marcaDelAceite.name}</strong> para
+            que se lo envasemos: no es nuestro y vale $ 0. Lo que figura acá es lo que todavía le debemos envasar.
+            Cuando llega un camión se carga abajo, en «Nuevo movimiento», como <em>Ingreso</em> en kilos y con el
+            número de remito en el motivo. Cada botella le descuenta su capacidad entera, y lo que sobra del llenado
+            queda para nosotros.
+          </p>
+        )}
       </div>
 
       {canEdit && (

@@ -76,6 +76,14 @@ const ETIQUETA_DE_OTRA_MEDIDA: Record<number, number> = {
   750: 800,
 };
 
+/**
+ * El aceite que trae un cliente al que le hacemos fasón: se llama «Aceite Girasol de Solterra».
+ * Si existe ese insumo, la receta de la marca lo usa en vez del nuestro (Ian, 11/11/2026).
+ */
+export function nombreDelAceiteDelCliente(marca: { name: string; oilType: string }): string {
+  return `Aceite ${marca.oilType} de ${marca.name}`;
+}
+
 /** Un ml entero para armar nombres: `Decimal(900.00)` tiene que dar "900", no "900.00". */
 function ml(value: Prisma.Decimal | number): number {
   return Math.round(Number(value));
@@ -95,6 +103,7 @@ export function nombresDeLaPlantilla(marca: MarcaInfo, formato: FormatoInfo): st
     `Caja ${marca.name} ${formato.unitsPerBox}x${tramo}`,
     `Caja Lisa ${formato.unitsPerBox}x${tramo}`,
     `Aceite ${marca.oilType}`,
+    nombreDelAceiteDelCliente(marca),
     "Cinta",
     ...(marca.usaEtiqueta
       ? [
@@ -152,6 +161,28 @@ export function plantillaDeReceta(
     return item.id;
   }
 
+  /**
+   * **Fasón:** si la marca trae su aceite, se le descuenta al 100% —cada botella de 5 L, 5 L— y lo
+   * que no se usa por el rendimiento de llenado es nuestro: entra a nuestro aceite en la misma
+   * línea, en negativo. Así su saldo es lo que le debemos envasar, y la ganancia baja el costo del
+   * pallet y sube la Valorización sin cargar nada a mano. El sobrante queda en su tanque hasta que
+   * se pasa al nuestro.
+   */
+  function lineasDeAceite(): RecipeTemplateLine[] {
+    const nuestro = exigir(`Aceite ${marca.oilType}`, "ACEITE");
+    const delCliente = nombreDelAceiteDelCliente(marca);
+    if (!porNombre.has(delCliente)) {
+      return [{ itemId: nuestro, quantityPerUnit: litrosPorPallet(unitsPerPallet, formato.bottleCapacityMl, oilFillEfficiencyPercent) }];
+    }
+    const sobra = new Prisma.Decimal(100).minus(oilFillEfficiencyPercent);
+    return [
+      { itemId: exigir(delCliente, "ACEITE"), quantityPerUnit: litrosPorPallet(unitsPerPallet, formato.bottleCapacityMl, 100) },
+      ...(sobra.greaterThan(0)
+        ? [{ itemId: nuestro, quantityPerUnit: litrosPorPallet(unitsPerPallet, formato.bottleCapacityMl, sobra).negated() }]
+        : []),
+    ];
+  }
+
   const porBotella = new Prisma.Decimal(unitsPerPallet);
   const lines: RecipeTemplateLine[] = [
     { itemId: exigir("Pallet de madera", "PALLET_NORMALIZADO"), quantityPerUnit: new Prisma.Decimal(1) },
@@ -163,10 +194,7 @@ export function plantillaDeReceta(
       itemId: porNombre.has(cajaDeMarca) ? exigir(cajaDeMarca, "CAJAS") : exigir(cajaLisa, "CAJAS"),
       quantityPerUnit: new Prisma.Decimal(formato.boxesPerPallet),
     },
-    {
-      itemId: exigir(`Aceite ${marca.oilType}`, "ACEITE"),
-      quantityPerUnit: litrosPorPallet(unitsPerPallet, formato.bottleCapacityMl, oilFillEfficiencyPercent),
-    },
+    ...lineasDeAceite(),
     // La que cierra cada caja. Va por pallet como el resto; una caja suelta se lleva su parte.
     {
       itemId: exigir("Cinta", "CINTA"),

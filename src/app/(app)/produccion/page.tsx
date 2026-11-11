@@ -10,6 +10,7 @@ import { ProductionRunFormFields } from "@/components/ProductionRunFormFields";
 import { OilEfficiencyFields } from "@/components/OilEfficiencyFields";
 import { createProductionRun, deleteProductionRun, updateProductionRun, updateOilEfficiency } from "./actions";
 import { formatFecha, toDateInputValue } from "@/lib/period";
+import { nombreDelAceiteDelCliente } from "@/lib/recipe-template";
 import { getRecetasPorCombinacion } from "@/lib/recetas";
 import type { Predeterminados } from "./ProductionLinesFields";
 
@@ -64,13 +65,18 @@ export default async function ProduccionPage() {
     }),
     canEdit ? getRecetasPorCombinacion() : null,
   ]);
+  // El aceite de un cliente de fasón no reemplaza al nuestro: no es nuestro y su saldo es lo que le
+  // debemos envasar. Su receta ya lo trae.
+  const deClientes = new Set(marcas.map(nombreDelAceiteDelCliente));
+  const aceitesNuestros = aceites.filter((a) => !deClientes.has(a.name));
 
   // Qué dice la receta de cada combinación, para que el formulario muestre "Tapa Negra
   // (predeterminada)" en vez de "la de la receta".
   const predeterminados: Predeterminados = {};
   for (const [clave, receta] of recetas ?? []) {
     const deCategoria = (c: string) => {
-      const enReceta = receta.lineas.filter((l) => l.categoria === c);
+      // Sólo lo que se consume: en un fasón el aceite que nos queda va en negativo y no es "el de la receta".
+      const enReceta = receta.lineas.filter((l) => l.categoria === c && l.cantidad.greaterThan(0));
       // Con dos de la misma categoría no hay una predeterminada: el servidor tampoco deja elegir.
       return enReceta.length === 1 ? { id: enReceta[0].itemId, name: enReceta[0].nombre } : undefined;
     };
@@ -90,8 +96,9 @@ export default async function ProduccionPage() {
   function reemplazosDe(line: LineaDeCorrida) {
     const usado: Partial<Record<(typeof REEMPLAZABLES)[number], string>> = {};
     for (const categoria of REEMPLAZABLES) {
-      const enReceta = line.product.recipe.find((r) => r.item.category === categoria);
-      const consumido = line.itemMovements.find((m) => m.item.category === categoria);
+      // Lo que se consumió (en negativo), no el aceite que nos queda de un fasón, que entra.
+      const enReceta = line.product.recipe.find((r) => r.item.category === categoria && r.quantityPerUnit.greaterThan(0));
+      const consumido = line.itemMovements.find((m) => m.item.category === categoria && m.quantity.isNegative());
       if (consumido && enReceta && consumido.item.id !== enReceta.itemId) {
         usado[categoria] = consumido.item.id;
       }
@@ -202,7 +209,7 @@ export default async function ProduccionPage() {
                 tapas={tapas}
                 cajas={cajas}
                 etiquetas={etiquetas}
-                aceites={aceites}
+                aceites={aceitesNuestros}
                 predeterminados={predeterminados}
               />
             </FormModal>
@@ -261,7 +268,7 @@ export default async function ProduccionPage() {
                         tapas={tapas}
                         cajas={cajas}
                         etiquetas={etiquetas}
-                        aceites={aceites}
+                        aceites={aceitesNuestros}
                         predeterminados={predeterminados}
                         editingRunId={run.id}
                         defaultValues={{ date: toDateInputValue(run.date), notes: run.notes ?? "" }}
