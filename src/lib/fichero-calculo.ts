@@ -9,7 +9,9 @@
  * - los días de semana completos se descuenta el almuerzo (1 h), que no se ficha. El sábado —que
  *   algunos vienen a limpiar y ordenar— y los días cortos, no;
  * - el viernes se cuenta hasta las 19, que es cuando se va Adriana con la planilla hecha. Lo que se
- *   queden después pasa a la semana siguiente;
+ *   queden después no se cuenta: casi siempre es que ficharon tarde, después de cobrar y hacer tiempo
+ *   (el viernes 6/11, 46 minutos a seis chicos). Antes pasaba a la semana siguiente y les sumaba una
+ *   hora; lo cambió Ian el 13/11/2026. Si fueron horas extra de verdad, se cargan a mano en el sábado;
  * - el total se redondea a la media hora;
  * - presentismo: todos los días hábiles **del mes** con 8 horas o más (los feriados no cuentan);
  * - puntualidad: todos los días hábiles del mes con entrada antes de las 8, y además el presentismo.
@@ -49,7 +51,10 @@ export type DiaFichero = {
   marcas: string[]; // ["07:32", "18:46"]
   entrada?: string | null;
   salida?: string | null;
-  /** El viernes anterior a la semana: sólo cuenta lo que se quedaron después del corte. */
+  /**
+   * El viernes anterior a la semana. Lo que se quedaron después del corte no se cuenta, pero se muestra
+   * para preguntar si fueron horas extra.
+   */
   arrastre?: boolean;
 };
 
@@ -69,7 +74,7 @@ export type CuentaDelDia = {
   almuerzo: boolean;
   /** Horas que cuentan esta semana; null si falta una marca y no se puede saber. */
   horas: number | null;
-  /** Lo que se quedó el viernes después del corte: pasa a la semana siguiente. */
+  /** Lo que se quedó el viernes después del corte: no se cuenta. */
   extraViernes: number;
   /** 8 horas o más: cuenta para el presentismo. */
   completo: boolean;
@@ -122,7 +127,7 @@ export function calcularDia(d: DiaFichero, reglas: ReglasFichero, feriado: boole
 
   if (d.arrastre) {
     const extra = salidaReal && aMinutos(salidaReal) > corte ? (aMinutos(salidaReal) - corte) / 60 : 0;
-    return { ...base, estado: "ok", entrada: reglas.corteViernes, salida: salidaReal, horas: extra };
+    return { ...base, estado: "ok", entrada: reglas.corteViernes, salida: salidaReal, horas: 0, extraViernes: extra };
   }
   if (!entrada && !salidaReal) return { ...base, estado: "ausente", entrada: null, salida: null, horas: 0 };
   if (!entrada) return { ...base, estado: "falta-entrada", entrada: null, salida: salidaReal, horas: null };
@@ -175,8 +180,8 @@ export function redondear(horas: number, a: number) {
 
 export type ResumenDeSemana = {
   dias: CuentaDelDia[];
-  /** Las horas después del corte del viernes anterior, que se suman a esta semana. */
-  arrastre: number;
+  /** Lo que se quedaron el viernes anterior después del corte. No se suma: se muestra para preguntar. */
+  despuesDelCorte: { salida: string; horas: number } | null;
   horasExactas: number;
   horas: number;
   horasFeriado: number;
@@ -201,11 +206,12 @@ export function resumenDeSemana(
   const cuentas = fechasDe(semana.desde, semana.hasta).map((fecha) =>
     calcularDia(porFecha.get(fecha) ?? { fecha, marcas: [] }, reglas, feriados.has(fecha))
   );
-  const arrastre = dias
-    .filter((d) => d.arrastre)
-    .reduce((acc, d) => acc + (calcularDia(d, reglas, false).horas ?? 0), 0);
+  const viernesAnterior = dias.find((d) => d.arrastre);
+  const delViernes = viernesAnterior ? calcularDia(viernesAnterior, reglas, false) : null;
+  const despuesDelCorte =
+    delViernes && delViernes.extraViernes > 0 && delViernes.salida ? { salida: delViernes.salida, horas: delViernes.extraViernes } : null;
 
-  const horasExactas = cuentas.reduce((acc, c) => acc + (c.horas ?? 0), 0) + arrastre;
+  const horasExactas = cuentas.reduce((acc, c) => acc + (c.horas ?? 0), 0);
   const horasFeriadoExactas = cuentas.filter((c) => c.feriado).reduce((acc, c) => acc + (c.horas ?? 0), 0);
 
   const sinPresentismo: string[] = [];
@@ -224,7 +230,7 @@ export function resumenDeSemana(
 
   return {
     dias: cuentas,
-    arrastre,
+    despuesDelCorte,
     horasExactas,
     horas: redondear(horasExactas, reglas.redondeoHoras),
     horasFeriado: redondear(horasFeriadoExactas, reglas.redondeoHoras),

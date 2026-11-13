@@ -475,9 +475,11 @@ export function PlanillaDeSueldosGrid({
               {semanal && resumen && v.dias && abiertos.includes(f.id) && (
                 <tr className="bg-foreground/[0.02]">
                   <td colSpan={columnas} className="px-2 pb-3 pt-1">
-                    {resumen.arrastre > 0 && (
+                    {resumen.despuesDelCorte && (
                       <p className="mb-1 text-xs text-foreground/60">
-                        + {horasYMinutos(resumen.arrastre)} del viernes anterior, después de las {reglas.corteViernes}.
+                        El viernes anterior fichó la salida a las {resumen.despuesDelCorte.salida} (
+                        {horasYMinutos(resumen.despuesDelCorte.horas)} después de las {reglas.corteViernes}): no se cuenta. Si
+                        fueron horas extra, cargalas en el sábado.
                       </p>
                     )}
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">

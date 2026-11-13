@@ -103,7 +103,7 @@ export default async function SueldosPage() {
                   {(
                     [
                       ["entradaPuntual", "Llega a tiempo hasta las", reglas.entradaPuntual, "Para la puntualidad del mes, todos los días hábiles."],
-                      ["corteViernes", "El viernes se cuenta hasta las", reglas.corteViernes, "Lo que se queden después pasa a la semana siguiente."],
+                      ["corteViernes", "El viernes se cuenta hasta las", reglas.corteViernes, "Lo que se queden después no se cuenta: si fueron horas extra, se cargan a mano en el sábado."],
                       ["almuerzoMinutos", "Almuerzo (minutos)", String(reglas.almuerzoMinutos), "Se descuenta en los días de semana completos."],
                       ["diaConAlmuerzoHoras", "Desde cuántas horas se descuenta", String(reglas.diaConAlmuerzoHoras).replace(".", ","), "De puerta a puerta."],
                       ["presentismoHoras", "Horas del día para el presentismo", String(reglas.presentismoHoras).replace(".", ","), "Ya sin el almuerzo, todos los días hábiles del mes."],

@@ -22,7 +22,7 @@ export type ResultadoDeImportacion = {
  * calcula las horas y el feriado con las reglas. Los bonos no: son por mes (`importarMesCore`). Todo queda editable: si se vuelve a
  * importar, las correcciones a mano de un día (de las cámaras) se conservan.
  *
- * El viernes anterior entra sólo por lo que se quedaron después del corte, que pasa a esta semana.
+ * El viernes anterior entra sólo para mostrar si se quedaron después del corte: no se cuenta.
  */
 export async function importarMarcasCore(
   planillaId: string,
